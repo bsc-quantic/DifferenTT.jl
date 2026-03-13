@@ -1,0 +1,7 @@
+name = "DifferenTT"
+uuid = "986fbeea-f347-4a71-ab00-a89cbb29f88e"
+authors = ["Pau Torrente", "Stefano Carignano", "Artur Garcia"]
+version = "0.0.1"
+
+[compat]
+julia = "1.12"
