@@ -1,7 +1,21 @@
 name = "DifferenTT"
 uuid = "986fbeea-f347-4a71-ab00-a89cbb29f88e"
-authors = ["Pau Torrente", "Stefano Carignano", "Artur Garcia"]
 version = "0.0.1"
+authors = ["Pau Torrente", "Stefano Carignano", "Artur Garcia"]
+
+[deps]
+Adapt = "79e6a3ab-5dfb-504d-930d-738a2a938a0e"
+ITensorMPS = "0d1a4710-d33b-49a5-8f18-73bdf49b47e2"
+ITensors = "9136182c-28ba-11e9-034c-db9fb085ebd5"
+KrylovKit = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+TensorCrossInterpolation = "b261b2ec-6378-4871-b32e-9173bb050604"
+TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 
 [compat]
+Adapt = "4.5.0"
+ITensorMPS = "0.3.44"
+ITensors = "0.9.25"
+KrylovKit = "0.10.2"
+TensorCrossInterpolation = "0.9.19"
+TimerOutputs = "0.5.29"
 julia = "1.12"
