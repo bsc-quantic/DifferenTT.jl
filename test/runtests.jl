@@ -2,5 +2,12 @@ using DifferenTT
 using Test
 
 @testset "DifferenTT.jl" begin
-    # Write your tests here.
+    @testset "PdeProblem" begin
+        include("PdeProblem/test_boundaryconditions.jl")
+        include("PdeProblem/test_scalarfields.jl")
+        include("PdeProblem/test_vectorfields.jl")
+    end
+    @testset "TensorTrains" begin
+        include("TensorTrains/test_architecture.jl")
+    end
 end
