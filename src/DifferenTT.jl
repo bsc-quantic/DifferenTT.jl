@@ -16,6 +16,8 @@ include("PdeProblem/vectorfields.jl")
 
 # Include Time Evolution related files
 include("TimeEvolution/timevol.jl")
+include("TimeEvolution/explicitevol.jl")
+include("TimeEvolution/implicitevol.jl")
 
 # Export types and functions from TimeEvolution
 export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper, AbstractImplicitStepper
