@@ -47,3 +47,41 @@ Base.@kwdef struct SweepingArgs
     sweep_observer!::Any = ITensorMPS.default_sweep_observer()
     checkdone::Any = ITensorMPS.default_checkdone()
 end
+
+"""
+    Base.NamedTuple(args::LocalUpdaterArgs)
+
+Convert `LocalUpdaterArgs` to a `NamedTuple`.
+"""
+function Base.NamedTuple(args::LocalUpdaterArgs)
+    return (;
+        ishermitian = args.ishermitian,
+        isposdef = args.isposdef,
+        compute_cond = args.compute_cond,
+        rtol = args.rtol,
+        krylovdim = args.krylovdim,
+        maxiter = args.maxiter,
+        verbosity = args.verbosity,
+        numiter_store = args.numiter_store,
+        cond_store = args.cond_store,
+        pc_cond_store = args.pc_cond_store
+    )
+end
+
+"""
+    Base.NamedTuple(args::SweepingArgs)
+
+Convert `SweepingArgs` to a `NamedTuple`.
+"""
+function Base.NamedTuple(args::SweepingArgs)
+    return (;
+        sweeps = args.sweeps,
+        maxdim = args.maxdim,
+        cutoff = args.cutoff,
+        nsite = args.nsite,
+        outputlevel = args.outputlevel,
+        observer! = args.observer!,
+        sweep_observer! = args.sweep_observer!,
+        checkdone = args.checkdone
+    )
+end
