@@ -19,6 +19,11 @@ Base.@kwdef struct ExpandedALS <: AbstractDMRGSolver
 end
 
 function linearsolve(solver::ExpandedALS, A, b, x0; kwargs...)
-    # TODO: Implement Standard Alternating Linear Scheme
+    # TODO: Implement Standard Alternating Linear Scheme with gloabl expansion
+    error("ALS(t + z) solver not yet implemented")
+end
+
+function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
+    # TODO: Implement Preconditioneddard Alternating Linear Scheme with global expansion
     error("ALS(t + z) solver not yet implemented")
 end

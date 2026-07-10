@@ -13,3 +13,9 @@ function linearsolve(solver::ALS, A, b, x0; kwargs...)
     # TODO: Implement Standard Alternating Linear Scheme
     error("ALS solver not yet implemented")
 end
+
+function linearsolve(solver::ALS, A, b, M⁻¹, x0; kwargs...)
+    # TODO: Implement Preconditioned Alternating Linear Scheme
+    error("ALS solver not yet implemented")
+end
+

@@ -13,3 +13,8 @@ function linearsolve(solver::AMEn, A, b, x0; kwargs...)
     # TODO: Implement Standard Alternating Minimal Energy method
     error("AMEn solver not yet implemented")
 end
+
+function linearsolve(solver::AMEn, A, b, M⁻¹, x0; kwargs...)
+    # TODO: Implement Preconditioned Alternating Minimal Energy method
+    error("AMEn solver not yet implemented")
+end

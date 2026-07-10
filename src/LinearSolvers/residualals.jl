@@ -10,7 +10,12 @@ Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
 end
 
 function linearsolve(solver::ResidualALS, A, b, x0; kwargs...)
-    # TODO: Implement Standard Alternating Linear Scheme
-    error("ALS solver not yet implemented")
+    # TODO: Implement Standard Alternating Linear Scheme based on residual truncation
+    error("Residual truncation ALS solver not yet implemented")
+end
+
+function linearsolve(solver::ResidualALS, A, b, M⁻¹, x0; kwargs...)
+    # TODO: Implement Preconditioned Alternating Linear Scheme based on residual truncation
+    error("Residual truncation ALS solver not yet implemented")
 end
 
