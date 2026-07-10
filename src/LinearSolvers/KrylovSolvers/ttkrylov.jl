@@ -3,8 +3,9 @@ using KrylovKit
 """
     TTCG <: KrylovKit.KrylovAlgorithm
 
-Tensor Train Conjugate Gradient (CG) solver for linear systems.
-Includes truncation parameters to keep bond dimensions bounded.
+Tensor Train Conjugate Gradient (CG) algorithm for linear systems.
+This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters 
+to keep bond dimensions bounded.
 """
 Base.@kwdef struct TTCG <: KrylovKit.KrylovAlgorithm
     maxiter::Int = 100
@@ -62,8 +63,9 @@ end
 """
     TTGMRES <: KrylovKit.KrylovAlgorithm
 
-Tensor Train Generalized Minimal Residual Method (GMRES) solver for linear systems.
-Includes truncation parameters for application and orthogonalization steps.
+Tensor Train Generalized Minimal Residual Method (GMRES) algorithm for linear systems.
+This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters 
+for application and orthogonalization steps.
 """
 Base.@kwdef struct TTGMRES <: KrylovKit.KrylovAlgorithm
     krylovdim::Int = 30
