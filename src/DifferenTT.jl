@@ -3,6 +3,7 @@ module DifferenTT
 using Adapt
 using ITensors
 using ITensorMPS
+using KrylovKit
 
 # Include TensorTrain related files
 include("TensorTrains/architecture.jl")
@@ -21,6 +22,7 @@ include("TimeEvolution/implicitevol.jl")
 
 # Include Linear Solvers related files
 include("LinearSolvers/linearsolvers.jl")
+include("LinearSolvers/exactupdaters.jl")
 include("LinearSolvers/als.jl")
 include("LinearSolvers/expandedals.jl")
 include("LinearSolvers/residualals.jl")
