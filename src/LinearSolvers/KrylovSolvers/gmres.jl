@@ -2,6 +2,8 @@ using KrylovKit: scale, scale!!, add!!, zerovector, ConvergenceInfo, normres2str
 using KrylovKit: STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL, SILENT_LEVEL
 using KrylovKit: Givens, inner
 
+# Regular non-preconditioned implentation is taken directly from KrylovKit.jl
+
 function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number = 0, a₁::Number = 1; alg_rrule = alg)
     # Initial function operation and division defines number type
     y₀ = KrylovKit.apply(operator, x₀)

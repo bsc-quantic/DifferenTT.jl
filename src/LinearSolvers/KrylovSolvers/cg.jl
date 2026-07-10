@@ -1,6 +1,7 @@
 using KrylovKit: scale, scale!!, add!!, zerovector, ConvergenceInfo, normres2string
 using KrylovKit: STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL
 
+# Regular non-preconditioned implentation is taken directly from KrylovKit.jl
 
 function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     # Initial function operation and division defines number type
