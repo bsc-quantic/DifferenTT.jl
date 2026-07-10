@@ -39,10 +39,22 @@ function linearsolve(solver::GlobalCG, A, b, x0; kwargs...)
                  maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
                  cutoff = get(merged_kwargs, :cutoff, 1e-8)
     )
-                 
-    M_inv = get(merged_kwargs, :preconditioner, v -> v)
+                     
+    x, info = KrylovKit.linsolve(A, b, x0, alg)
+    return x, (; info, residual=info.residual)
+end
+
+function linearsolve(solver::GlobalCG, A, b, M⁻¹, x0; kwargs...)
+    merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
     
-    x, info = KrylovKit.linsolve(A, b, x0, M_inv, alg)
+    alg = TTCG(; maxiter = merged_kwargs.maxiter,
+                 tol = merged_kwargs.rtol,
+                 verbosity = merged_kwargs.verbosity,
+                 maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
+                 cutoff = get(merged_kwargs, :cutoff, 1e-8)
+    )
+                     
+    x, info = KrylovKit.linsolve(A, b, x0, M⁻¹, alg)
     return x, (; info, residual=info.residual)
 end
 
@@ -85,8 +97,23 @@ function linearsolve(solver::GlobalGMRES, A, b, x0; kwargs...)
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                     
-    M_inv = get(merged_kwargs, :preconditioner, v -> v)
-    
-    x, info = KrylovKit.linsolve(A, b, x0, M_inv, alg)
+    x, info = KrylovKit.linsolve(A, b, x0, alg)
     return x, (; info, residual=info.residual)
 end
+
+function linearsolve(solver::GlobalGMRES, A, b, M⁻¹, x0; kwargs...)
+    merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
+    
+    alg = TTGMRES(; krylovdim = merged_kwargs.krylovdim,
+                    maxiter = merged_kwargs.maxiter,
+                    tol = merged_kwargs.rtol,
+                    verbosity = merged_kwargs.verbosity,
+                    maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
+                    cutoff = get(merged_kwargs, :cutoff, 1e-8),
+                    orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
+                    orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
+                        
+    x, info = KrylovKit.linsolve(A, b, x0, M⁻¹, alg)
+    return x, (; info, residual=info.residual)
+end
+
