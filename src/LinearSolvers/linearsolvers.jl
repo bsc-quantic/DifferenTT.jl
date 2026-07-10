@@ -56,7 +56,7 @@ end
 Configuration for the sweeps in DMRG-based linear solvers.
 """
 Base.@kwdef struct SweepingArgs
-    sweeps::Int = 5
+    nsweeps::Int = 5
     maxdim::Int = 30
     cutoff::Float64 = 1e-10
     nsite::Int = 2
@@ -113,7 +113,7 @@ Convert `SweepingArgs` to a `NamedTuple`.
 """
 function Base.NamedTuple(args::SweepingArgs)
     return (;
-        sweeps = args.sweeps,
+        nsweeps = args.nsweeps,
         maxdim = args.maxdim,
         cutoff = args.cutoff,
         nsite = args.nsite,
@@ -122,4 +122,8 @@ function Base.NamedTuple(args::SweepingArgs)
         sweep_observer! = args.sweep_observer!,
         checkdone = args.checkdone
     )
+end
+
+function default_linearsolve_init(const_term::MPS)
+    return zeros_mps(siteinds(const_term), array_backend(const_term))
 end
