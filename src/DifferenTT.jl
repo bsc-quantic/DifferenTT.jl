@@ -21,6 +21,7 @@ include("TimeEvolution/explicitevol.jl")
 include("TimeEvolution/implicitevol.jl")
 
 # Include Linear Solvers related files
+include("LinearSolvers/preconditionedproblem.jl")
 include("LinearSolvers/linearsolvers.jl")
 include("LinearSolvers/exactupdaters.jl")
 include("LinearSolvers/als.jl")
