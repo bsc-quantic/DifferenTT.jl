@@ -33,7 +33,25 @@ Base.@kwdef struct LocalUpdaterArgs
 end
 
 """
-    LocalUpdaterArgs
+    GlobalUpdaterArgs
+
+Configuration for the global truncated updaters runnin on the TT-Manifold
+"""
+Base.@kwdef struct GlobalUpdaterArgs
+    ishermitian::Bool = false
+    isposdef::Bool = false
+    krylovdim::Int = 30
+    maxiter::Int = 100
+    rtol::Float64 = 1e-8
+    verbosity::Int = 0
+    maxdim::Int = typemax(Int)
+    cutoff::Float64 = 1e-8
+    orth_maxdim::Int = typemax(Int)
+    orth_cutoff::Float64 = 1e-12
+end
+
+"""
+    Base.@kwdef struct SweepingArgs
 
 Configuration for the sweeps in DMRG-based linear solvers.
 """
@@ -65,6 +83,26 @@ function Base.NamedTuple(args::LocalUpdaterArgs)
         numiter_store = args.numiter_store,
         cond_store = args.cond_store,
         pc_cond_store = args.pc_cond_store
+    )
+end
+
+"""
+    Base.NamedTuple(args::LocalUpdaterArgs)
+
+Convert `LocalUpdaterArgs` to a `NamedTuple`.
+"""
+function Base.NamedTuple(args::GlobalUpdaterArgs)
+    return (;
+        ishermitian = args.ishermitian,
+        isposdef = args.isposdef,
+        rtol = args.rtol,
+        krylovdim = args.krylovdim,
+        maxiter = args.maxiter,
+        verbosity = args.verbosity,
+        maxdim = args.maxdim,
+        cutoff = args.cutoff,
+        orth_maxdim = args.orth_maxdim,
+        orth_cutoff = args.orth_cutoff,
     )
 end
 
