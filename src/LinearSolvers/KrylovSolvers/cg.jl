@@ -34,11 +34,6 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
         @info "CG linsolve starts with norm of residual = $(normres2string(normr))"
     end
 
-    # First iteration
-    # @show M⁻¹
-    # @show y₀
-    # @show apply(M⁻¹, r)
-    # @show operator
     z = KrylovKit.apply(M⁻¹, r)
     ρ = inner(r, z)
     p = scale!!(zerovector(z), z, 1)
@@ -77,10 +72,6 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
         r = add!!(r, q, -α)
         z = KrylovKit.apply(M⁻¹, r)
         normr = norm(r)
-
-        # @show norm(r)
-        # @show norm(z)
-        # @show inner(r, z)
 
         if normr < tol # recompute to account for buildup of floating point errors
             r = scale!!(r, b, 1)
