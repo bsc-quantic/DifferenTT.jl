@@ -51,7 +51,7 @@ Base.@kwdef struct GlobalUpdaterArgs
 end
 
 """
-    Base.@kwdef struct SweepingArgs
+    SweepingArgs
 
 Configuration for the sweeps in DMRG-based linear solvers.
 """
@@ -87,9 +87,9 @@ function Base.NamedTuple(args::LocalUpdaterArgs)
 end
 
 """
-    Base.NamedTuple(args::LocalUpdaterArgs)
+    Base.NamedTuple(args::GlobalUpdaterArgs)
 
-Convert `LocalUpdaterArgs` to a `NamedTuple`.
+Convert `GlobalUpdaterArgs` to a `NamedTuple`.
 """
 function Base.NamedTuple(args::GlobalUpdaterArgs)
     return (;
@@ -124,6 +124,18 @@ function Base.NamedTuple(args::SweepingArgs)
     )
 end
 
+"""
+    default_linearsolve_init(const_term::MPS)
+
+Generate a default initial guess of zeros for the linear system solver.
+"""
 function default_linearsolve_init(const_term::MPS)
     return zeros_mps(siteinds(const_term), array_backend(const_term))
 end
+
+"""
+    AbstractUpdater
+
+Abstract type for local updaters used in alternating linear schemes.
+"""
+abstract type AbstractUpdater end
