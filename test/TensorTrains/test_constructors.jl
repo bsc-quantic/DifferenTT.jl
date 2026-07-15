@@ -1,0 +1,227 @@
+using DifferenTT
+using ITensors
+using ITensorMPS
+using Test
+using LinearAlgebra
+
+@testset "constructors.jl" begin
+    @testset "make_identity_site" begin
+        # Edge site (one link)
+        s = Index(2, "Site")
+        l = Index(1, "Link")
+        T_edge = DifferenTT.make_identity_site(s, l, Array{Float64})
+        
+        @test hasinds(T_edge, s, s', l)
+        @test eltype(T_edge) == Float64
+        @test T_edge[s => 1, s' => 1, l => 1] == 1.0
+        @test T_edge[s => 2, s' => 2, l => 1] == 1.0
+        @test T_edge[s => 1, s' => 2, l => 1] == 0.0
+        @test T_edge[s => 2, s' => 1, l => 1] == 0.0
+
+        # Bulk site (two links)
+        s_bulk = Index(3, "Site")
+        l1 = Index(1, "Link,l=1")
+        l2 = Index(1, "Link,l=2")
+        T_bulk = DifferenTT.make_identity_site(s_bulk, l1, l2, Array{Float64})
+        
+        @test hasinds(T_bulk, s_bulk, s_bulk', l1, l2)
+        @test eltype(T_bulk) == Float64
+        for i in 1:3
+            for j in 1:3
+                if i == j
+                    @test T_bulk[s_bulk => i, s_bulk' => j, l1 => 1, l2 => 1] == 1.0
+                else
+                    @test T_bulk[s_bulk => i, s_bulk' => j, l1 => 1, l2 => 1] == 0.0
+                end
+            end
+        end
+    end
+
+    @testset "identity_mpo" begin
+        # With site indices
+        sites = [Index(2, "Site,n=$i") for i in 1:4]
+        mpo1 = DifferenTT.identity_mpo(sites)
+        @test mpo1 isa MPO
+        @test length(mpo1) == 4
+        @test maxlinkdim(mpo1) == 1
+        
+        # With site dimensions
+        dims = [2, 3, 2, 4]
+        mpo2 = DifferenTT.identity_mpo(dims)
+        @test mpo2 isa MPO
+        @test length(mpo2) == 4
+        @test maxlinkdim(mpo2) == 1
+    end
+    @testset "zeros_mpo" begin
+        # With site indices
+        sites = [Index(2, "Site,n=$i") for i in 1:4]
+        mpo1 = DifferenTT.zeros_mpo(sites)
+        @test mpo1 isa MPO
+        @test length(mpo1) == 4
+        @test maxlinkdim(mpo1) == 1
+        @test norm(mpo1) == 0.0
+        
+        # With site dimensions and custom linkdims
+        dims = [2, 3, 2, 4]
+        mpo2 = DifferenTT.zeros_mpo(dims; linkdims=2)
+        @test mpo2 isa MPO
+        @test length(mpo2) == 4
+        @test maxlinkdim(mpo2) == 2
+        @test norm(mpo2) == 0.0
+    end
+
+    @testset "zeros_mps" begin
+        # With site indices
+        sites = [Index(2, "Site,n=$i") for i in 1:4]
+        mps1 = DifferenTT.zeros_mps(sites)
+        @test mps1 isa MPS
+        @test length(mps1) == 4
+        @test maxlinkdim(mps1) == 1
+        @test norm(mps1) == 0.0
+        
+        # With site dimensions and custom linkdims
+        dims = [2, 3, 2, 4]
+        mps2 = DifferenTT.zeros_mps(dims; linkdims=2)
+        @test mps2 isa MPS
+        @test length(mps2) == 4
+        @test maxlinkdim(mps2) == 2
+        @test norm(mps2) == 0.0
+    end
+
+    @testset "ones_mps" begin
+        # With site indices and bond indices
+        sites = [Index(2, "Site,n=$i") for i in 1:4]
+        bonds = [Index(3, "Link,l=$i") for i in 1:3]
+        mps1 = DifferenTT.ones_mps(sites, bonds)
+        @test mps1 isa MPS
+        @test length(mps1) == 4
+        @test maxlinkdim(mps1) == 3
+        # Every entry should be 1.0, so the norm of the first tensor (2x3) should be sqrt(6)
+        @test norm(mps1[1]) ≈ sqrt(2*3)
+        # Second tensor (3x2x3) should be sqrt(18)
+        @test norm(mps1[2]) ≈ sqrt(3*2*3)
+        
+        # With site indices and bond dim
+        mps2 = DifferenTT.ones_mps(sites, 2)
+        @test mps2 isa MPS
+        @test length(mps2) == 4
+        @test maxlinkdim(mps2) == 2
+        @test norm(mps2[1]) ≈ sqrt(2*2) # 2.0
+        
+        # With site dimensions and bond dim
+        dims = [2, 3, 2, 4]
+        mps3 = DifferenTT.ones_mps(dims, 2)
+        @test mps3 isa MPS
+        @test length(mps3) == 4
+        @test maxlinkdim(mps3) == 2
+        @test norm(mps3[1]) ≈ sqrt(2*2)
+        @test norm(mps3[2]) ≈ sqrt(2*3*2)
+    end
+    
+    @testset "ones_mpo" begin
+        # With site indices and bond indices
+        sites = [Index(2, "Site,n=$i") for i in 1:4]
+        bonds = [Index(3, "Link,l=$i") for i in 1:3]
+        mpo1 = DifferenTT.ones_mpo(sites, bonds)
+        @test mpo1 isa MPO
+        @test length(mpo1) == 4
+        @test maxlinkdim(mpo1) == 3
+        # Every entry is 1.0. For the first tensor: dim is (site, site', link) -> 2x2x3 = 12
+        @test norm(mpo1[1]) ≈ sqrt(12)
+        # Second tensor: link_prev x site x site' x link_next -> 3x2x2x3 = 36
+        @test norm(mpo1[2]) ≈ sqrt(36)
+        
+        # With site indices and bond dim
+        mpo2 = DifferenTT.ones_mpo(sites, 2)
+        @test mpo2 isa MPO
+        @test length(mpo2) == 4
+        @test maxlinkdim(mpo2) == 2
+        @test norm(mpo2[1]) ≈ sqrt(2*2*2) # 8
+        
+        # With site dimensions and bond dim
+        dims = [2, 3, 2, 4]
+        mpo3 = DifferenTT.ones_mpo(dims, 2)
+        @test mpo3 isa MPO
+        @test length(mpo3) == 4
+        @test maxlinkdim(mpo3) == 2
+        @test norm(mpo3[1]) ≈ sqrt(2*2*2) # dim 2 -> 2x2x2 = 8
+        @test norm(mpo3[2]) ≈ sqrt(2*3*3*2) # dim 3 -> 2 x 3 x 3 x 2 = 36
+    end
+
+    @testset "arrays2mps" begin
+        nsite = 4
+        sites = siteinds(2, nsite)
+        mps_arrays = [
+            rand(2, 3), # Left end
+            rand(2, 3, 5), # Bulk
+            rand(2, 5, 4), # Bulk
+            rand(2, 4), # Right end
+        ]
+
+        mps = Pdetn.arrays2mps(sites, mps_arrays)
+        @test mps isa MPS
+        @test length(mps) == nsite
+        @test siteind(mps, 1) == sites[1]
+        @test linkdim(mps, 1) == 3
+        @test linkdim(mps, 2) == 5
+        @test linkdim(mps, 3) == 4
+
+        # Test error conditions
+        @test_throws AssertionError Pdetn.arrays2mps(siteinds(2, 3), mps_arrays) # Mismatched length
+        bad_mps_arrays = [rand(2, 2), rand(2, 3)] # Mismatched bond dim
+        @test_throws AssertionError Pdetn.arrays2mps(siteinds(2, 2), bad_mps_arrays)
+    end
+
+    @testset "arrays2mpo" begin
+        nsite = 3
+        sites = siteinds(2, nsite)
+        mpo_arrays = [
+            rand(2, 2, 4), # Left end
+            rand(2, 2, 4, 5), # Bulk
+            rand(2, 2, 5)  # Right end
+        ]
+
+        mpo = Pdetn.arrays2mpo(sites, mpo_arrays)
+        @test mpo isa MPO
+        @test length(mpo) == nsite
+        @test siteind(mpo, 2) == sites[2]
+        @test linkdim(mpo, 1) == 4
+        @test linkdim(mpo, 2) == 5
+
+        # Test error conditions
+        @test_throws AssertionError Pdetn.arrays2mpo(siteinds(2, 2), mpo_arrays) # Mismatched length
+        bad_mpo_arrays = [rand(2, 2, 2), rand(2, 2, 3)] # Mismatched bond dim
+        @test_throws AssertionError Pdetn.arrays2mpo(siteinds(2, 2), bad_mpo_arrays)
+    end
+
+    @testset "vec2tensor" begin
+        # 4-element vector → 2×2 tensor
+        v4 = [1.0, 2.0, 3.0, 4.0]
+        t4 = Pdetn.vec2tensor(v4, [2, 2])
+        @test size(t4) == (2, 2)
+
+        # 8-element vector → 2×2×2 tensor
+        v8 = collect(1.0:8.0)
+        t8 = Pdetn.vec2tensor(v8, [[2, 2, 2]])
+        @test size(t8) == (2, 2, 2)
+
+        # 16-element vector → 2×2×2×2 tensor, or 2x8 tensor
+        v16 = collect(1.0:16.0)
+        t16 = Pdetn.vec2tensor(v16, [[2, 2, 2, 2]])
+        @test size(t16) == (2, 2, 2, 2)
+
+        t16_v2 = Pdetn.vec2tensor(v16, [[2, 8]])
+        @test size(t16) == (2, 8)
+    end
+
+    @testset "vec2mps" begin
+        n = 4
+        sites = siteinds(2, n)
+        v = rand(2^n)
+
+        mps = Pdetn.vec2mps(v, sites)
+        @test mps isa MPS
+        @test length(mps) == n
+        @test siteinds(mps) == sites
+    end
+end
