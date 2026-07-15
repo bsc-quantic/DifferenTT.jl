@@ -1,7 +1,7 @@
 using ITensorMPS: operator, constant_term, contract, ReducedLinearProblem
 
 """
-    krylov_updater(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
 Local updater for `alternating_update` that solves the reduced linear system using KrylovKit's `linsolve`.
 
@@ -12,7 +12,10 @@ via `kwargs`.
 # Returns
 - `(x::ITensor, (; info))`: The solution tensor and a named tuple containing KrylovKit convergence info.
 """
-function krylov_updater(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+
+struct KrylovUpdater <: AbstractUpdater end
+
+function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
@@ -62,7 +65,7 @@ function krylov_updater(problem::ReducedLinearProblem, init; internal_kwargs, co
 end
 
 """
-    krylov_updater(problem::ReducedPrecondLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    (up::KrylovUpdater)(problem::ReducedPrecondLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
 Local updater for preconditioned problems. Passes the preconditioner `ProjMPO` to KrylovKit's
 `linsolve`, enabling preconditioned CG within the sweep.
@@ -70,7 +73,7 @@ Local updater for preconditioned problems. Passes the preconditioner `ProjMPO` t
 # Returns
 - `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
 """
-function krylov_updater(problem::Union{ReducedFAIPrecondLinearProblem,ReducedPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
+function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,ReducedPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
     compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
