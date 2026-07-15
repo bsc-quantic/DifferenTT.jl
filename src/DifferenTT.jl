@@ -2,18 +2,29 @@ module DifferenTT
 
 using Adapt
 using ITensors
+using Statistics
+using Printf
+using Random
 using ITensorMPS
 using KrylovKit
+using TensorCrossInterpolation
 
-# Include TensorTrain related files
+# Include Architecture
 include("TensorTrains/architecture.jl")
-include("TensorTrains/utils.jl")
 
-# Include PDE Problem related files
+# Include Base PDE Problem related files
 include("PdeProblem/boundaryconditions.jl")
 include("PdeProblem/grid.jl")
 include("PdeProblem/scalarfields.jl")
 include("PdeProblem/vectorfields.jl")
+
+include("TensorTrains/utils.jl")
+include("TensorTrains/constructors.jl")
+include("TensorTrains/operations.jl")
+include("TensorTrains/qttconstructors.jl")
+include("TensorTrains/qttoperations.jl")
+include("TensorTrains/elementwise.jl")
+include("TensorTrains/tci.jl")
 
 # Include Time Evolution related files
 include("TimeEvolution/timevol.jl")

@@ -10,8 +10,13 @@ using Test
     end
     @testset "TensorTrains" begin
         include("TensorTrains/test_architecture.jl")
+        include("TensorTrains/test_tci.jl")
     end
     @testset "TimeEvolution" begin
         include("TimeEvolution/test_explicitevol.jl")
+    end
+    @testset "LinearSolvers" begin
+        include("LinearSolvers/test_linearsolvers.jl")
+        include("LinearSolvers/test_expandedals.jl")
     end
 end
