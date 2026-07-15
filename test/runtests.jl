@@ -11,6 +11,7 @@ using Test
     @testset "TensorTrains" begin
         include("TensorTrains/test_architecture.jl")
         include("TensorTrains/test_tci.jl")
+        include("TensorTrains/test_elementwise.jl")
     end
     @testset "TimeEvolution" begin
         include("TimeEvolution/test_explicitevol.jl")

@@ -130,14 +130,14 @@ using TensorCrossInterpolation
         tt, _ = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxdim=10, tolerance=1e-5)
         mps = MPS(tt)
         
-        ranges, data = DifferenTT.samples(mps, grid, arch, (3, 3))
+        ranges, data = DifferenTT.samples(mps, grid, arch, (4, 4))
         @test length(ranges) == 2
-        @test size(data) == (3, 3)
+        @test size(data) == (4, 4)
         @test data[1, 1] ≈ func((ranges[1][1], ranges[2][1])) atol=1e-3
         @test data[2, 3] ≈ func((ranges[1][2], ranges[2][3])) atol=1e-3
         
         # Same npoints on all dims
-        ranges2, data2 = DifferenTT.samples(mps, grid, arch, 3)
+        ranges2, data2 = DifferenTT.samples(mps, grid, arch, 4)
         @test ranges == ranges2
         @test data == data2
     end
