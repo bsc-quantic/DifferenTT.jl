@@ -1,7 +1,7 @@
 using ITensorMPS: operator, constant_term, contract, ReducedLinearProblem
 
 """
-    qr_updater(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
 Local updater for `alternating_update` that solves the reduced linear system via QR decomposition.
 
@@ -11,7 +11,10 @@ Contracts the projected operator and constant term into dense matrices, forms th
 # Returns
 - `(x::ITensor, (; residual))`: The solution tensor and a named tuple with residual info.
 """
-function qr_updater(
+
+struct QRUpdater <: AbstractUpdater end
+
+function (up::QRUpdater)(
     problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...
 )
     verbosity = get(kwargs, :verbosity, 0)
