@@ -400,9 +400,9 @@ Inputs must share the same physical site indexing and array backend.
 
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     @assert siteinds(mps1) == siteinds(mps2) "Site indices between the two MPS must match"
-    @assert array_backend(mps1) == array_backend(mps2) "Array backend mismatch between multiplied MPSs"
+    @assert backend_type(mps1) == backend_type(mps2) "Array backend mismatch between multiplied MPSs"
 
-    array_type = array_backend(mps1)
+    array_type = backend_type(mps1)
 
     mpo_tensors = ITensor[] # tensors for the mpo resulting of mps1*deltas
     out_sites = siteinds(mps1)
@@ -519,9 +519,9 @@ end
 
 function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     @assert siteinds(mpo1; plev=0) == siteinds(mpo2; plev=0) && siteinds(mpo1; plev=1) == siteinds(mpo2; plev=1) "Site indices between the two MPO must match"
-    @assert array_backend(mpo1) == array_backend(mpo2) "Array backend mismatch between multiplied MPSs"
+    @assert backend_type(mpo1) == backend_type(mpo2) "Array backend mismatch between multiplied MPSs"
 
-    array_type = array_backend(mpo1)
+    array_type = backend_type(mpo1)
 
     out_sites = first.(siteinds(mpo1; plev=0))
     linkinds1 = linkinds(mpo1)
@@ -557,9 +557,9 @@ end
 
 function tt_mul(mps::MPS, mpo::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     @assert all(siteinds(mps) .== first.(siteinds(mpo; plev=0))) "Site indices between the MPS and the MPO must match"
-    @assert array_backend(mps) == array_backend(mpo) "Array backend mismatch between multiplied MPSs"
+    @assert backend_type(mps) == backend_type(mpo) "Array backend mismatch between multiplied MPSs"
 
-    array_type = array_backend(mps)
+    array_type = backend_type(mps)
 
     mpo_tensors = ITensor[] # tensors for the mpo resulting of mps1*deltas
     out_sites = siteinds(mps)
