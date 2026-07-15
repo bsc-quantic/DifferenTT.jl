@@ -124,5 +124,20 @@ site_dims(arch::QTTArchitecture) = fill(2, total_sites(arch))
 site_dims(arch::TTArchitecture) = arch.var_dims
 
 variable_dims(arch::QTTArchitecture) = map(x -> 2^abs(x), arch.var_nsites)
-variable_dims(arch::Architecture) = arch.var_dims
+variable_dims(arch::TTArchitecture) = arch.var_dims
 
+# TODO Test this function
+function ITensorMPS.siteinds(dims::Vector{Int}; kwargs...)
+    return [Index(d, "Site,n=$n"; kwargs...) for (n, d) in enumerate(dims)]
+end
+
+# TODO Test this function
+function ITensorMPS.siteinds(arch::Architecture; kwargs...)
+    return ITensorMPS.siteinds(collect(Int, site_dims(arch)); kwargs...)
+end
+
+# Is this the best place for this function??
+# TODO Test this function
+function ITensorMPS.linkinds(dims::Vector{Int}; kwargs...)
+    return [Index(d, "Link,l=$(n)"; kwargs...) for (n, d) in enumerate(dims)]
+end 
