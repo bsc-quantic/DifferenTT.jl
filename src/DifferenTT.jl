@@ -8,6 +8,7 @@ using Random
 using ITensorMPS
 using KrylovKit
 using TensorCrossInterpolation
+using LinearAlgebra
 
 # Include Architecture
 include("TensorTrains/architecture.jl")

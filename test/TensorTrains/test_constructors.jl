@@ -224,4 +224,31 @@ using LinearAlgebra
         @test length(mps) == n
         @test siteinds(mps) == sites
     end
+
+    @testset "upper_triang_mpo & lower_triang_mpo" begin
+        # Test with a mix of small site dimensions
+        dims = [2, 3, 2]
+        sites = siteinds(dims)
+        D = prod(dims)
+        
+        # Upper with diag
+        u_mpo = DifferenTT.upper_triang_mpo(sites, true)
+        u_mat = DifferenTT.contract_mpo(u_mpo)
+        @test u_mat ≈ triu(ones(D, D))
+        
+        # Upper without diag
+        u_strict = DifferenTT.upper_triang_mpo(sites, false)
+        u_strict_mat = DifferenTT.contract_mpo(u_strict)
+        @test u_strict_mat ≈ triu(ones(D, D), 1)
+        
+        # Lower with diag
+        l_mpo = DifferenTT.lower_triang_mpo(sites, true)
+        l_mat = DifferenTT.contract_mpo(l_mpo)
+        @test l_mat ≈ tril(ones(D, D))
+        
+        # Lower without diag
+        l_strict = DifferenTT.lower_triang_mpo(sites, false)
+        l_strict_mat = DifferenTT.contract_mpo(l_strict)
+        @test l_strict_mat ≈ tril(ones(D, D), -1)
+    end
 end

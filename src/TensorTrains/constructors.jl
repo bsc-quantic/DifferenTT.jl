@@ -178,6 +178,87 @@ function ones_mpo(arch::Architecture, bond_dim::Int, array_type::Type{<:Abstract
     return ones_mpo(collect(Int, site_dims(arch)), bond_dim, array_type)
 end
 
+function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+    n = length(site_inds)
+    mpo_itensors = ITensor[]
+    mpo_links = [Index(2, "Link,l=$l") for l in 1:n-1]
+
+    # Site 1
+    d1 = dim(site_inds[1])
+    i1 = Matrix{Float64}(I, d1, d1)
+    j1 = triu(ones(Float64, d1, d1), 1)
+
+    l_arr = zeros(Float64, d1, d1, 2)
+    l_arr[:, :, 1] = i1
+    l_arr[:, :, 2] = j1
+
+    l_arr = adapt(array_type, l_arr)
+    push!(mpo_itensors, ITensor(l_arr, site_inds[1]', site_inds[1], mpo_links[1]))
+
+    # Bulk sites
+    for k in 2:n-1
+        dk = dim(site_inds[k])
+        ik = Matrix{Float64}(I, dk, dk)
+        jk = triu(ones(Float64, dk, dk), 1)
+        ok = ones(Float64, dk, dk)
+
+        bulk_arr = zeros(Float64, dk, dk, 2, 2)
+        bulk_arr[:, :, 1, 1] = ik
+        bulk_arr[:, :, 1, 2] = jk
+        bulk_arr[:, :, 2, 2] = ok
+        bulk_arr = adapt(array_type, bulk_arr)
+
+        push!(mpo_itensors, ITensor(bulk_arr, site_inds[k]', site_inds[k], mpo_links[k-1], mpo_links[k]))
+    end
+
+    # Site n
+    dn = dim(site_inds[n])
+    un = include_diag ? triu(ones(Float64, dn, dn)) : triu(ones(Float64, dn, dn), 1)
+    on = ones(Float64, dn, dn)
+
+    r_arr = zeros(Float64, dn, dn, 2)
+    r_arr[:, :, 1] = un
+    r_arr[:, :, 2] = on
+    r_arr = adapt(array_type, r_arr)
+
+    push!(mpo_itensors, ITensor(r_arr, site_inds[n]', site_inds[n], mpo_links[n-1]))
+
+    return MPO(mpo_itensors)
+end
+
+function lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+    return transpose(upper_triang_mpo(sites, include_diag; array_type=array_type))
+end
+
+function triang_projector_mpo(sites::Vector{<:Index}, combiners::Vector{ITensor}, which_triang::Symbol=:upper, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+    length(sites) != length(combiners) && error("Number of sites and combiners do not match")
+    n = length(sites)
+
+    if which_triang == :upper
+        operator = upper_triang_mpo(sites, include_diag; array_type=array_type)
+    elseif which_triang == :lower
+        operator = lower_triang_mpo(sites, include_diag; array_type=array_type)
+    else
+        throw(ArgumentError("which_triang can either be :upper or :lower, got $which_triang"))
+    end
+
+    combiner_inds = combinedind.(combiners)
+    helper_combiners = [combiner(sites[i], sites[i]'; tags="csite=$i") for i in 1:n]
+    hcombiner_inds = [combinedind(combiner) for combiner in helper_combiners]
+
+    for i in 1:n
+        operator[i] = operator[i] * helper_combiners[i]
+        operator[i] = operator[i] * delta(hcombiner_inds[i], combiner_inds[i], combiner_inds[i]')
+    end
+    return operator
+end
+
+function triang_projector_mpo(sites::Vector{<:Index}, which_triang::Symbol=:upper, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+    n = length(sites)
+    combiners = [combiner(sites[i], sites[i]'; tags="csite=$i") for i in 1:n]
+    triang_projector_mpo(sites, combiners, which_triang, include_diag; array_type=array_type)
+end
+
 """
     arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
 
