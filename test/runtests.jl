@@ -7,6 +7,7 @@ using Test
         include("PdeProblem/test_grid.jl")
         include("PdeProblem/test_scalarfields.jl")
         include("PdeProblem/test_vectorfields.jl")
+        include("PdeProblem/test_operators.jl")
     end
     @testset "TensorTrains" begin
         include("TensorTrains/test_architecture.jl")
