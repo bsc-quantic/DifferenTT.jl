@@ -55,7 +55,8 @@ include("LinearSolvers/KrylovSolvers/ttgmres.jl")
 # Export types and functions from TimeEvolution
 export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper, AbstractImplicitStepper
 export AbstractRHS, AbstractImplicitSystem
-export ExplicitEuler, RK4, ImplicitEuler, CrankNicolson, timestep
+export ExplicitEuler, RK4, timestep
+export ImplicitEuler, CrankNicolson
 
 # Export types and functions
 export Architecture, QTTArchitecture, TTArchitecture
