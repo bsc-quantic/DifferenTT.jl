@@ -134,3 +134,10 @@ Convert a binary representation `bits` (vector of 0s and 1s) to the correspondin
 This is equivalent to `base_to_decimal(bits, 2)`.
 """
 binary_to_decimal(bits::AbstractVector{Int}) = base_to_decimal(bits, 2)
+
+"""
+    identity_array(n::Int)
+
+Return an `n x n` dense identity matrix.
+"""
+identity_array(n::Int) = Matrix{Float64}(I, n, n)
