@@ -18,6 +18,8 @@ include("PdeProblem/boundaryconditions.jl")
 include("PdeProblem/grid.jl")
 include("PdeProblem/scalarfields.jl")
 include("PdeProblem/vectorfields.jl")
+include("PdeProblem/bcoperators.jl")
+include("PdeProblem/diffoperators.jl")
 
 include("TensorTrains/utils.jl")
 include("TensorTrains/constructors.jl")
@@ -53,12 +55,15 @@ include("LinearSolvers/KrylovSolvers/ttgmres.jl")
 export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper, AbstractImplicitStepper
 export AbstractRHS, AbstractImplicitSystem
 export ExplicitEuler, RK4, ImplicitEuler, CrankNicolson, timestep
+
 # Export types and functions
 export Architecture, QTTArchitecture, TTArchitecture
 export nsites_per_variable, total_sites, site_dims, variable_dims
 export backend_type
 export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
 export ScalarField, VectorField, Grid
+export contract_mps, contract_mpo
+export tt_mul, elementwise_function
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve

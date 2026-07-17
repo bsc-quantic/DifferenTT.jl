@@ -20,7 +20,7 @@ abstract type AbstractRHS end
 #     rhs_terms = rhs_custom_func(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
 
 #     rhs_corrected = ntuple(i -> begin
-#         deleter = rhs.u_boundary_null.deleters[i]
+#         deleter = rhs.u_boundary_null[i].u_row_deleter
 #         return isnothing(deleter) ? rhs_terms[i] : apply(deleter, rhs_terms[i]; cutoff=cutoff, maxdim=maxdim)
 #     end, length(u))
 

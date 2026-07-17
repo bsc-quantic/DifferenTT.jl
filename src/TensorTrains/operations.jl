@@ -320,7 +320,7 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
     return MPO(mpo_tensors)
 end
 
-function one_dim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:left)
+function onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:left)
     nsite = length(site_inds)
     mpo_len = length(mpo)
     pad_len = nsite - mpo_len

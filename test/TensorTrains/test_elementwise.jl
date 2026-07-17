@@ -14,16 +14,16 @@ using Random
         mps1 = random_mps(sites; linkdims=3)
         mps2 = random_mps(sites; linkdims=4)
         
-        mps_prod = DifferenTT.tt_mul(mps1, mps2)
+        mps_prod = tt_mul(mps1, mps2)
         
-        A1 = array(contract(mps1))
-        A2 = array(contract(mps2))
-        A_prod = array(contract(mps_prod))
+        A1 = contract_mps(mps1)
+        A2 = contract_mps(mps2)
+        A_prod = contract_mps(mps_prod)
         
         @test A_prod ≈ A1 .* A2
         
         mps_prod_direct = DifferenTT._direct_tt_mul(mps1, mps2)
-        @test array(contract(mps_prod_direct)) ≈ A1 .* A2
+        @test contract_mps(mps_prod_direct) ≈ A1 .* A2
     end
     
     @testset "tt_mul MPO-MPO" begin
@@ -31,18 +31,11 @@ using Random
         mpo1 = random_mpo(sites)
         mpo2 = random_mpo(sites)
         
-        mpo_prod = DifferenTT.tt_mul(mpo1, mpo2)
+        mpo_prod = tt_mul(mpo1, mpo2)
         
-        T1 = contract(mpo1)
-        T2 = contract(mpo2)
-        T_prod = contract(mpo_prod)
-        
-        T2_aligned = permute(T2, inds(T1)...)
-        T_prod_aligned = permute(T_prod, inds(T1)...)
-        
-        A1 = array(T1)
-        A2 = array(T2_aligned)
-        A_prod = array(T_prod_aligned)
+        A1 = contract_mpo(mpo1)
+        A2 = contract_mpo(mpo2)
+        A_prod = contract_mpo(mpo_prod)
         
         @test A_prod ≈ A1 .* A2
     end
@@ -52,17 +45,16 @@ using Random
         mps = random_mps(sites; linkdims=2)
         mpo = random_mpo(sites)
         
-        mpo_prod1 = DifferenTT.tt_mul(mps, mpo)
-        mpo_prod2 = DifferenTT.tt_mul(mpo, mps)
+        mpo_prod1 = tt_mul(mps, mpo)
+        mpo_prod2 = tt_mul(mpo, mps)
         
-        T_prod1 = contract(mpo_prod1)
-        T_prod2 = contract(mpo_prod2)
+        T_prod1 = contract_mpo(mpo_prod1)
+        T_prod2 = contract_mpo(mpo_prod2)
         
-        @test hasinds(T_prod1, inds(contract(mpo))...)
-        @test hasinds(T_prod2, inds(contract(mpo))...)
+        @test size(T_prod1) == size(contract_mpo(mpo))
+        @test size(T_prod2) == size(contract_mpo(mpo))
         
-        T_prod2_aligned = permute(T_prod2, inds(T_prod1)...)
-        @test array(T_prod1) ≈ array(T_prod2_aligned)
+        @test T_prod1 ≈ T_prod2
         
         @test mpo_prod1 isa MPO
         @test mpo_prod2 isa MPO
@@ -77,10 +69,10 @@ using Random
         end
         
         func = x -> x^2
-        mps_mapped = DifferenTT.elementwise_function(func, mps, true; maxdim=20, oversample=10)
+        mps_mapped = elementwise_function(func, mps, true; maxdim=20, oversample=10)
         
-        A_mps = array(contract(mps))
-        A_mapped = array(contract(mps_mapped))
+        A_mps = contract_mps(mps)
+        A_mapped = contract_mps(mps_mapped)
         
         @test isapprox(A_mapped, func.(A_mps); rtol=0.5, atol=0.5)
     end
