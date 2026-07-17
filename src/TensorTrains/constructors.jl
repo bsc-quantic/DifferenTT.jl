@@ -1,21 +1,23 @@
 function make_identity_site(site::Index, link::Index, array_type)
-    T = ITensor(array_type, site, site', link)
+    T = ITensor(Float64, site, site', link)
     for i in 1:dim(site)
         T[site => i, site' => i, link => 1] = 1.0
     end
-    return T
+    return adapt(array_type, T)
 end
 
 function make_identity_site(site::Index, left_link::Index, right_link::Index, array_type)
-    T = ITensor(array_type, site, site', left_link, right_link)
+    T = ITensor(Float64, site, site', left_link, right_link)
     for i in 1:dim(site)
         T[site => i, site' => i, left_link => 1, right_link => 1] = 1.0
     end
-    return T
+    return adapt(array_type, T)
 end
 
 function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
+
+    nsite == 1 && return MPO([adapt(array_type, delta(Float64, site_inds[1], site_inds[1]'))])
 
     link_inds = linkinds(fill(1, nsite-1))
     tensor_list = ITensor[]
