@@ -1,6 +1,12 @@
 #################
 
-# WARNING THIS IS WIP
+# WARNING THIS IS WIP. Things to work on:
+# - Develop into a more structure way how the implicit stepper interacts with the 
+# <: AbstractLinearSolver structs
+#
+# - We will have coupling between the different field components within the implicit time
+# time stepping scheme -> Need to add TT fusing via additional sites.
+#
 
 #################
 
