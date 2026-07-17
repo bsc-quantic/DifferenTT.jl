@@ -76,7 +76,14 @@ end
 function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, axis::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
     noneye_dim = arch.var_dims[axis] ÷ (2^n_eyepad)
     unpadded_mat = onedim_differential_operator(derivative_order, noneye_dim, boundary_conditions, array_type; stencil_order=stencil_order)
-    padded_mat = kron(identity_array(2^n_eyepad), unpadded_mat)
+    
+    dim = arch.var_dims[axis]
+    padded_mat = zeros(eltype(unpadded_mat), dim, dim)
+    padded_mat[1:noneye_dim, 1:noneye_dim] = unpadded_mat
+    for i in (noneye_dim + 1):dim
+        padded_mat[i, i] = 1.0
+    end
+    
     return adapt(array_type, padded_mat)
 end
 
@@ -131,15 +138,15 @@ struct DifferentialOpsScalar{N}
 end
 
 function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
-    array_type = fields.array_type
+    array_type = backend_type(fields)
 
     function make_ops(order::Int)
         ntuple(i -> begin
                 onedim_op = onedim_differential_operator(order, fields.arch, i, fields.bcu[i], array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
                 if onedim_op isa MPO
-                    onedim_op *= (1 / grid.steps[i]^order)
+                    onedim_op *= (1 / grid.dx[i]^order)
                 else
-                    onedim_op = onedim_op .* (1 / grid.steps[i]^order)
+                    onedim_op = onedim_op .* (1 / grid.dx[i]^order)
                 end
                 stacked_op = ndim_operator_mpo(onedim_op, i, fields.usites, fields.arch)
                 return stacked_op
@@ -153,7 +160,7 @@ function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_or
 end
 
 function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}, n_eyepad::NTuple{N, Int}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
-    array_type = fields.array_type
+    array_type = backend_type(fields)
 
     function make_ops(order::Int)
         ntuple(i -> begin
