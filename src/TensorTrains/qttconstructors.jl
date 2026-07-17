@@ -131,7 +131,7 @@ function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_
         tensor = permutedims(reshape(matrix, 2, 1, 2, 1), (1, 3, 2, 4))
         push!(tensors, tensor)
     end
-    return arrays2mpo(site_inds, bond_inds, mpo_arrays)
+    return arrays2mpo(site_inds, bond_inds, tensors)
 end
 
 # TODO Test this function

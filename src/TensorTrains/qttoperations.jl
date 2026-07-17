@@ -129,7 +129,7 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
     mpo_len = length(mpo)
     pad_len = totlen - mpo_len
 
-    array_type = array_backend(mpo)
+    array_type = backend_type(mpo)
 
     if pad_len < 0
         throw(ArgumentError("Target total length must be greater than or equal to input MPO length."))

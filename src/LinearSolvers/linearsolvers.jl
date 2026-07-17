@@ -130,7 +130,7 @@ end
 Generate a default initial guess of zeros for the linear system solver.
 """
 function default_linearsolve_init(const_term::MPS)
-    return zeros_mps(siteinds(const_term), array_backend(const_term))
+    return zeros_mps(siteinds(const_term), backend_type(const_term))
 end
 
 """

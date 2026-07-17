@@ -73,7 +73,7 @@ struct BoundaryNullScalar{N}
 end
 
 function BoundaryNullScalar(field::ScalarField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
-    array_type = field.array_type
+    array_type = backend_type(field)
     deleters = Union{MPO,Nothing}[]
 
     for i in 1:N
@@ -302,14 +302,14 @@ end
 
 function left_neumann_symmetrization_correction(operator::MPO, arch::QTTArchitecture, axis::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     site_indices = only.(siteinds(operator; plev=0))
-    array_type = array_backend(operator)
+    array_type = backend_type(operator)
     row_selector = row_pick_mpo(site_indices, 1, array_type) 
     return -0.5 * tt_mul(row_selector, operator; cutoff=cutoff, maxdim=maxdim)
 end
 
 function right_neumann_symmetrization_correction(operator::MPO, arch::QTTArchitecture, axis::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     site_indices = only.(siteinds(operator; plev=0))
-    array_type = array_backend(operator)
+    array_type = backend_type(operator)
     N = prod(dim.(only.(siteinds(operator; plev=0))))
     row_selector = row_pick_mpo(site_indices, N, array_type)
     return -0.5 * tt_mul(row_selector, operator; cutoff=cutoff, maxdim=maxdim)
@@ -331,7 +331,7 @@ end
 function left_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     onedim_bits = ones(Int, abs(arch.var_dims[axis])) 
     ndim_bits = ndim_bitstring(onedim_bits, axis, arch)
-    array_type = array_backend(b)
+    array_type = backend_type(b)
     entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
     return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)
 end
@@ -339,7 +339,7 @@ end
 function right_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     onedim_bits = 2 * ones(Int, abs(arch.var_dims[axis])) 
     ndim_bits = ndim_bitstring(onedim_bits, axis, arch)
-    array_type = array_backend(b)
+    array_type = backend_type(b)
     entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
     return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)
 end

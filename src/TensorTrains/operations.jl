@@ -141,7 +141,7 @@ Glue indices are inserted between the MPOs to connect them.
 """
 function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     total_len = sum(length, mpos)
-    array_type = array_backend(first(mpos))
+    array_type = backend_type(first(mpos))
 
     @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
 
@@ -190,7 +190,7 @@ Concatenate multiple MPSs into a single larger MPS along the site dimension.
 """
 function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     total_len = sum(length, mpss)
-    array_type = array_backend(first(mpss))
+    array_type = backend_type(first(mpss))
 
     @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
 
@@ -324,14 +324,14 @@ function onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:
     nsite = length(site_inds)
     mpo_len = length(mpo)
     pad_len = nsite - mpo_len
-    array_type = array_backend(mpo)
+    array_type = backend_type(mpo)
 
     if pad_len < 0
         throw(ArgumentError("Length of provided site_inds is less than that of the MPO"))
     elseif pad_len == 0
         return mpo
     end
-    eye_sites = side == :left ? site_inds[1:pad_len] : site_inds[pad_len+1:nsite]
+    eye_sites = side == :left ? site_inds[1:pad_len] : site_inds[nsite-pad_len+1:nsite]
 
     eyes = identity_mpo(eye_sites, array_type)
 
