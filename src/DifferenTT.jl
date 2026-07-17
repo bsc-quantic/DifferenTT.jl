@@ -12,6 +12,7 @@ using LinearAlgebra
 
 # Include Architecture
 include("TensorTrains/architecture.jl")
+include("Physics/fdstencils.jl")
 
 # Include Base PDE Problem related files
 include("PdeProblem/boundaryconditions.jl")
