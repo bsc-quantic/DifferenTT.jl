@@ -1,0 +1,188 @@
+"""
+    rank1_preconditioner(operator::MPO)
+
+Build a rank-1 preconditioner by truncating the operator to bond dimension 1 and inverting each local n×n matrix.
+
+# Returns
+- `Preconditioner`: The preconditioner with all bond dimensions equal to 1.
+"""
+function rank1_preconditioner(operator::MPO)
+    rank1_operator = deepcopy(operator)
+    truncate!(rank1_operator; maxdim=1)
+
+    preconditioner_tensors = ITensor[]
+    # TODO Ensure that this method of getting rid of the dummy legs is robust
+    for tensor in rank1_operator
+        mat = order(tensor) == 3 ? dropdims(array(tensor); dims=3) : dropdims(array(tensor); dims=(3, 4))
+        invmat = inv(mat)
+        push!(preconditioner_tensors, ITensor(reshape(invmat, dims(tensor)), inds(tensor)...))
+    end
+    return Preconditioner(MPO(preconditioner_tensors))
+end
+
+"""
+    newtoniter_preconditioner(operator::MPO, init_preconditioner::MPO, niter::Int)
+
+Refine a preconditioner via Newton iteration: X_{k+1} = X_k (2I - A X_k). Not yet implemented.
+"""
+function newtoniter_preconditioner(operator::MPO, init_preconditioner::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    siteinds(operator) != siteinds(init_preconditioner) && throw(ArgumentError("Index mismatch between operator and init_preconditioner"))
+
+    preconditioner = init_preconditioner
+    for _ in 1:niter
+        xax = apply(preconditioner, apply(operator, preconditioner); cutoff=cutoff, maxdim=maxdim)
+        preconditioner = +(2 * preconditioner, (-1.0) * xax; cutoff=cutoff, maxdim=maxdim)
+    end
+    return Preconditioner(preconditioner)
+end
+
+"""
+    newtoniter_preconditioner(operator::MPO, niter::Int)
+
+Build a preconditioner via Newton iteration starting from a rank-1 initial guess.
+"""
+function newtoniter_preconditioner(operator::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    init_preconditioner = 0.01 * rank1_preconditioner(operator).operator
+    return newtoniter_preconditioner(operator, init_preconditioner, niter; cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver; kwargs...)
+
+Build a preconditioner M⁻¹ by solving the Sylvester-like equation `A*X + X*A = 2I` using a linear solver in an extended Hilbert space.
+
+# Returns
+- `Preconditioner`: The approximate inverse of the operator.
+"""
+function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, symmetrize::Bool=true; linsolve_x0=nothing, preconditioning::Bool=false)
+    op1 = deepcopy(operator) # To construct AX
+    sites = only.(siteinds(operator; plev=0))
+
+    helper_sites = sim(sites) # Helper sites to extend the space
+
+    if symmetrize
+        op2 = transpose(op1) # To construct XA
+        replace_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
+    else
+        op2 = nothing
+    end
+
+    linsolve_b = identity_mpo(sites, backend_type(operator)) # Construct the right hand side
+    linsolve_b = symmetrize ? 2 * linsolve_b : linsolve_b # Construct the right hand side
+
+    N = length(op1)
+    combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:N] # Combiners that join a pair of sites coming from the two spaces into a single index
+
+    for i in 1:N
+        op1[i] = op1[i] * delta(helper_sites[i], helper_sites[i]') # Id living on the helper space for op1
+        op1[i] = op1[i] * combiners[i] * combiners[i]' # Join op and identity into a single leg for both operators
+        
+        if symmetrize
+            op2[i] = op2[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
+            op2[i] = op2[i] * combiners[i] * combiners[i]'
+        end
+
+        replaceind!(linsolve_b[i], sites[i]' => helper_sites[i])
+        linsolve_b[i] = linsolve_b[i] * combiners[i]
+    end
+
+    linsolve_A = symmetrize ? op1 : +(op1, op2; alg="directsum") # Construct the operator AX + XA
+    linsolve_b = MPS([linsolve_b...]) # Convert the still MPO object into an MPS
+
+    if isnothing(linsolve_x0)
+        _linsolve_x0 = MPS([zeros_mpo(sites, backend_type(operator))...])
+        for i in 1:N
+            replaceind!(_linsolve_x0[i], sites[i]' => helper_sites[i])
+            _linsolve_x0[i] = _linsolve_x0[i] * combiners[i]
+        end
+    else
+        _linsolve_x0 = deepcopy(linsolve_x0)
+        _linsolve_x0 = MPS([_linsolve_x0...])
+        for i in 1:N
+            replaceind!(_linsolve_x0[i], sites[i]' => helper_sites[i])
+            _linsolve_x0[i] = _linsolve_x0[i] * combiners[i]
+        end
+    end
+
+    @info "Linsolve preconditioner with preconditioning set to $preconditioning"
+    if preconditioning
+        preconditioner = rank1_preconditioner(linsolve_A)
+        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, preconditioner, _linsolve_x0)
+    else
+        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, _linsolve_x0)
+    end
+    for i in 1:N
+        preconditioner_mps[i] = preconditioner_mps[i] * dag(combiners[i]) # Unfold the legs 
+        replaceind!(preconditioner_mps[i], helper_sites[i] => sites[i]') # Map the helper legs into the original primed space
+    end
+    return Preconditioner(MPO([preconditioner_mps...]))
+end
+
+# TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
+function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning::Bool=false)
+    A = transpose(operator) # To construct XA
+    array_type = backend_type(operator)
+
+    sites = only.(siteinds(operator; plev=0))
+    n = length(sites)
+
+    helper_sites = sim(sites) # Helper sites to expand the space and vectorize the linear system
+    replace_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
+
+    combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:n] # Combiners that join a pair of sites coming from the two spaces into a single index
+    combiner_inds = [combinedind(combiner) for combiner in combiners]
+
+    projector = triang_projector_mpo(sites, combiners, :lower; array_type=array_type)
+    projector_complement = +(identity_mpo(combiner_inds, array_type), -1.0 * projector; alg="directsum")
+
+    linsolve_b = identity_mpo(sites, backend_type(operator))
+
+    for i in 1:n
+        A[i] = A[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
+        A[i] = A[i] * combiners[i] * combiners[i]'
+
+        replaceind!(linsolve_b[i], sites[i]' => helper_sites[i])
+        linsolve_b[i] = linsolve_b[i] * combiners[i]
+    end
+
+    projected_A = +(apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum")
+    projected_b = MPS([linsolve_b...])
+    projected_x0 = zeros_mps(combiner_inds, array_type)
+
+    if preconditioning
+        preconditioner = rank1_preconditioner(projected_A)
+        projected_preconditioner = Preconditioner(+(apply(projector, apply(preconditioner.operator, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum"))
+        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_preconditioner, projected_x0)
+    else
+        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0)
+    end
+
+    # We need to go back to MPO form from the vectorized solution by reverting the combiners!
+    for i in 1:n
+        unscaledG[i] = unscaledG[i] * dag(combiners[i]) # Unfold the legs 
+        replaceind!(unscaledG[i], helper_sites[i] => sites[i]') # Map the helper legs into the original primed space
+    end
+
+    unscaledG = MPO([unscaledG...])
+    unscaledGdiag_mps = diagmps(unscaledG)
+
+    f(x) = x^(-0.5)
+    cutoff = get(D_kwargs, :cutoff, 1e-15)
+    maxdim = get(D_kwargs, :maxdim, typemax(Int))
+    oversample = get(D_kwargs, :oversample, 10)
+
+    D_mps = elementwise_function(f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0)
+
+    placeholder_sites = sim.(sites)
+    ITensorMPS.replace_siteinds!(D_mps, placeholder_sites)
+    for i in 1:n
+        D_mps[i] = D_mps[i] * delta(placeholder_sites[i], sites[i], sites[i]')
+    end
+    return unscaledG, MPO([D_mps...])
+end
+
+function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; totalmaxdim::Int=5, preconditioning::Bool=false)
+    unscaledG, D = fai_dg(operator, μ, g_solver, D_kwargs; preconditioning=preconditioning)
+    Gl = apply(D, unscaledG; maxdim=totalmaxdim)
+    return FactorizedPreconditioner(Gl)
+end

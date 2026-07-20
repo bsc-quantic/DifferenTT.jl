@@ -18,23 +18,73 @@ end
 
 Base.copy(preconditioner::FactorizedPreconditioner) = FactorizedPreconditioner(copy(preconditioner.operator))
 
-struct ProductFAIPreconditioner <: AbstractPreconditioner
-    operator::MPO
-end
+abstract type AbstractReducedPreconditioner end
 
-Base.copy(preconditioner::ProductFAIPreconditioner) = ProductFAIPreconditioner(copy(preconditioner.operator))
-
-struct ReducedPreconditioner
+struct ReducedPreconditioner <: AbstractReducedPreconditioner
     reduced_op::ProjMPO
 end
 
 Base.copy(reduced_preconditioner::ReducedPreconditioner) = ReducedPreconditioner(copy(reduced_preconditioner.reduced_op))
+ITensors.contract(P::ReducedPreconditioner, v::ITensor) = ITensors.contract(P.reduced_op, v)
+ITensors.contract(P::ReducedPreconditioner) = ITensors.contract(P.reduced_op)
+ITensorMPS.product(P::ReducedPreconditioner, v::ITensor) = ITensorMPS.product(P.reduced_op, v)
+(P::ReducedPreconditioner)(v::ITensor) = ITensorMPS.product(P, v)
 
-struct ReducedFactorizedPreconditioner
+struct ReducedFactorizedPreconditioner <: AbstractReducedPreconditioner
     reduced_op::ProjMPO
 end
 
 Base.copy(reduced_preconditioner::ReducedFactorizedPreconditioner) = ReducedFactorizedPreconditioner(copy(reduced_preconditioner.reduced_op))
+
+function _itensor_map(P::AbstractProjMPO)
+    itensor_map = Union{ITensor,OneITensor}[lproj(P)]
+    append!(itensor_map, P.H[site_range(P)])
+    push!(itensor_map, rproj(P))
+    return itensor_map
+end
+
+ITensors.swapprime(tens::OneITensor, args::Vararg{Any}) = tens
+
+function ITensors.contract(P::ReducedFactorizedPreconditioner, v::ITensor)::ITensor
+    Glv = contract(P.reduced_op, v)
+    transpose_itensor_map = _itensor_map(P.reduced_op)
+    if dim(first(transpose_itensor_map)) == 1
+        reverse!(transpose_itensor_map)
+    end
+    GlTGlv = Glv
+    for it in transpose_itensor_map
+        GlTGlv *= it
+    end
+    return prime(GlTGlv)
+end
+
+function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
+    contractedGL = contract(P.reduced_op)
+    transpose_itensor_map = _itensor_map(P.reduced_op)
+    
+    transpose_itensor_map = [swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
+
+    if dim(first(transpose_itensor_map)) == 1
+        reverse!(transpose_itensor_map)
+    end
+
+    GlTGl = contractedGL
+    for it in transpose_itensor_map
+        GlTGl *= it
+    end
+    swapprime!(GlTGl, 2, 1)
+    return GlTGl
+end
+
+function ITensorMPS.product(P::ReducedFactorizedPreconditioner, v::ITensor)::ITensor
+    Pv = contract(P, v)
+    if order(Pv) != order(v)
+        error("Order mismatch")
+    end
+    return noprime(Pv)
+end
+
+(P::ReducedFactorizedPreconditioner)(v::ITensor) = ITensorMPS.product(P, v)
 
 """
     ReducedPrecondLinearProblem <: AbstractProjMPO
@@ -127,9 +177,6 @@ function ITensorMPS.makeR!(reduced_problem::ReducedPrecondLinearProblem, state::
     return reduced_problem
 end
 
-# FACTORIZED APPROXIMATE INVERSES IN THE TT FORMAT
-
-# TODO Not very DRY friendly taking into account that ReducedPrecondLinearProblem is basically the same
 
 function Base.copy(reduced_problem::ReducedFAIPrecondLinearProblem)
     return ReducedFAIPrecondLinearProblem(
@@ -157,4 +204,20 @@ function ITensorMPS.makeR!(reduced_problem::ReducedFAIPrecondLinearProblem, stat
     makeR!(reduced_problem.linear_problem, state, position)
     makeR!(reduced_problem.preconditioner.reduced_op, state, position)
     return reduced_problem
+end
+
+function ITensors.contract(P::AbstractProjMPO)::ITensor
+    itensor_map = Union{ITensor,OneITensor}[lproj(P)]
+    append!(itensor_map, P.H[site_range(P)])
+    push!(itensor_map, rproj(P))
+
+    if dim(first(itensor_map)) == 1
+        reverse!(itensor_map)
+    end
+
+    reduced_H = ITensor(true)
+    for it in itensor_map
+        reduced_H *= it
+    end
+    return reduced_H
 end
