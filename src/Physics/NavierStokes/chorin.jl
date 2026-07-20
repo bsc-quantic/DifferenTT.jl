@@ -56,9 +56,7 @@ function poisson_pressure(
 
     previous_p = last(experiment.p_field)
     epsilon = 1e-10
-
-    rhs_neumann_symmetrization = neumann_symmetrization_correction_mps(experiment.p_field.arch, experiment.p_field.bcu, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
-    rhs = isnothing(rhs_neumann_symmetrization) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
+    rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 
     # @timeit_debug timeit_to "mean correction integration" begin
     #     total_div = integrate(rhs) * prod(grid.dx)
