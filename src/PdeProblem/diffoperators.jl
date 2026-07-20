@@ -28,89 +28,73 @@ end
 # -------------------------------------------------------------------------------------------------
 
 """
-    onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8, cutoff=1e-15, maxdim=typemax(Int64))
+    onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8, cutoff=1e-15, maxdim=typemax(Int64))
 
 Construct the 1D differential operator MPO for QTT Architecture, including boundary corrections.
 """
-function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    nsite = abs(arch.var_nsites[axis])
-    site_indices = siteinds(2, nsite)
-    return onedim_differential_operator(derivative_order, site_indices, boundary_conditions, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
+function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    return onedim_differential_operator(derivative_order, arch, dim, 0, boundary_conditions, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
 end
 
-function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, axis::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    nsite = abs(arch.var_nsites[axis])
+function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    nsite = abs(arch.var_nsites[dim])
     dummy_site_indices = siteinds(2, nsite)
     non_padded_site_indices = siteinds(2, nsite - n_eyepad)
     
-    non_paded_onedim_operator = onedim_differential_operator(derivative_order, non_padded_site_indices, boundary_conditions, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
-    return onedim_eye_padding(non_paded_onedim_operator, dummy_site_indices, :right)
-end
-
-function onedim_differential_operator(derivative_order::Int, site_indices::Vector{<:Index}, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     coeffs = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    onedim_mpo = toeplitz_mpo(site_indices, coeffs, boundary_conditions, array_type)
+    onedim_mpo = toeplitz_mpo(non_padded_site_indices, coeffs, boundary_conditions, array_type)
 
     # Note: we use QTT version of neumann boundary correction explicitly here because we have sites
-    neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
     neumann_corr = _nothing_sum_handler(neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
 
     if !isnothing(neumann_corr)
         onedim_mpo = +(onedim_mpo, -1.0 * neumann_corr; cutoff=cutoff, maxdim=maxdim)
     end
-    return onedim_mpo
+    
+    if n_eyepad > 0
+        return onedim_eye_padding(onedim_mpo, dummy_site_indices, :right)
+    else
+        return onedim_mpo
+    end
 end
 
 
 """
-    onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8)
+    onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8)
 
 Construct the 1D differential operator dense matrix for TT Architecture, including boundary corrections.
 """
-function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
-    dim = arch.var_dims[axis]
-    return onedim_differential_operator(derivative_order, dim, boundary_conditions, array_type; stencil_order=stencil_order)
+function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, kwargs...)
+    return onedim_differential_operator(derivative_order, arch, dim, 0, boundary_conditions, array_type; stencil_order=stencil_order, kwargs...)
 end
 
-function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, axis::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
-    noneye_dim = arch.var_dims[axis] ÷ (2^n_eyepad)
-    unpadded_mat = onedim_differential_operator(derivative_order, noneye_dim, boundary_conditions, array_type; stencil_order=stencil_order)
-    
-    dim = arch.var_dims[axis]
-    padded_mat = zeros(eltype(unpadded_mat), dim, dim)
-    padded_mat[1:noneye_dim, 1:noneye_dim] = unpadded_mat
-    for i in (noneye_dim + 1):dim
-        padded_mat[i, i] = 1.0
-    end
-    
-    return adapt(array_type, padded_mat)
-end
-
-function onedim_differential_operator(derivative_order::Int, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
+function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, kwargs...)
+    noneye_dim = arch.var_dims[dim] ÷ (2^n_eyepad)
     coeffs = derivative_coefficients(derivative_order; stencil_order=stencil_order)
     
-    mat = zeros(Float64, dim, dim)
-    for i in 1:dim
+    mat = zeros(Float64, noneye_dim, noneye_dim)
+    for i in 1:noneye_dim
         for (offset, val) in coeffs
             j = i + offset
             if boundary_conditions.left isa PeriodicBC # If periodic
                 if j < 1
-                    j += dim
-                elseif j > dim
-                    j -= dim
+                    j += noneye_dim
+                elseif j > noneye_dim
+                    j -= noneye_dim
                 end
                 mat[i, j] = val
             else
-                if 1 <= j <= dim
+                if 1 <= j <= noneye_dim
                     mat[i, j] = val
                 end
             end
         end
     end
 
-    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, dim, array_type; stencil_order=stencil_order) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, dim, array_type; stencil_order=stencil_order) : nothing
+    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, noneye_dim, array_type; stencil_order=stencil_order) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, noneye_dim, array_type; stencil_order=stencil_order) : nothing
     
     mat_gpu = adapt(array_type, mat)
     if !isnothing(left_neumann_corr)
@@ -120,7 +104,21 @@ function onedim_differential_operator(derivative_order::Int, dim::Int, boundary_
         mat_gpu -= right_neumann_corr
     end
 
-    return mat_gpu
+    if n_eyepad > 0
+        full_dim = arch.var_dims[dim]
+        padded_mat_cpu = zeros(eltype(mat), full_dim, full_dim)
+        
+        # move unpadded to cpu to embed if it was gpu array
+        unpadded_cpu = Array(mat_gpu)
+        padded_mat_cpu[1:noneye_dim, 1:noneye_dim] = unpadded_cpu
+        for i in (noneye_dim + 1):full_dim
+            padded_mat_cpu[i, i] = 1.0
+        end
+        
+        return adapt(array_type, padded_mat_cpu)
+    else
+        return mat_gpu
+    end
 end
 
 # -------------------------------------------------------------------------------------------------

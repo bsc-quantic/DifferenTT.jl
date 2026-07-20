@@ -33,7 +33,7 @@ function toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, 
     end
 
     leftmost_mat = hcat(eye, O, P)
-    leftmost = permutedims(reshape(leftmost_mat, 2, 2, 3), (3, 2, 4))
+    leftmost = reshape(leftmost_mat, 2, 2, 3)
     push!(tensors, leftmost)
 
     bulk_mat = vcat(
