@@ -22,6 +22,8 @@ include("PdeProblem/vectorfields.jl")
 include("PdeProblem/bcoperators.jl")
 include("PdeProblem/diffoperators.jl")
 
+include("Physics/equationterms.jl")
+
 include("TensorTrains/utils.jl")
 include("TensorTrains/constructors.jl")
 include("TensorTrains/operations.jl")
@@ -52,6 +54,11 @@ include("LinearSolvers/KrylovSolvers/ttkrylov.jl")
 include("LinearSolvers/KrylovSolvers/ttcg.jl")
 include("LinearSolvers/KrylovSolvers/ttgmres.jl")
 
+# Include Navier Stokes
+include("Physics/NavierStokes/insexperiment.jl")
+include("Physics/NavierStokes/corrections.jl")
+include("Physics/NavierStokes/chorin.jl")
+
 # Export types and functions from TimeEvolution
 export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper, AbstractImplicitStepper
 export AbstractRHS, AbstractImplicitSystem
@@ -66,6 +73,12 @@ export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d,
 export ScalarField, VectorField, Grid
 export contract_mps, contract_mpo
 export tt_mul, elementwise_function
+
+# Export types and functions from Physics
+export advection, diffusion, divergence, gradient, symmetrized_laplacian
+export INSExperimentBase, INSExperiment, check_cfl, check_kolmogorov_scale
+export divergence_dirichlet_correction, pressure_dirichlet_correction
+export chorin_evolve!, NavierStokesPredictorRHS
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve

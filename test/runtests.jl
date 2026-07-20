@@ -21,4 +21,7 @@ using Test
         include("LinearSolvers/test_linearsolvers.jl")
         include("LinearSolvers/test_expandedals.jl")
     end
+    @testset "Physics" begin
+        include("Physics/test_chorin.jl")
+    end
 end
