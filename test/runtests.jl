@@ -20,6 +20,8 @@ using Test
     @testset "LinearSolvers" begin
         include("LinearSolvers/test_linearsolvers.jl")
         include("LinearSolvers/test_expandedals.jl")
+        include("LinearSolvers/test_preconditioners.jl")
+        include("LinearSolvers/test_preconditionedproblem.jl")
     end
     @testset "Physics" begin
         include("Physics/test_chorin.jl")
