@@ -45,6 +45,7 @@ include("LinearSolvers/als.jl")
 include("LinearSolvers/expandedals.jl")
 include("LinearSolvers/residualals.jl")
 include("LinearSolvers/amen.jl")
+include("LinearSolvers/preconditioners.jl")
 
 include("LinearSolvers/KrylovSolvers/cg.jl")
 include("LinearSolvers/KrylovSolvers/gmres.jl")
@@ -84,6 +85,8 @@ export chorin_evolve!, NavierStokesPredictorRHS
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
 export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterArgs
 export TTCG, TTGMRES
+export Preconditioner, FactorizedPreconditioner, rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner
+export fai_dg, fai_preconditioner, fsai_g, fsai_build_gl
 
 end
 
