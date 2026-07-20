@@ -10,7 +10,7 @@ struct VectorField{N,I<:Vector{<:Index},S<:ScalarField{N},Arch<:Architecture}
 end
 
 function VectorField(components::NTuple{N,S}) where {N, S<:ScalarField{N}}
-    @assert all(length(field) .== length(components[1] for field in components)) "All scalar filed must have the same number of steps"
+    @assert all(length(field) == length(components[1]) for field in components) "All scalar filed must have the same number of steps"
     return VectorField(components, components[1].usites, components[1].arch)
 end
 
