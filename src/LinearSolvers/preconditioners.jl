@@ -188,12 +188,15 @@ function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSol
 end
 
 """
-    sincquadrature_preconditioner(arch::Architecture, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array)
+    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array) where N
 
 Build a Sinc-quadrature (sum of exponentials) preconditioner for a specific problem where operators are given by `A_list`.
 """
-function sincquadrature_preconditioner(arch::Architecture, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array)
+function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array) where N
     d = length(A_list)
+    @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
+    @assert N == d "Number of local operators does not match architecture dimensions"
+    @assert all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) "Arch var dims fo not match matrix dimensions"
     h = pi / sqrt(M)
     
     precond_mpo = nothing

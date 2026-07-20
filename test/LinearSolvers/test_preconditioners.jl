@@ -102,4 +102,35 @@ using LinearAlgebra
         @test M⁻¹.operator isa MPO
         @test length(M⁻¹.operator) == n
     end
+
+    @testset "SincQuadraturePreconditioner construction" begin
+        arch = DifferenTT.TTArchitecture((4, 4))
+        sites = ITensorMPS.siteinds(arch)
+        
+        A1 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0; 0.0 0.0 -1.0 2.0]
+        A2 = A1
+        
+        A_list = [A1, A2]
+        M = 2
+        
+        prec = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=10, cutoff=1e-12)
+        
+        @test prec isa DifferenTT.Preconditioner
+        @test prec.operator isa MPO
+        @test length(prec.operator) == 2
+
+        wrong_arch1 = DifferenTT.TTArchitecture((4, 4, 4))
+        wrong_arch2 = DifferenTT.TTArchitecture((5, 4))
+        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch1, sites, A_list, M)
+        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch2, sites, A_list, M)
+
+        A3 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0]
+        A4 = [2.0 -1.0 0.0; -1.0 2.0 -1.0; 0.0 -1.0 2.0]
+        
+        wrong_A_list1 = [A1, A3]
+        wrong_A_list2 = [A1, A4]
+
+        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
+        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
+    end
 end
