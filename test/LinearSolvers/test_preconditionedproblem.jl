@@ -112,4 +112,21 @@ using LinearAlgebra
         out_dense_applied = dense_M2 * v2
         @test norm(noprime(out_dense_applied) - out_product2) ≈ 0.0 atol=1e-12
     end
+
+    @testset "SincQuadraturePreconditioner construction" begin
+        arch = DifferenTT.TTArchitecture((4, 4))
+        sites = ITensorMPS.siteinds(arch)
+        
+        A1 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0; 0.0 0.0 -1.0 2.0]
+        A2 = A1
+        
+        A_list = [A1, A2]
+        M = 2
+        
+        prec = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=10, cutoff=1e-12)
+        
+        @test prec isa DifferenTT.Preconditioner
+        @test prec.operator isa MPO
+        @test length(prec.operator) == 2
+    end
 end

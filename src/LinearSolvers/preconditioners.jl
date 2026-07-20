@@ -186,3 +186,37 @@ function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSol
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
 end
+
+"""
+    sincquadrature_preconditioner(arch::Architecture, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array)
+
+Build a Sinc-quadrature (sum of exponentials) preconditioner for a specific problem where operators are given by `A_list`.
+"""
+function sincquadrature_preconditioner(arch::Architecture, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array)
+    d = length(A_list)
+    h = pi / sqrt(M)
+    
+    precond_mpo = nothing
+    
+    for k in -M:M
+        t_k = exp(k * h)
+        c_k = h * t_k
+        
+        term_mpo = nothing
+        for l in 1:d
+            expA = exp(-t_k * A_list[l])
+            op_mpo = ndim_operator_mpo(expA, l, sites, arch)
+            
+            if term_mpo === nothing
+                term_mpo = op_mpo
+            else
+                term_mpo = apply(term_mpo, op_mpo; cutoff=cutoff, maxdim=maxdim)
+            end
+        end
+        term_mpo = c_k * term_mpo
+        
+        precond_mpo = _nothing_sum_handler(precond_mpo, term_mpo; cutoff=cutoff, maxdim=maxdim)
+    end
+    
+    return Preconditioner(precond_mpo)
+end
