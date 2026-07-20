@@ -269,6 +269,7 @@ function integrate(mps::MPS)
     return scalar(out)
 end
 
+# TODO Implement Sample caches in samples
 """
     samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::NTuple{N, Int}) where N
 

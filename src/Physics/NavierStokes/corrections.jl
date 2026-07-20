@@ -1,6 +1,6 @@
 # Special treatment for the BCs of the divergence of a field -> The boundary nullifiers act ONLY on the normal components, 
 # and the dirichlet correction from the pressure field is moved to the right hand side too
-
+# TODO Understand if these methods can be recycled for other experiments too
 """
     divergence_dirichlet_correction(u_fields::VectorField{N}; stencil_order::Int = 8) where N
 
