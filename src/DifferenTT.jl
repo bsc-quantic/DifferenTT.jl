@@ -61,23 +61,29 @@ include("Physics/NavierStokes/corrections.jl")
 include("Physics/NavierStokes/chorin.jl")
 
 # Export types and functions from TimeEvolution
-export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper, AbstractImplicitStepper
-export AbstractRHS, AbstractImplicitSystem
+export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper
+export AbstractRHS
 export ExplicitEuler, RK4, timestep
-export ImplicitEuler, CrankNicolson
+# export AbstractImplicitStepper, AbstractImplicitSystem, ImplicitEuler, CrankNicolson # -> This is still a WIP
 
-# Export types and functions
-export Architecture, QTTArchitecture, TTArchitecture
-export nsites_per_variable, total_sites, site_dims, variable_dims
+# Export types and functions from TensorTrains
+export QTTArchitecture, TTArchitecture
+export nsites_per_variable, total_sites, sited_dim, site_dims, variable_dims
 export backend_type
+export ndim_operator_mpo, diagmpo, diagmps
+export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps
+export contract_mps, contract_mpo
+export tt_mul, elementwise_function, sample, samples, integrate
+
+# Export types and functions from PdeProblem
 export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
 export ScalarField, VectorField, Grid
-export contract_mps, contract_mpo
-export tt_mul, elementwise_function
+export DifferentialOpsScalar, DifferentialOpsScalar
+export BoundaryNullScalar, BoundaryNullScalar
 
 # Export types and functions from Physics
-export advection, diffusion, divergence, gradient, symmetrized_laplacian
-export INSExperimentBase, INSExperiment, check_cfl, check_kolmogorov_scale
+export advection, diffusion, divergence, gradient, symmetrized_laplacian, symmetrize_rhs
+export INSExperiment, check_cfl, check_kolmogorov_scale
 export divergence_dirichlet_correction, pressure_dirichlet_correction
 export chorin_evolve!, NavierStokesPredictorRHS
 
@@ -85,8 +91,8 @@ export chorin_evolve!, NavierStokesPredictorRHS
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
 export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterArgs
 export TTCG, TTGMRES
-export Preconditioner, FactorizedPreconditioner, rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner
-export fai_dg, fai_preconditioner, fsai_g, fsai_build_gl
+export Preconditioner, FactorizedPreconditioner
+export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
 
 end
 
