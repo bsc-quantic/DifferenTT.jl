@@ -133,4 +133,35 @@ using LinearAlgebra
         @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
         @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
     end
+
+    @testset "exact_inverse_laplacian constructors" begin
+        arch = QTTArchitecture((4,))
+        test_sites = [Index(2, "Site,n=$i") for i in 1:4]
+        grid = Grid(arch, (1.0,))
+        
+        bc_dd = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+        bc_dn = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)))
+        
+        # Dirichlet-Dirichlet case
+        inv_dd_mpo = DifferenTT.exact_inverse_laplacian(test_sites, arch, grid, bc_dd)
+        inv_dd_mat = DifferenTT.contract_mpo(inv_dd_mpo)
+        
+        u_init_dd = random_mps(test_sites)
+        sfield_dd = ScalarField(u_init_dd, arch, bc_dd)
+        lap_dd_mpo = DifferenTT.symmetrized_laplacian(sfield_dd, grid; stencil_order=2)
+        lap_dd_mat = DifferenTT.contract_mpo(lap_dd_mpo)
+
+        @test inv(lap_dd_mat) ≈ inv_dd_mat
+        
+        # Dirichlet-Neumann case
+        inv_dn_mpo = DifferenTT.exact_inverse_laplacian(test_sites, arch, grid, bc_dn)
+        inv_dn_mat = DifferenTT.contract_mpo(inv_dn_mpo)
+        
+        u_init_dn = random_mps(test_sites)
+        sfield_dn = ScalarField(u_init_dn, arch, bc_dn)
+        lap_dn_mpo = DifferenTT.symmetrized_laplacian(sfield_dn, grid; stencil_order=2)
+        lap_dn_mat = DifferenTT.contract_mpo(lap_dn_mpo)
+        
+        @test inv(lap_dn_mat) ≈ inv_dn_mat
+    end
 end

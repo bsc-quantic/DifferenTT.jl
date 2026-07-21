@@ -223,3 +223,162 @@ function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:
     
     return Preconditioner(precond_mpo)
 end
+
+# Implementation following the tt_toolbox, not the paper
+function _dd_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC) "Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."
+    
+    L = abs(arch.var_nsites[1])
+    
+    I_mat = [1.0 0.0; 0.0 1.0]
+    P_mat = [0.0 1.0; 1.0 0.0]
+    E_mat = [1.0 1.0; 1.0 1.0]
+    F_mat = [1.0 -1.0; -1.0 1.0]
+    K_mat = [-1.0 0.0; 0.0 1.0]
+    L_mat = [0.0 -1.0; 1.0 0.0]
+
+    link_inds = [Index(5, "Link,l=$i") for i in 1:L-1]
+    
+    tensors = ITensor[]
+    
+    for kappa in 1:L
+        s = sites[kappa]
+        
+        k = L - kappa + 1 
+        
+        xi_k   = (2.0^(k-1) + 1.0) / (2.0^k + 1.0)
+        eta_k  = (2.0^(k-2)) / (2.0^k + 1.0)
+        zeta_k = ((2.0^(k-1) + 1.0) / 2.0^(k-1)) * xi_k
+        
+        if kappa == 1
+            T = zeros(Float64, 2, 2, 5)
+            
+            T[:, :, 1] = I_mat
+            T[:, :, 2] = 0.25 * xi_k * I_mat + 0.25 * zeta_k * P_mat
+            T[:, :, 3] = xi_k * I_mat - zeta_k * P_mat
+            T[:, :, 4] = -0.5 * xi_k * K_mat   
+            T[:, :, 5] = 0.5 * zeta_k * L_mat  
+            
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa]))
+            push!(tensors, it)
+            
+        elseif kappa == L
+            T = zeros(Float64, 2, 2, 5)
+            
+            T[:, :, 1] = (1.0 / 3.0) * (I_mat + E_mat)
+            T[:, :, 2] = 2.0 * E_mat
+            T[:, :, 3] = (1.0 / 18.0) * F_mat
+            T[:, :, 4] = (2.0 / 3.0) * K_mat
+            T[:, :, 5] = -(2.0 / 3.0) * L_mat
+            
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1]))
+            push!(tensors, it)
+            
+        else
+            T = zeros(Float64, 2, 2, 5, 5)
+            
+            T[:, :, 1, 1] = I_mat
+            T[:, :, 1, 2] = 0.25 * xi_k * I_mat + 0.25 * zeta_k * P_mat
+            T[:, :, 1, 3] = xi_k * I_mat - zeta_k * P_mat
+            T[:, :, 1, 4] = -0.5 * xi_k * K_mat   
+            T[:, :, 1, 5] = 0.5 * zeta_k * L_mat 
+            
+            T[:, :, 2, 2] = 2.0 * E_mat
+            
+            T[:, :, 3, 2] = 2.0 * (eta_k^2) * F_mat    
+            T[:, :, 3, 3] = 2.0 * (xi_k^2) * E_mat
+            T[:, :, 3, 4] = 2.0 * xi_k * eta_k * K_mat
+            T[:, :, 3, 5] = 2.0 * xi_k * eta_k * L_mat 
+            
+            T[:, :, 4, 2] = 4.0 * eta_k * K_mat        
+            T[:, :, 4, 4] = 2.0 * xi_k * E_mat
+            
+            T[:, :, 5, 2] = -4.0 * eta_k * L_mat    
+            T[:, :, 5, 5] = 2.0 * xi_k * E_mat
+            
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1], link_inds[kappa]))
+            push!(tensors, it)
+        end
+    end
+
+    return (-grid.dx[1]^2) * MPO(tensors)
+end
+
+function _dn_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC) "Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."
+    
+    L = abs(arch.var_nsites[1])
+    
+    I_mat = [1.0 0.0; 0.0 1.0]
+    I2_mat = [0.0 0.0; 0.0 1.0]
+    J_mat = [0.0 1.0; 0.0 0.0]
+    E_mat = [1.0 1.0; 1.0 1.0]
+
+    link_inds = [Index(4, "Link,l=$i") for i in 1:L-1]
+    
+    tensors = ITensor[]
+    
+    for kappa in 1:L
+            
+        s = sites[kappa]
+        
+        if kappa == 1
+            T = zeros(Float64, 2, 2, 4)
+            T[:, :, 1] = I_mat
+            T[:, :, 2] = I2_mat
+            T[:, :, 3] = J_mat
+            T[:, :, 4] = J_mat'
+            
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa]))
+            push!(tensors, it)
+            
+        elseif kappa == L
+            T = zeros(Float64, 2, 2, 4)
+            T[:, :, 1] = E_mat + I2_mat
+            T[:, :, 2] = 2.0 * E_mat
+            T[:, :, 3] = E_mat + I2_mat + J_mat'
+            T[:, :, 4] = E_mat + I2_mat + J_mat
+            
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1]))
+            push!(tensors, it)
+            
+        else
+            T = zeros(Float64, 2, 2, 4, 4)
+            T[:, :, 1, 1] = I_mat
+            T[:, :, 1, 2] = I2_mat
+            T[:, :, 1, 3] = J_mat
+            T[:, :, 1, 4] = J_mat'
+            
+            T[:, :, 2, 2] = 2.0 * E_mat
+
+            T[:, :, 3, 2] = I2_mat + J_mat'
+            T[:, :, 3, 3] = E_mat
+  
+            T[:, :, 4, 2] = I2_mat + J_mat
+            T[:, :, 4, 4] = E_mat
+            it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1], link_inds[kappa]))
+            push!(tensors, it)
+        end
+    end   
+    return (-grid.dx[1]^2) * MPO(tensors)
+end
+
+"""
+    exact_inverse_laplacian(arch::QTTArchitecture{1}, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+
+Construct the exact explicit QTT representation of the 1D inverse Laplacian following
+Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
+Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
+"""
+# TODO Understand what is going on with reversal
+function exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+    if isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)
+        return _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
+    elseif isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)
+        return _dn_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
+    else
+        error("Currently only Dirichlet-Dirichlet or Dirichlet-Neumann boundary conditions are implemented")
+    end
+end
+
+
