@@ -214,11 +214,11 @@ using ITensorMPS
         dense_rhs = contract_mps(rhs)
         dense_sym_rhs = contract_mps(sym_rhs)
         
-        @test dense_rhs[1] == 1.0
-        @test dense_sym_rhs[1] == 0.5
-        @test dense_sym_rhs[end] == 0.5
-        @test dense_sym_rhs[2] == 1.0
-        @test dense_sym_rhs[3] == 1.0
+        @test isapprox(dense_rhs[1], 1.0; atol=1e-14)
+        @test isapprox(dense_sym_rhs[1], 0.5; atol=1e-14)
+        @test isapprox(dense_sym_rhs[end], 0.5; atol=1e-14)
+        @test isapprox(dense_sym_rhs[2], 1.0; atol=1e-14)
+        @test isapprox(dense_sym_rhs[3], 1.0; atol=1e-14)
         
         # 2D test
         arch_2d = (4, 4)
@@ -230,17 +230,17 @@ using ITensorMPS
         dense_sym_rhs_2d = reshape(contract_mps(sym_rhs_2d), 4, 4)
         
         # Corners have 2 boundaries, so 1.0 - 0.5 - 0.5 = 0.0
-        @test dense_sym_rhs_2d[1, 1] == 0.0
-        @test dense_sym_rhs_2d[1, end] == 0.0
-        @test dense_sym_rhs_2d[end, 1] == 0.0
-        @test dense_sym_rhs_2d[end, end] == 0.0
+        @test isapprox(dense_sym_rhs_2d[1, 1], 0.0; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[1, end], 0.0; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[end, 1], 0.0; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[end, end], 0.0; atol=1e-14)
         
         # Edges have 1 boundary, so 1.0 - 0.5 = 0.5
-        @test dense_sym_rhs_2d[2, 1] == 0.5
-        @test dense_sym_rhs_2d[1, 2] == 0.5
+        @test isapprox(dense_sym_rhs_2d[2, 1], 0.5; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[1, 2], 0.5; atol=1e-14)
         
         # Interior has 0 boundaries, so 1.0
-        @test dense_sym_rhs_2d[2, 2] == 1.0
+        @test isapprox(dense_sym_rhs_2d[2, 2], 1.0; atol=1e-14)
     end
 end
 

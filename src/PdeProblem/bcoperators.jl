@@ -328,20 +328,64 @@ function right_neumann_symmetrization_correction(operator::AbstractMatrix, arch:
 end
 
 # MPS Symmetrization
-function left_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    onedim_bits = ones(Int, abs(arch.var_dims[axis])) 
-    ndim_bits = ndim_index(onedim_bits, axis, arch)
+function left_neumann_symmetrization_correction_mps(axis::Int, arch::QTTArchitecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    nsites = abs(arch.var_nsites[axis])
+    sites = siteinds(2, nsites)
     array_type = backend_type(b)
-    entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
-    return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)
+    
+    mat = [1.0 0.0; 0.0 0.0]
+    tensors = AbstractArray[]
+    for i in 1:nsites
+        tensor = permutedims(reshape(mat, 2, 1, 2, 1), (1, 3, 2, 4))
+        push!(tensors, tensor)
+    end
+    onedim_mpo = arrays2mpo(sites, linkinds(fill(1, nsites-1)), tensors)
+    onedim_mpo = adapt(array_type, onedim_mpo)
+    
+    selector_mpo = ndim_operator_mpo(onedim_mpo, axis, siteinds(b), arch)
+    return -0.5 * apply(selector_mpo, b; cutoff=cutoff, maxdim=maxdim)
 end
 
-function right_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    onedim_bits = 2 * ones(Int, abs(arch.var_dims[axis])) 
-    ndim_bits = ndim_index(onedim_bits, axis, arch)
+function left_neumann_symmetrization_correction_mps(axis::Int, arch::TTArchitecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    dim = arch.var_dims[axis]
     array_type = backend_type(b)
-    entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
-    return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)
+    
+    mat = zeros(Float64, dim, dim)
+    mat[1, 1] = 1.0
+    mat = adapt(array_type, mat)
+    
+    selector_mpo = ndim_operator_mpo(mat, axis, siteinds(b), arch)
+    return -0.5 * apply(selector_mpo, b; cutoff=cutoff, maxdim=maxdim)
+end
+
+function right_neumann_symmetrization_correction_mps(axis::Int, arch::QTTArchitecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    nsites = abs(arch.var_nsites[axis])
+    sites = siteinds(2, nsites)
+    array_type = backend_type(b)
+    
+    mat = [0.0 0.0; 0.0 1.0]
+    tensors = AbstractArray[]
+    for i in 1:nsites
+        tensor = permutedims(reshape(mat, 2, 1, 2, 1), (1, 3, 2, 4))
+        push!(tensors, tensor)
+    end
+    onedim_mpo = arrays2mpo(sites, linkinds(fill(1, nsites-1)), tensors)
+    onedim_mpo = adapt(array_type, onedim_mpo)
+    
+    selector_mpo = ndim_operator_mpo(onedim_mpo, axis, siteinds(b), arch)
+    return -0.5 * apply(selector_mpo, b; cutoff=cutoff, maxdim=maxdim)
+end
+
+function right_neumann_symmetrization_correction_mps(axis::Int, arch::TTArchitecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    dim = arch.var_dims[axis]
+    array_type = backend_type(b)
+    
+    mat = zeros(Float64, dim, dim)
+    mat[end, end] = 1.0
+    mat = adapt(array_type, mat)
+    
+    selector_mpo = ndim_operator_mpo(mat, axis, siteinds(b), arch)
+    return -0.5 * apply(selector_mpo, b; cutoff=cutoff, maxdim=maxdim)
 end
 
 function neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, bcs::BoundaryCond1d, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))

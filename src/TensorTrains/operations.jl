@@ -286,7 +286,7 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
     
-    link_dims = ones(Int, total_sites - 1)
+    link_dims = ones(Int, max(0, total_sites - 1))
     links = [Index(1, "Link,l=$i") for i in 1:total_sites-1]
 
     # Determine array type from the matrix type
@@ -297,22 +297,28 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
             s = site_inds[i]
             T = ITensor(array_type(onedim_op), s', s)
             
-            if i == 1
-                T *= adapt(array_type, onehot(links[1] => 1))
-            elseif i == total_sites
-                T *= adapt(array_type, onehot(links[end] => 1))
-            else
-                T *= adapt(array_type, onehot(links[i-1] => 1))
-                T *= adapt(array_type, onehot(links[i] => 1))
+            if total_sites > 1
+                if i == 1
+                    T *= adapt(array_type, onehot(links[1] => 1))
+                elseif i == total_sites
+                    T *= adapt(array_type, onehot(links[end] => 1))
+                else
+                    T *= adapt(array_type, onehot(links[i-1] => 1))
+                    T *= adapt(array_type, onehot(links[i] => 1))
+                end
             end
             mpo_tensors[i] = adapt(array_type, T)
         else
-            if i == 1
-                mpo_tensors[i] = make_identity_site(site_inds[i], links[i], array_type)
-            elseif i == total_sites
-                mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], array_type)
+            if total_sites > 1
+                if i == 1
+                    mpo_tensors[i] = make_identity_site(site_inds[i], links[i], array_type)
+                elseif i == total_sites
+                    mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], array_type)
+                else
+                    mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], links[i], array_type)
+                end
             else
-                mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], links[i], array_type)
+                error("Cannot have total_sites == 1 and axis not equal to site_map[1]")
             end
         end
     end

@@ -77,7 +77,7 @@ function ndim_index(onedim_index::Vector{Int}, axis::Int, arch::TTArchitecture)
     
     full_index = ones(Int, total_sites)
     
-    bit_counter = 1decimal_
+    bit_counter = 1
     
     for i in 1:total_sites
         if arch.site_map[i] == axis
