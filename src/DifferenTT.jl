@@ -51,6 +51,7 @@ include("LinearSolvers/preconditioners.jl")
 
 include("LinearSolvers/KrylovSolvers/cg.jl")
 include("LinearSolvers/KrylovSolvers/gmres.jl")
+include("LinearSolvers/KrylovSolvers/krylovstats.jl")
 include("LinearSolvers/KrylovSolvers/krylovupdaters.jl")
 include("LinearSolvers/KrylovSolvers/preconditionedlinsolve.jl")
 include("LinearSolvers/KrylovSolvers/ttkrylov.jl")
@@ -100,6 +101,7 @@ export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterA
 export TTCG, TTGMRES
 export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
+export KrylovSweepStats, KrylovCondStats, positions_mean, positions_mean_cond
 
 # Include and Export Logging
 
