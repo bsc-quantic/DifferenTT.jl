@@ -105,7 +105,6 @@ end
                             @test tt_padded ≈ expected_padded_tt atol=1e-12
                             
                             expected_padded_qtt = kron(expected_unpadded, Matrix{Float64}(I, 2^n_eyepad, 2^n_eyepad))
-                            @show n_eyepad
                             qtt_mpo_padded = DifferenTT.onedim_differential_operator(order, qtt_arch, 1, n_eyepad, bc1d, Array; stencil_order=stencil_order)
                             qtt_padded_mat = DifferenTT.contract_mpo(qtt_mpo_padded)
                             @test qtt_padded_mat ≈ expected_padded_qtt atol=1e-10

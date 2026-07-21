@@ -330,7 +330,7 @@ end
 # MPS Symmetrization
 function left_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     onedim_bits = ones(Int, abs(arch.var_dims[axis])) 
-    ndim_bits = ndim_bitstring(onedim_bits, axis, arch)
+    ndim_bits = ndim_index(onedim_bits, axis, arch)
     array_type = backend_type(b)
     entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
     return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)
@@ -338,7 +338,7 @@ end
 
 function right_neumann_symmetrization_correction_mps(axis::Int, arch::Architecture, b::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     onedim_bits = 2 * ones(Int, abs(arch.var_dims[axis])) 
-    ndim_bits = ndim_bitstring(onedim_bits, axis, arch)
+    ndim_bits = ndim_index(onedim_bits, axis, arch)
     array_type = backend_type(b)
     entry_selector_mps = adapt(array_type, MPS(siteinds(b), ndim_bits))
     return -0.5 * tt_mul(entry_selector_mps, b; cutoff=cutoff, maxdim=maxdim)

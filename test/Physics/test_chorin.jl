@@ -194,18 +194,18 @@ using ITensorMPS
         @test rhs_out[2] isa MPS
     end
     @testset "symmetrize_rhs" begin
-        arch = (4,)
-        sites = siteinds(TTArchitecture(arch))
+        arch = TTArchitecture((4,))
+        sites = siteinds(arch)
         
         # Neumann boundaries on all sides
         neumann_bc = NeumannBC(0.0)
         bc1d = BoundaryCond1d(neumann_bc, neumann_bc)
         bc = BoundaryConditions(bc1d)
         
-        p_field = ScalarField(sites, TTArchitecture(arch), bc)
+        p_field = ScalarField(sites, arch, bc)
         
         # Create an RHS with all ones
-        rhs = ones_mps(sites, 1, Vector{Float64})
+        rhs = ones_mps(sites, 1)
         
         # Symmetrize the RHS
         sym_rhs = symmetrize_rhs(p_field, rhs)
