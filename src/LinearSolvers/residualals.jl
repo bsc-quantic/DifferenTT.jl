@@ -1,10 +1,12 @@
 using ITensorMPS: ITensorMPS, AbstractProjMPO, ReducedLinearProblem
 using ITensorMPS: set_nsite!, position!, nsite, site_range, noiseterm
 using ITensorMPS: TDVPOrder, sub_time_steps, orderings
+using ITensorMPS: disk, maxlinkdim, isortho, orthocenter, orthogonalize!, normalize!, replacebond!
 using ITensors: ITensors, ITensor, Index, inds, dag, prime, noprime, dim
 using ITensors: commoninds, uniqueinds, factorize, svd, array, order
 using ITensors: replaceind, OneITensor
 using LinearAlgebra: norm, svd as la_svd
+using Printf: @printf
 
 """
     ResidualALS <: AbstractDMRGSolver
@@ -19,14 +21,36 @@ Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
     residual_damp::Real = 1.1
 end
 
-function linearsolve(solver::ResidualALS, A, b, x0; kwargs...)
-    # TODO: Implement Standard Alternating Linear Scheme based on residual truncation
-    error("Residual truncation ALS solver not yet implemented")
+function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+    reduced_problem = ReducedLinearProblem(A, b)
+    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
+    sweep_kwargs = NamedTuple(solver.sweep_kwargs)
+    
+    return residual_alternating_update(
+        reduced_problem, init;
+        updater = solver.updater,
+        updater_kwargs,
+        resid_tol = solver.residual_tol,
+        resid_damp = solver.residual_damp,
+        sweep_kwargs...
+    )
 end
 
-function linearsolve(solver::ResidualALS, A, b, M⁻¹, x0; kwargs...)
-    # TODO: Implement Preconditioned Alternating Linear Scheme based on residual truncation
-    error("Residual truncation ALS solver not yet implemented")
+function linearsolve(solver::ResidualALS, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+    reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
+    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
+    sweep_kwargs = NamedTuple(solver.sweep_kwargs)
+    
+    return residual_alternating_update(
+        reduced_precond_problem, init;
+        updater = solver.updater,
+        updater_kwargs,
+        resid_tol = solver.residual_tol,
+        resid_damp = solver.residual_damp,
+        sweep_kwargs...
+    )
 end
 
 """
@@ -165,6 +189,247 @@ function _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::In
         S_trunc[s_inds[1] => k, s_inds[2] => k] = S_full[s_inds[1] => k, s_inds[2] => k]
     end
     return U_full * S_trunc * V_full
+end
+
+"""
+    residual_alternating_update(operator, init; kwargs...)
+
+Modified `alternating_update` that passes the projected operator into
+`residual_replacebond!` for residual-aware truncation at each 2-site step.
+Falls back to standard truncation for 1-site sweeps.
+"""
+function residual_alternating_update(
+    operator,
+    init::MPS;
+    updater,
+    updater_kwargs = (;),
+    nsweeps = ITensorMPS.default_nsweeps(),
+    checkdone = ITensorMPS.default_checkdone(),
+    write_when_maxdim_exceeds = ITensorMPS.default_write_when_maxdim_exceeds(),
+    nsite = ITensorMPS.default_nsite(),
+    reverse_step = ITensorMPS.default_reverse_step(),
+    time_start = ITensorMPS.default_time_start(),
+    time_step = ITensorMPS.default_time_step(),
+    order = ITensorMPS.default_order(),
+    (observer!) = ITensorMPS.default_observer(),
+    (sweep_observer!) = ITensorMPS.default_sweep_observer(),
+    outputlevel = ITensorMPS.default_outputlevel(),
+    normalize = ITensorMPS.default_normalize(),
+    maxdim = ITensorMPS.default_maxdim(),
+    mindim = ITensorMPS.default_mindim(),
+    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(init)),
+    noise = ITensorMPS.default_noise(),
+    resid_tol::Float64 = 1e-8,
+    resid_damp::Float64 = 2.0,
+)
+    reduced_operator = ITensorMPS.reduced_operator(operator)
+    if isnothing(nsweeps)
+        error("Must specify `nsweeps`.")
+    end
+    maxdim, mindim, cutoff, noise = ITensorMPS.process_sweeps(; nsweeps, maxdim, mindim, cutoff, noise)
+    forward_order = ITensorMPS.TDVPOrder(order, Base.Forward)
+    state = copy(init)
+    current_time = time_start
+    info = nothing
+    N = length(state)
+
+    # Per-sweep resid_tol scaled by √d (following Dolgov)
+    scaled_resid_tol = resid_tol / sqrt(N)
+
+    for sweep in 1:nsweeps
+        if !isnothing(write_when_maxdim_exceeds) && maxdim[sweep] > write_when_maxdim_exceeds
+            if outputlevel >= 2
+                println("Writing environment tensors to disk")
+            end
+            reduced_operator = disk(reduced_operator)
+        end
+        sweep_elapsed_time = @elapsed begin
+            state, reduced_operator, info = residual_sweep_update(
+                ITensorMPS.TDVPOrder(order, Base.Forward),
+                reduced_operator,
+                state;
+                updater,
+                updater_kwargs,
+                nsite,
+                current_time,
+                time_step,
+                reverse_step,
+                sweep,
+                observer!,
+                normalize,
+                outputlevel,
+                maxdim = maxdim[sweep],
+                mindim = mindim[sweep],
+                cutoff = cutoff[sweep],
+                noise = noise[sweep],
+                resid_tol = scaled_resid_tol,
+                resid_damp,
+            )
+        end
+        if !isnothing(time_step)
+            current_time += time_step
+        end
+        ITensorMPS.update_observer!(
+            sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time
+        )
+        if outputlevel >= 1
+            print("After sweep ", sweep, ":")
+            print(" maxlinkdim=", maxlinkdim(state))
+            @printf(" maxerr=%.2E", info.maxtruncerr)
+            if !isnothing(current_time)
+                print(" current_time=", round(current_time; digits = 3))
+            end
+            print(" time=", round(sweep_elapsed_time; digits = 3))
+            println()
+            flush(stdout)
+        end
+        isdone = checkdone(;
+            state, sweep, outputlevel, observer = (observer!), sweep_observer = (sweep_observer!), info
+        )
+        isdone && break
+    end
+    return state
+end
+
+
+function residual_sweep_update(
+    order::ITensorMPS.TDVPOrder,
+    reduced_operator,
+    state::MPS;
+    current_time = nothing,
+    time_step = nothing,
+    resid_tol = 1e-8,
+    resid_damp = 2.0,
+    kwargs...,
+)
+    order_orderings = ITensorMPS.orderings(order)
+    order_sub_time_steps = ITensorMPS.sub_time_steps(order)
+    if !isnothing(time_step)
+        order_sub_time_steps = eltype(time_step).(order_sub_time_steps)
+        order_sub_time_steps *= time_step
+    end
+    info = nothing
+    for substep in 1:length(order_sub_time_steps)
+        sub_time_step = isnothing(time_step) ? nothing : order_sub_time_steps[substep]
+        state, reduced_operator, info = residual_sub_sweep_update(
+            order_orderings[substep],
+            reduced_operator,
+            state;
+            current_time,
+            time_step = sub_time_step,
+            resid_tol,
+            resid_damp,
+            kwargs...,
+        )
+        if !isnothing(time_step)
+            current_time += sub_time_step
+        end
+    end
+    return state, reduced_operator, info
+end
+
+function residual_sub_sweep_update(
+    direction::Base.Ordering,
+    reduced_operator,
+    state::MPS;
+    updater,
+    updater_kwargs,
+    which_decomp = nothing,
+    svd_alg = nothing,
+    sweep = ITensorMPS.default_sweep(),
+    current_time = nothing,
+    time_step = nothing,
+    nsite = ITensorMPS.default_nsite(),
+    reverse_step = ITensorMPS.default_reverse_step(),
+    normalize = ITensorMPS.default_normalize(),
+    (observer!) = ITensorMPS.default_observer(),
+    outputlevel = ITensorMPS.default_outputlevel(),
+    maxdim = ITensorMPS.default_maxdim(),
+    mindim = ITensorMPS.default_mindim(),
+    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(state)),
+    noise = ITensorMPS.default_noise(),
+    resid_tol = 1e-8,
+    resid_damp = 2.0,
+)
+    reduced_operator = copy(reduced_operator)
+    state = copy(state)
+    N = length(state)
+    set_nsite!(reduced_operator, nsite)
+
+    if ITensorMPS.isforward(direction)
+        if !isortho(state) || orthocenter(state) != 1
+            orthogonalize!(state, 1)
+        end
+        position!(reduced_operator, state, 1)
+    elseif ITensorMPS.isreverse(direction)
+        if !isortho(state) || orthocenter(state) != N - nsite + 1
+            orthogonalize!(state, N - nsite + 1)
+        end
+        position!(reduced_operator, state, N - nsite + 1)
+    end
+
+    maxtruncerr = 0.0
+    info = nothing
+
+    for b in ITensorMPS.sweep_bonds(direction, N; ncenter = nsite)
+        if nsite == 2
+            set_nsite!(reduced_operator, 2)
+            position!(reduced_operator, state, b)
+            reduced_state = state[b] * state[b + 1]
+            internal_kwargs = (; current_time, time_step, outputlevel)
+            reduced_state, info = updater(
+                reduced_operator, reduced_state; internal_kwargs, updater_kwargs...
+            )
+            if !isnothing(time_step)
+                current_time += time_step
+            end
+            normalize && (reduced_state /= norm(reduced_state))
+
+            ortho_str = ITensorMPS.isforward(direction) ? "left" : "right"
+            drho = nothing
+            if noise > 0.0 && ITensorMPS.isforward(direction)
+                drho = noise * noiseterm(reduced_operator, reduced_state, ortho_str)
+            end
+
+            result = residual_replacebond!(
+                state, b, reduced_state, reduced_operator;
+                maxdim, mindim, cutoff, normalize,
+                ortho = ortho_str,
+                resid_tol, resid_damp,
+            )
+            truncerr = result isa NamedTuple ? result.truncerr : (result isa Nothing ? 0.0 : result.truncerr)
+            maxtruncerr = max(maxtruncerr, truncerr)
+            spec = result isa NamedTuple ? result.spec : result
+
+        else
+            # For 1-site: fall back to standard ITensorMPS logic
+            current_time, maxtruncerr, spec, info = ITensorMPS.region_update!(
+                reduced_operator, state, b;
+                updater, updater_kwargs, nsite, reverse_step,
+                current_time, outputlevel, time_step, normalize,
+                direction, noise, which_decomp, svd_alg,
+                cutoff, maxdim, mindim, maxtruncerr,
+            )
+        end
+
+        if outputlevel >= 2
+            if nsite == 2
+                @printf("Sweep %d, direction %s, bond (%d,%d)\\n", sweep, direction, b, b + 1)
+            end
+            flush(stdout)
+        end
+
+        ITensorMPS.update_observer!(
+            observer!; state, reduced_operator,
+            bond = b, sweep,
+            half_sweep = ITensorMPS.isforward(direction) ? 1 : 2,
+            spec = nothing, outputlevel,
+            half_sweep_is_done = ITensorMPS.is_half_sweep_done(direction, b, N; ncenter = nsite),
+            current_time, info,
+        )
+    end
+    normalize && normalize!(state)
+    return state, reduced_operator, (; maxtruncerr)
 end
 
 
