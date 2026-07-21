@@ -26,4 +26,8 @@ using Test
     @testset "Physics" begin
         include("Physics/test_chorin.jl")
     end
+    @testset "Utils" begin
+        include("Utils/test_logging.jl")
+        include("Utils/test_visualization.jl")
+    end
 end

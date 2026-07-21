@@ -9,6 +9,8 @@ using ITensorMPS
 using KrylovKit
 using TensorCrossInterpolation
 using LinearAlgebra
+using JLD2
+using TimerOutputs
 
 # Include Architecture
 include("TensorTrains/architecture.jl")
@@ -60,6 +62,11 @@ include("Physics/NavierStokes/insexperiment.jl")
 include("Physics/NavierStokes/corrections.jl")
 include("Physics/NavierStokes/chorin.jl")
 
+# Include Utils
+include("Utils/logging.jl")
+include("Utils/visualization.jl")
+
+
 # Export types and functions from TimeEvolution
 export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper
 export AbstractRHS
@@ -93,6 +100,13 @@ export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterA
 export TTCG, TTGMRES
 export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
+
+# Include and Export Logging
+
+export Logger, SimpleLogger, init_logger, log_data, timeit_to
+
+# Include and Export Visualization
+export visualize_scalar, visualize_vector, visualize_vorticity
 
 end
 
