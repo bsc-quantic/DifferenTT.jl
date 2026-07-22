@@ -223,6 +223,9 @@ using LinearAlgebra
         @test mps isa MPS
         @test length(mps) == n
         @test siteinds(mps) == sites
+
+        @test DifferenTT.contract_mps(DifferenTT.vec2mps(v, sites)) ≈ v
+
     end
 
     @testset "mat2tensor" begin
@@ -250,6 +253,8 @@ using LinearAlgebra
         @test mpo isa MPO
         @test length(mpo) == n
         @test all(only.(siteinds(mpo; plev=0)) .== sites)
+
+        @test DifferenTT.contract_mpo(DifferenTT.mat2mpo(m, sites)) ≈ m
     end
 
     @testset "upper_triang_mpo & lower_triang_mpo" begin

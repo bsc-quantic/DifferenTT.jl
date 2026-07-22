@@ -443,6 +443,7 @@ Convert a matrix `m` directly into an MPO using site indices `s` and `s'`.
 - `s::Vector{<:Index}`: Input site indices for the MPO.
 """
 function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
-    itensor_object = itensor(m, s..., s'...)
+    site_dims = dim.(s)
+    itensor_object = itensor(mat2tensor(m, site_dims), s'..., s...)
     return MPO(itensor_object, s; kwargs...)
 end
