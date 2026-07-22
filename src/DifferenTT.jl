@@ -79,7 +79,7 @@ export QTTArchitecture, TTArchitecture
 export nsites_per_variable, total_sites, sited_dim, site_dims, variable_dims
 export backend_type
 export ndim_operator_mpo, diagmpo, diagmps
-export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps
+export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps, mat2tensor, mat2mpo
 export contract_mps, contract_mpo
 export tt_mul, elementwise_function, sample, samples, integrate
 
@@ -101,6 +101,7 @@ export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterA
 export TTCG, TTGMRES
 export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
+export sincquadrature_preconditioner, inverse_laplacian_preconditioner
 export KrylovSweepStats, KrylovCondStats, positions_mean, positions_mean_cond
 
 # Include and Export Logging
