@@ -86,7 +86,7 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
         linsolve_b[i] = linsolve_b[i] * combiners[i]
     end
 
-    linsolve_A = symmetrize ? op1 : +(op1, op2; alg="directsum") # Construct the operator AX + XA
+    linsolve_A = symmetrize ? +(op1, op2; alg="directsum") : op1  # Construct the operator AX + XA
     linsolve_b = MPS([linsolve_b...]) # Convert the still MPO object into an MPS
 
     if isnothing(linsolve_x0)
