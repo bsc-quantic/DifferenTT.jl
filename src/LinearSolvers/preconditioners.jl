@@ -373,12 +373,13 @@ Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions
 # TODO Understand what is going on with reversal
 function exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
     if isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)
-        return _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
+        mpo = _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
     elseif isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)
-        return _dn_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
+        mpo = _dn_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
     else
         error("Currently only Dirichlet-Dirichlet or Dirichlet-Neumann boundary conditions are implemented")
     end
+    return Preconditioner(mpo)
 end
 
 
