@@ -106,181 +106,115 @@ function Base.getindex(bn::BoundaryNull{N}, i::Int) where N
 end
 
 # -------------------------------------------------------------------------------------------------
-# Neumann Boundary Corrections (QTT and TT)
+# Neumann Boundary Corrections (QTT and TT) -> To apply NeumannBC(0.0) into the differential operators themselves
+# WARNING -> These corrections break the symmetry in the operators, and so oen must symmetrize the operator
+# itself and the rhs acordingly in order to use CG
 # -------------------------------------------------------------------------------------------------
 
 function onedim_neumann_boundary_correction(derivative_order::Int, arch::QTTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     nsites = abs(arch.var_nsites[axis])
     sites = siteinds(2, nsites)
-    
-    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
 
     return _nothing_sum_handler(left_neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
 end
 
 function onedim_neumann_boundary_correction(derivative_order::Int, arch::TTArchitecture, axis::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     dim = arch.var_dims[axis]
+    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, dim, array_type; stencil_order=stencil_order) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, dim, array_type; stencil_order=stencil_order) : nothing
     
-    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, dim, array_type; stencil_order=stencil_order) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, dim, array_type; stencil_order=stencil_order) : nothing
-    
-    if isnothing(left_neumann_corr) && isnothing(right_neumann_corr)
-        return nothing
-    elseif isnothing(left_neumann_corr)
-        return right_neumann_corr
-    elseif isnothing(right_neumann_corr)
-        return left_neumann_corr
-    else
-        return left_neumann_corr + right_neumann_corr
-    end
+    return _nothing_sum_handler(left_neumann_corr, right_neumann_corr)
 end
 
-# QTT versions (from legacy operators.jl)
-function left_neumann_boundary_correction(derivative_order::Int, site_indices::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    if stencil_order == 2
-        return _second_left_neumann_boundary_correction(derivative_order, site_indices, array_type; cutoff=cutoff, maxdim=maxdim)
-    end
-
+function neumann_correction_matrix(derivative_order::Int, side::Symbol; stencil_order::Int=8)
     coef_dict = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    ordered_coef = [coef_dict[i] for i in -4:-1]
-
-    left_rolling_coef = vcat([0.0, 1.0], zeros(6))
-    toeplitz_matrix = upper_toeplitz_matrix(ordered_coef)
-
-    rolling_matrix = zeros(eltype(left_rolling_coef), 4, length(left_rolling_coef))
-    for (idx, j) in enumerate(3:-1:0)
-        rolling_matrix[idx, :] = circshift(left_rolling_coef, j)
-    end
-
-    correction_matrix = toeplitz_matrix * rolling_matrix
-    correction_vector = -correction_matrix[1, :]
-
-    dummy_indices = siteinds(2, Int(log2(length(correction_vector))))
-
-    correction_mps = adapt(array_type, vec2mps(correction_vector, dummy_indices))
-    correction_mpo = tt_mul(correction_mps, column_pick_mpo(dummy_indices, 1, array_type); cutoff=cutoff, maxdim=maxdim)
-    padded_correction_mpo = zeros_padding(correction_mpo, site_indices, :upleft)
-
-    for j in 2:4
-        correction_vector = -correction_matrix[j, :]
-        correction_mps = adapt(array_type, vec2mps(correction_vector, dummy_indices))
-        correction_mpo = tt_mul(correction_mps, column_pick_mpo(dummy_indices, j, array_type); cutoff=cutoff, maxdim=maxdim)
-        padded_correction_mpo = +(padded_correction_mpo, zeros_padding(correction_mpo, site_indices, :upleft); cutoff=cutoff, maxdim=maxdim)
-    end
-    return padded_correction_mpo
-end
-
-function _second_left_neumann_boundary_correction(derivative_order::Int, site_indices::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    coef_dict = derivative_coefficients(derivative_order; stencil_order=2)
-    left_coef = coef_dict[-1]
-    reflection_vector = [0.0, 1.0]
-    correction_vector = -left_coef * reflection_vector
-
-    mpo_matrix = zeros(Float64, 2, 2)
-    mpo_matrix[1, :] = correction_vector
-
-    site = site_indices[end]
-    correction_mpo = MPO([ITensor(adapt(array_type, mpo_matrix'), [site, site'])])
-    return zeros_padding(correction_mpo, site_indices, :upleft)
-end
-
-function right_neumann_boundary_correction(derivative_order::Int, site_indices::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    if stencil_order == 2
-        return _second_right_neumann_boundary_correction(derivative_order, site_indices, array_type; cutoff=cutoff, maxdim=maxdim)
-    end
-
-    coef_dict = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    ordered_coef = [coef_dict[i] for i in 4:-1:1]
-    right_rolling_coef = vcat(zeros(6), [1.0, 0.0])
-    toeplitz_matrix = lower_toeplitz_matrix(ordered_coef)
-
-    rolling_matrix = zeros(eltype(right_rolling_coef), 4, length(right_rolling_coef))
-    for (idx, j) in enumerate(0:3)
-        rolling_matrix[idx, :] = circshift(right_rolling_coef, -j)
-    end
-
-    correction_matrix = toeplitz_matrix * rolling_matrix
-    correction_vector = -correction_matrix[1, :]
-
-    dummy_indices = siteinds(2, Int(log2(length(correction_vector))))
-
-    correction_mps = adapt(array_type, vec2mps(correction_vector, dummy_indices))
-    correction_mpo = tt_mul(correction_mps, column_pick_mpo(dummy_indices, stencil_order - 3, array_type); cutoff=cutoff, maxdim=maxdim)
-    padded_correction_mpo = zeros_padding(correction_mpo, site_indices, :bottomright)
-
-    for j in 2:4
-        correction_vector = -correction_matrix[j, :]
-        correction_mps = adapt(array_type, vec2mps(correction_vector, dummy_indices))
-        correction_mpo = tt_mul(correction_mps, column_pick_mpo(dummy_indices, stencil_order - 4 + j, array_type); cutoff=cutoff, maxdim=maxdim)
-        padded_correction_mpo = +(padded_correction_mpo, zeros_padding(correction_mpo, site_indices, :bottomright); cutoff=cutoff, maxdim=maxdim)
-    end
-    return padded_correction_mpo
-end
-
-function _second_right_neumann_boundary_correction(derivative_order::Int, site_indices::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    coef_dict = derivative_coefficients(derivative_order; stencil_order=2)
-    right_coef = coef_dict[1]
-    reflection_vector = [1.0, 0.0]
-    correction_vector = -right_coef * reflection_vector
-
-    mpo_matrix = zeros(Float64, 2, 2)
-    mpo_matrix[2, :] = correction_vector
-
-    site = site_indices[end]
-    correction_mpo = MPO([ITensor(adapt(array_type, mpo_matrix'), [site, site'])])
-    return zeros_padding(correction_mpo, site_indices, :bottomright)
-end
-
-# TT versions (Dense matrices)
-function left_neumann_boundary_correction(derivative_order::Int, dim::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
-    coef_dict = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    mat = zeros(Float64, dim, dim)
     
     if stencil_order == 2
-        left_coef = coef_dict[-1]
-        mat[1, 1:2] .= -left_coef .* [0.0, 1.0]
-    else
-        ordered_coef = [coef_dict[i] for i in -4:-1]
-        left_rolling_coef = vcat([0.0, 1.0], zeros(6))
-        toeplitz_matrix = upper_toeplitz_matrix(ordered_coef)
-
-        rolling_matrix = zeros(eltype(left_rolling_coef), 4, length(left_rolling_coef))
-        for (idx, j) in enumerate(3:-1:0)
-            rolling_matrix[idx, :] = circshift(left_rolling_coef, j)
+        mat = zeros(Float64, 2, 2)
+        if side == :left
+            mat[1, 1:2] .= -coef_dict[-1] .* [0.0, 1.0]
+        elseif side == :right
+            mat[2, 1:2] .= -coef_dict[1] .* [1.0, 0.0]
         end
-        correction_matrix = toeplitz_matrix * rolling_matrix
-        mat[1:4, 1:8] .= -correction_matrix
+        return mat
+    elseif stencil_order == 8
+        mat = zeros(Float64, 8, 8)
+        if side == :left
+            ordered_coef = [coef_dict[i] for i in -4:-1]
+            left_rolling_coef = vcat([0.0, 1.0], zeros(6))
+            toeplitz_matrix = upper_toeplitz_matrix(ordered_coef)
+
+            rolling_matrix = zeros(eltype(left_rolling_coef), 4, length(left_rolling_coef))
+            for (idx, j) in enumerate(3:-1:0)
+                rolling_matrix[idx, :] = circshift(left_rolling_coef, j)
+            end
+            correction_matrix = toeplitz_matrix * rolling_matrix
+            mat[1:4, 1:8] .= -correction_matrix
+        elseif side == :right
+            ordered_coef = [coef_dict[i] for i in 4:-1:1]
+            right_rolling_coef = vcat(zeros(6), [1.0, 0.0])
+            toeplitz_matrix = lower_toeplitz_matrix(ordered_coef)
+
+            rolling_matrix = zeros(eltype(right_rolling_coef), 4, length(right_rolling_coef))
+            for (idx, j) in enumerate(0:3)
+                rolling_matrix[idx, :] = circshift(right_rolling_coef, -j) 
+            end
+            correction_matrix = toeplitz_matrix * rolling_matrix
+            mat[5:8, 1:8] .= -correction_matrix
+        end
+        return mat
+    else
+        throw(ArgumentError("Only stencil orders 2 and 8 are supported."))
     end
+end
+
+function left_neumann_boundary_correction(derivative_order::Int, arch::TTArchitecture, mat_dim::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
+    mat = zeros(Float64, mat_dim, mat_dim)
+    
+    correction_matrix = neumann_correction_matrix(derivative_order, :left; stencil_order=stencil_order)
+    sz = size(correction_matrix, 1)
+    mat[1:sz, 1:sz] .= correction_matrix
     return adapt(array_type, mat)
 end
 
-function right_neumann_boundary_correction(derivative_order::Int, dim::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
-    coef_dict = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    mat = zeros(Float64, dim, dim)
+function right_neumann_boundary_correction(derivative_order::Int, arch::TTArchitecture, mat_dim::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
+    mat = zeros(Float64, mat_dim, mat_dim)
     
-    if stencil_order == 2
-        right_coef = coef_dict[1]
-        mat[end, end-1:end] .= -right_coef .* [1.0, 0.0]
-    else
-        ordered_coef = [coef_dict[i] for i in 4:-1:1]
-        right_rolling_coef = vcat(zeros(6), [1.0, 0.0])
-        toeplitz_matrix = lower_toeplitz_matrix(ordered_coef)
-
-        rolling_matrix = zeros(eltype(right_rolling_coef), 4, length(right_rolling_coef))
-        for (idx, j) in enumerate(0:3)
-            rolling_matrix[idx, :] = circshift(right_rolling_coef, -j)
-        end
-        correction_matrix = toeplitz_matrix * rolling_matrix
-        mat[end-3:end, end-7:end] .= -correction_matrix
-    end
+    correction_matrix = neumann_correction_matrix(derivative_order, :right; stencil_order=stencil_order)
+    sz = size(correction_matrix, 1)
+    mat[end-sz+1:end, end-sz+1:end] .= correction_matrix
     return adapt(array_type, mat)
 end
 
+function left_neumann_boundary_correction(derivative_order::Int, arch::QTTArchitecture, sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    correction_matrix = neumann_correction_matrix(derivative_order, :left; stencil_order=stencil_order)
+    
+    n_dummy = Int(log2(size(correction_matrix, 1)))
+    dummy_sites = siteinds(2, n_dummy)
+    
+    correction_mpo = mat2mpo(correction_matrix, dummy_sites)
+    
+    return zeros_padding(correction_mpo, sites, :upleft)
+end
+
+function right_neumann_boundary_correction(derivative_order::Int, arch::QTTArchitecture, sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    correction_matrix = neumann_correction_matrix(derivative_order, :right; stencil_order=stencil_order)
+    
+    n_dummy = Int(log2(size(correction_matrix, 1)))
+    dummy_sites = siteinds(2, n_dummy)
+    
+    correction_mpo = mat2mpo(correction_matrix, dummy_sites)
+    
+    return zeros_padding(correction_mpo, sites, :bottomright)
+end
+
 # -------------------------------------------------------------------------------------------------
-# Symmetrization Operators (Neumann)
+# Symmetrization operations, both for the operator and the rhs of a linear system with Neumann BCs
 # -------------------------------------------------------------------------------------------------
 
+# MPO Symmetrization
 function onedim_neumann_symmetrization_correction(operator::Union{MPO, AbstractMatrix}, arch::Architecture, axis::Int, boundary_conditions::BoundaryCond1d; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     left_sym = (boundary_conditions.left isa NeumannBC) ? left_neumann_symmetrization_correction(operator, arch, axis; cutoff=cutoff, maxdim=maxdim) : nothing
     right_sym = (boundary_conditions.right isa NeumannBC) ? right_neumann_symmetrization_correction(operator, arch, axis; cutoff=cutoff, maxdim=maxdim) : nothing
@@ -400,7 +334,9 @@ function neumann_symmetrization_correction_mps(arch::Architecture, bcs::Boundary
 end
 
 # -------------------------------------------------------------------------------------------------
-# Dirichlet Boundary Corrections
+# Dirichlet Boundary Corrections -> To move Dirichlet BC values to the RHS of a linear system. These 
+# assume for now that the BC Dirichlet value, which then has to be rescaled to the desired value. See 
+# [`pressure_dirichlet_correction_dim`](@ref) in the NavierStokes submodule as an exampel
 # -------------------------------------------------------------------------------------------------
 
 function onedim_left_dirichlet_correction(derivative_order::Int, arch::QTTArchitecture, axis::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
