@@ -53,7 +53,7 @@ end
 """
     _nothing_sum_handler(elements::Vararg{<:Any}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
 
-Helper to sum a vector of elements where some might be `nothing`.
+Helper to sum a vector of AbstractMPS objects where some might be `nothing`.
 """
 function _nothing_sum_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where T <: AbstractMPS
     element_vec = collect(elements)
@@ -65,6 +65,20 @@ function _nothing_sum_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float
         return filtered_elements[1]
     else
         return sum(filtered_elements; cutoff=cutoff, maxdim=maxdim)
+    end
+end
+
+# TODO Test this
+function _nothing_sum_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where T <: AbstractArray
+    element_vec = collect(elements)
+    filtered_elements = element_vec[.!isnothing.(element_vec)]
+
+    if length(filtered_elements) == 0
+        return nothing
+    elseif length(filtered_elements) == 1
+        return filtered_elements[1]
+    else
+        return +(filtered_elements)
     end
 end
 
