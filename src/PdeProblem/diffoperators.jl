@@ -45,8 +45,8 @@ function onedim_differential_operator(derivative_order::Int, arch::QTTArchitectu
     onedim_mpo = toeplitz_mpo(non_padded_site_indices, coeffs, boundary_conditions, array_type)
 
     # Note: we use QTT version of neumann boundary correction explicitly here because we have sites
-    neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
     neumann_corr = _nothing_sum_handler(neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
 
     if !isnothing(neumann_corr)
@@ -71,7 +71,7 @@ function onedim_differential_operator(derivative_order::Int, arch::TTArchitectur
 end
 
 function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, kwargs...)
-    noneye_dim = arch.var_dims[dim] ÷ (2^n_eyepad)
+    noneye_dim = arch.var_dims[dim] - n_eyepad
     coeffs = derivative_coefficients(derivative_order; stencil_order=stencil_order)
     
     mat = zeros(Float64, noneye_dim, noneye_dim)
@@ -93,8 +93,8 @@ function onedim_differential_operator(derivative_order::Int, arch::TTArchitectur
         end
     end
 
-    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, noneye_dim, array_type; stencil_order=stencil_order) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, noneye_dim, array_type; stencil_order=stencil_order) : nothing
+    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order) : nothing
+    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order) : nothing
     
     mat_gpu = adapt(array_type, mat)
     if !isnothing(left_neumann_corr)
