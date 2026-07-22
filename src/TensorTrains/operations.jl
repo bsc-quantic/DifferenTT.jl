@@ -55,32 +55,20 @@ end
 
 Helper to sum a vector of AbstractMPS objects where some might be `nothing`.
 """
-function _nothing_sum_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where T <: AbstractMPS
-    element_vec = collect(elements)
-    filtered_elements = element_vec[.!isnothing.(element_vec)]
+function _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    filtered = filter(!isnothing, elements)
 
-    if length(filtered_elements) == 0
+    if isempty(filtered)
         return nothing
-    elseif length(filtered_elements) == 1
-        return filtered_elements[1]
+    elseif length(filtered) == 1
+        return first(filtered)
     else
-        return sum(filtered_elements; cutoff=cutoff, maxdim=maxdim)
+        return _sum_elements(filtered; cutoff=cutoff, maxdim=maxdim)
     end
 end
 
-# TODO Test this
-function _nothing_sum_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where T <: AbstractArray
-    element_vec = collect(elements)
-    filtered_elements = element_vec[.!isnothing.(element_vec)]
-
-    if length(filtered_elements) == 0
-        return nothing
-    elseif length(filtered_elements) == 1
-        return filtered_elements[1]
-    else
-        return +(filtered_elements)
-    end
-end
+_sum_elements(elements::NTuple{N, AbstractMPS} where N; cutoff, maxdim) = sum(collect(elements); cutoff=cutoff, maxdim=maxdim)
+_sum_elements(elements::Tuple; kwargs...) = sum(elements)
 
 # TODO Test this function
 """
