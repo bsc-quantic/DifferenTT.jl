@@ -1,4 +1,5 @@
-using KrylovKit
+import ITensorMPS: apply
+import ITensors: inner
 
 """
     TTCG <: KrylovKit.KrylovAlgorithm
@@ -15,6 +16,7 @@ Base.@kwdef struct TTCG <: KrylovKit.KrylovAlgorithm
     cutoff::Float64 = 1e-8
 end
 
+# TODO Handle well the preconditioners and test behaviour
 """
     GlobalCG <: AbstractGlobalSolver
 
@@ -31,7 +33,9 @@ Base.@kwdef struct GlobalCG <: AbstractGlobalSolver
     end
 end
 
-function linearsolve(solver::GlobalCG, A, b, x0; kwargs...)
+function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
     
     alg = TTCG(; maxiter = merged_kwargs.maxiter,
@@ -41,11 +45,13 @@ function linearsolve(solver::GlobalCG, A, b, x0; kwargs...)
                  cutoff = get(merged_kwargs, :cutoff, 1e-8)
     )
                      
-    x, info = KrylovKit.linsolve(A, b, x0, alg)
+    x, info = KrylovKit.linsolve(A, b, init, alg)
     return x, (; info, residual=info.residual)
 end
 
-function linearsolve(solver::GlobalCG, A, b, M⁻¹, x0; kwargs...)
+function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
     
     alg = TTCG(; maxiter = merged_kwargs.maxiter,
@@ -55,7 +61,7 @@ function linearsolve(solver::GlobalCG, A, b, M⁻¹, x0; kwargs...)
                  cutoff = get(merged_kwargs, :cutoff, 1e-8)
     )
                      
-    x, info = KrylovKit.linsolve(A, b, x0, M⁻¹, alg)
+    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
     return x, (; info, residual=info.residual)
 end
 
@@ -87,7 +93,9 @@ Base.@kwdef struct GlobalGMRES <: AbstractGlobalSolver
     updater_kwargs::GlobalUpdaterArgs = GlobalUpdaterArgs()
 end
 
-function linearsolve(solver::GlobalGMRES, A, b, x0; kwargs...)
+function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
     
     alg = TTGMRES(; krylovdim = merged_kwargs.krylovdim,
@@ -99,11 +107,13 @@ function linearsolve(solver::GlobalGMRES, A, b, x0; kwargs...)
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                     
-    x, info = KrylovKit.linsolve(A, b, x0, alg)
+    x, info = KrylovKit.linsolve(A, b, init, alg)
     return x, (; info, residual=info.residual)
 end
 
-function linearsolve(solver::GlobalGMRES, A, b, M⁻¹, x0; kwargs...)
+function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+    init = isnothing(x0) ? default_linearsolve_init(b) : x0
+
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
     
     alg = TTGMRES(; krylovdim = merged_kwargs.krylovdim,
@@ -115,7 +125,24 @@ function linearsolve(solver::GlobalGMRES, A, b, M⁻¹, x0; kwargs...)
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                         
-    x, info = KrylovKit.linsolve(A, b, x0, M⁻¹, alg)
+    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
     return x, (; info, residual=info.residual)
 end
 
+#Helper functions in order to handle preconditioners in the TTCG, TTGMRES pipeline efficiently
+function apply(P::Preconditioner, v::MPS; kwargs...)
+    return apply(P.operator, v; kwargs...)
+end
+
+function apply(P::FactorizedPreconditioner, v::MPS; kwargs...)
+    v_out = apply(P.operator, v; kwargs...)
+    return apply(transpose(P.operator), v_out; kwargs...)
+end
+
+function inner(v::MPS, P::Preconditioner, w::MPS)
+    return inner(v, P.operator, w)
+end
+
+function inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
+    return inner(P.operator, v, P.operator, w)
+end
