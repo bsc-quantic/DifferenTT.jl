@@ -157,7 +157,7 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
     for n in 1:pad_len
         s = site_inds[n]
 
-        T = adapt(array_type, ITensor(raw_matrix, s, s'))
+        T = adapt(array_type, ITensor(raw_matrix, s', s))
 
         if n == 1
             # First site: Only has a Right link
@@ -176,7 +176,7 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
         old_node = mpo[k]
 
         s_old = siteinds(mpo, k) # This returns the non-primmed / primmed tuple of site indicies at site k
-        s_new = [site_inds[pad_len+k], site_inds[pad_len+k]']
+        s_new = [site_inds[pad_len+k]', site_inds[pad_len+k]]
 
         T_shifted = adapt(array_type, replaceinds(old_node, s_old => s_new))
 
