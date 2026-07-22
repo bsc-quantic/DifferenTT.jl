@@ -42,25 +42,25 @@ end
 # TODO Test this function
 # TODO Should we bring to zero all the tensors, as done now, or only do 0.0 * mpo (sets to zero the ortho center)
 """
-    zeros_mpo(sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
+    zeros_mpo(sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
 
-Construct an all-zeros MPO with the given site indices and bond dimension.
+Construct an all-zeros MPO  of bond dimension 1 with the given site indices and bond dimension.
 """
-function zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
-    mpo = adapt(array_type, random_mpo(site_inds, linkdims))
+function zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
+    mpo = adapt(array_type, random_mpo(site_inds))
     for i in 1:length(site_inds)
         mpo[i] *= 0.0
     end
     return mpo
 end
 
-function zeros_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
+function zeros_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array)
     site_inds = siteinds(site_dims)
-    return zeros_mpo(site_inds, array_type; linkdims=linkdims)
+    return zeros_mpo(site_inds, array_type)
 end
 
-function zeros_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
-    return zeros_mpo(collect(Int, site_dims(arch)), array_type; linkdims=linkdims)
+function zeros_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
+    return zeros_mpo(collect(Int, site_dims(arch)), array_type)
 end
 
 
@@ -305,6 +305,28 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
 end
 
 """
+    arrays2mps(site_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
+
+Construct an MPS from a list of arrays and site indices, automatically creating link indices.
+
+# Arguments
+- `site_indices`: Vector of site indices.
+- `mps_arrays`: Vector of arrays containing tensor data.
+"""
+function arrays2mps(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
+    nsite = length(mpo_arrays)
+
+    bond_indices = Vector{Index}(undef, nsite - 1)
+
+    for n in 1:(nsite-1)
+        bond_dim = size(mpo_arrays[n], ndims(mpo_arrays[n]))
+        bond_indices[n] = Index(bond_dim, "Link,l=$(n)")
+    end
+
+    return arrays2mps(site_indices, bond_indices, mpo_arrays)
+end
+
+"""
     arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
 
 Construct an MPO from a list of arrays, using provided site and bond indices.
@@ -395,4 +417,32 @@ Convert a vector `v` directly into an MPS using site indices `s`.
 function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
     return MPS(vec2tensor(v, site_dims), s; kwargs...)
+end
+
+"""
+    mat2tensor(m::AbstractMatrix)
+
+Reshape a matrix `m` into a high-dimensional tensor with dimensions given by leg_dims. It is assumed that the matrix
+is square, in the sense that the the input-output leg pairs will be set to have leg_dims.
+
+# Arguments
+- `m::AbstractMatrix`: Input matrix to be reshaped.
+"""
+function mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int})
+    n = length(leg_dims)
+    return permutedims(reshape(m, leg_dims..., leg_dims...), [n:-1:1;2n:-1:n+1])
+end
+
+"""
+    mat2mpo(v::AbstractMatrix, s::Vector{<:Index}; kwargs...)
+
+Convert a matrix `m` directly into an MPO using site indices `s` and `s'`.
+
+# Arguments
+- `v::AbstractVector`: Input vector to be converted.
+- `s::Vector{<:Index}`: Input site indices for the MPO.
+"""
+function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
+    itensor_object = itensor(m, s..., s'...)
+    return MPO(itensor_object, s; kwargs...)
 end
