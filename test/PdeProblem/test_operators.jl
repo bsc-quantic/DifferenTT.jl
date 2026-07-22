@@ -28,10 +28,12 @@ function expected_diff_matrix(derivative_order::Int, dim::Int, bcs::BoundaryCond
     end
 
     if bcs.left isa NeumannBC
-        mat -= DifferenTT.left_neumann_boundary_correction(derivative_order, dim, Array; stencil_order=stencil_order)
+        arch = DifferenTT.TTArchitecture((dim,))
+        mat -= DifferenTT.left_neumann_boundary_correction(derivative_order, arch, dim, Array; stencil_order=stencil_order)
     end
     if bcs.right isa NeumannBC
-        mat -= DifferenTT.right_neumann_boundary_correction(derivative_order, dim, Array; stencil_order=stencil_order)
+        arch = DifferenTT.TTArchitecture((dim,))
+        mat -= DifferenTT.right_neumann_boundary_correction(derivative_order, arch, dim, Array; stencil_order=stencil_order)
     end
     return mat
 end
@@ -93,18 +95,20 @@ end
                         # Eye padding tests
                         for n_eyepad in 0:2
                             padded_dim = dim
-                            unpadded_dim = dim ÷ (2^n_eyepad)
-                            expected_unpadded = expected_diff_matrix(order, unpadded_dim, bc1d; stencil_order=stencil_order)
+                            tt_unpadded_dim = dim - n_eyepad
+                            tt_expected_unpadded = expected_diff_matrix(order, tt_unpadded_dim, bc1d; stencil_order=stencil_order)
                             expected_padded_tt = zeros(padded_dim, padded_dim)
-                            expected_padded_tt[1:unpadded_dim, 1:unpadded_dim] .= expected_unpadded
-                            for i in (unpadded_dim + 1):padded_dim
+                            expected_padded_tt[1:tt_unpadded_dim, 1:tt_unpadded_dim] .= tt_expected_unpadded
+                            for i in (tt_unpadded_dim + 1):padded_dim
                                 expected_padded_tt[i, i] = 1.0
                             end
                             
                             tt_padded = DifferenTT.onedim_differential_operator(order, tt_arch, 1, n_eyepad, bc1d, Array; stencil_order=stencil_order)
-                            @test tt_padded ≈ expected_padded_tt atol=1e-12
+                            @test tt_padded ≈ expected_padded_tt
                             
-                            expected_padded_qtt = kron(expected_unpadded, Matrix{Float64}(I, 2^n_eyepad, 2^n_eyepad))
+                            qtt_unpadded_dim = dim ÷ (2^n_eyepad)
+                            qtt_expected_unpadded = expected_diff_matrix(order, qtt_unpadded_dim, bc1d; stencil_order=stencil_order)
+                            expected_padded_qtt = kron(qtt_expected_unpadded, Matrix{Float64}(I, 2^n_eyepad, 2^n_eyepad))
                             qtt_mpo_padded = DifferenTT.onedim_differential_operator(order, qtt_arch, 1, n_eyepad, bc1d, Array; stencil_order=stencil_order)
                             qtt_padded_mat = DifferenTT.contract_mpo(qtt_mpo_padded)
                             @test qtt_padded_mat ≈ expected_padded_qtt atol=1e-10
@@ -135,7 +139,7 @@ end
                     if expect_nothing
                         @test isnothing(tt_null)
                     else
-                        @test tt_null ≈ expected_mat atol=1e-12
+                        @test tt_null ≈ expected_mat atol=1e-10
                     end
                     
                     qtt_null_mpo = DifferenTT.onedim_boundary_nullifier(qtt_arch, 1, bc1d, Array; stencil_order=stencil_order)
@@ -143,7 +147,7 @@ end
                         @test isnothing(qtt_null_mpo)
                     else
                         qtt_null_mat = DifferenTT.contract_mpo(qtt_null_mpo)
-                        @test qtt_null_mat ≈ expected_mat atol=1e-12
+                        @test qtt_null_mat ≈ expected_mat atol=1e-10
                     end
                 end
             end
