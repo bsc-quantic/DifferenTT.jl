@@ -98,7 +98,6 @@ export chorin_evolve!, NavierStokesPredictorRHS
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
 export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterArgs
-export TTCG, TTGMRES
 export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
 export sincquadrature_preconditioner, inverse_laplacian_preconditioner
