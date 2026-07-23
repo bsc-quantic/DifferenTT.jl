@@ -86,8 +86,8 @@ export tt_mul, elementwise_function, sample, samples, integrate
 # Export types and functions from PdeProblem
 export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
 export ScalarField, VectorField, Grid
-export DifferentialOpsScalar, DifferentialOpsScalar
-export BoundaryNullScalar, BoundaryNullScalar
+export DifferentialOpsScalar, DifferentialOps
+export BoundaryNullScalar, BoundaryNull
 
 # Export types and functions from Physics
 export advection, diffusion, divergence, gradient, symmetrized_laplacian, symmetrize_rhs
@@ -97,7 +97,7 @@ export chorin_evolve!, NavierStokesPredictorRHS
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
-export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterArgs
+export ALS, ResidualALS, ExpandedALS, AMEn, GlobalCG, GlobalGMRES, LocalUpdaterArgs, SweepingArgs
 export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
 export sincquadrature_preconditioner, inverse_laplacian_preconditioner
@@ -105,7 +105,7 @@ export KrylovSweepStats, KrylovCondStats, positions_mean, positions_mean_cond
 
 # Include and Export Logging
 
-export Logger, SimpleLogger, init_logger, log_data, timeit_to
+export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timings!
 
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity
