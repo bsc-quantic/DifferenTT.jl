@@ -93,12 +93,13 @@ mask(x) = circle(x...)
 box_size = (2.0, 1.0)
 fig_size = (1200, 600)
 clims=(-20, 20)
-nodes = (12, 11)
-sites = siteinds(2, sum(abs, nodes))
+nodes = (10, 9)
+
+arch = QTTArchitecture(nodes)
+grid = Grid(arch, box_size)
+sites = siteinds(arch)
 # sites = siteinds(kickstart_mps_vx)
 
-grid = Grid(box_size, nodes)
-arch = Architecture(nodes)
 
 save_mask = true
 mask_name = "circle_mask"
@@ -203,7 +204,6 @@ experiment = INSExperiment(grid, time_evol_settings, v_field, p_field, Re, objec
 
 log_data(logger, destination_file, "experiment", experiment)
 
-enable_debug_plots!(false)
 TimerOutputs.enable_debug_timings(DifferenTT)
 reset_timer!(DifferenTT.timeit_to)
 

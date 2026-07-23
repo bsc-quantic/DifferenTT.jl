@@ -42,7 +42,7 @@ end
 box_size = (2.0, 1.0)
 fig_size = (1200, 600)
 clims = (-20, 20)
-nodes = (10, 10)
+nodes = (8, 8)
 sites = load_timevolved_mps ? siteinds(kickstart_mps_vx) : siteinds(2, sum(abs, nodes))
 
 ############################################################
@@ -51,8 +51,8 @@ sites = load_timevolved_mps ? siteinds(kickstart_mps_vx) : siteinds(2, sum(abs, 
 
 ############################################################
 
-grid = Grid(box_size, nodes)
-arch = Architecture(nodes)
+arch = QTTArchitecture(nodes)
+grid = Grid(arch, box_size)
 
 ############################################################
 
@@ -113,8 +113,8 @@ isnothing(object_mask) && @warn "Mask was not initialized."
 ############################################################
 
 v0 = 1.0
-mps_vy = isnothing(object_mask) ? ones_mps(sites, 1) : tt_mul(object_mask, ones_mps(sites, 1))
-mps_vx = 0.0 * ones_mps(sites, 1)
+mps_vx = isnothing(object_mask) ? ones_mps(sites, 1) : tt_mul(object_mask, ones_mps(sites, 1))
+mps_vy = 0.0 * ones_mps(sites, 1)
 
 bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
 bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -165,14 +165,13 @@ ENV["JULIA_DEBUG"] = ""
 p_diff_ops = DifferentialOpsScalar(experiment.grid, experiment.p_field; stencil_order=experiment.stencil_order)
 u_diff_ops = DifferentialOps(experiment.grid, experiment.u_fields; stencil_order=experiment.stencil_order)
 u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order)
-symmetrized_Δ_cache = DifferenTT.symmetrized_laplacian(experiment)
+symmetrized_Δ_cache = DifferenTT.symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=experiment.stencil_order, maxdim=experiment.maxdim, cutoff=experiment.cutoff)
 
 ############################################################
 
 # 8. Build the preconditioner  
 
 ############################################################
-observer = LinsolveObserver()
 prec_updater_kwargs = LocalUpdaterArgs(;
     ishermitian=true,
     isposdef=true,
@@ -188,7 +187,6 @@ prec_sweep_kwargs = SweepingArgs(;
     cutoff=1e-11,
     nsite=2,
     outputlevel=0,
-    observer!=observer
 )
 prec_solver = ALS(; sweep_kwargs=prec_sweep_kwargs, updater_kwargs=prec_updater_kwargs)
 
@@ -420,7 +418,11 @@ visualize_vector(-1.0 .* divfree_advection_terms, experiment.grid, experiment.u_
 divfree_diffusion_terms = diffusion(div_free_u_mpss, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
 visualize_vector((1 / Re) .* divfree_diffusion_terms, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_divfree_diffusion.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-5, 5))
 
-timestepped_u_mpss = DifferenTT.timestep(experiment, div_free_u_mpss, u_diff_ops, u_boundary_null)
+NSrhs = DifferenTT.NavierStokesPredictorRHS(experiment, u_diff_ops, u_boundary_null)
+stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+
+timestepped_u_mpss = timestep(stepper, div_free_u_mpss, experiment.time_evol_settings.dt, NSrhs, 1.0 * experiment.time_evol_settings.dt)
+
 
 #---------------------------------------------------
 
