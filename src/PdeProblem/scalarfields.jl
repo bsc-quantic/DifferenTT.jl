@@ -17,6 +17,7 @@ struct ScalarField{N,A<:AbstractArray,I<:Vector{<:Index},BCU<:BoundaryConditions
     arch::Arch
     dims::NTuple{N,Int}
     bcu::BCU
+    array_type::Type{A}
 end
 
 backend_type(::ScalarField{N, A}) where {N, A} = A
@@ -48,7 +49,7 @@ function ScalarField(init_u::MPS, arch::Architecture, bcu::BoundaryConditions{N}
     u = MPS[]
     push!(u, init_u)
 
-    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu)
+    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu, array_type)
 end
 
 """
@@ -67,14 +68,14 @@ function ScalarField(arch::Architecture, bcu::BoundaryConditions{N}, array_type:
 
     u = MPS[]
 
-    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu)
+    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu, array_type)
 end
 
 function ScalarField(usites::Vector{<:Index}, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array) where N
     @assert all(site_dims(arch) .== dim.(usites)) "Site dimensions do not match with architecture properties"
     dims = variable_dims(arch)
     u = MPS[]
-    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu)
+    return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu, array_type)
 end
 
 function Base.last(field::ScalarField)

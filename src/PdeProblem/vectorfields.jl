@@ -1,17 +1,22 @@
 """
-    struct VectorField{N,S<:ScalarField{N}}
+    struct VectorField{N,A<:AbstractArray,I<:Vector{<:Index},S<:ScalarField{N},Arch<:Architecture}
 
 Represents a vector field (collection of N ScalarFields) in N dimensions.
 """
-struct VectorField{N,I<:Vector{<:Index},S<:ScalarField{N},Arch<:Architecture}
+struct VectorField{N,A<:AbstractArray,I<:Vector{<:Index},S<:ScalarField{N},Arch<:Architecture}
     components::NTuple{N,S}
     usites::I # All components share sites
     arch::Arch # All components share arch
+    array_type::Type{A} # All components share array type
 end
+
+backend_type(::VectorField{N, A}) where {N, A} = A
 
 function VectorField(components::NTuple{N,S}) where {N, S<:ScalarField{N}}
     @assert all(length(field) == length(components[1]) for field in components) "All scalar filed must have the same number of steps"
-    return VectorField(components, components[1].usites, components[1].arch)
+    @assert all(backend_type(field) == backend_type(components[1]) for field in components) "All scalar fields must share array type"
+
+    return VectorField(components, components[1].usites, components[1].arch, backend_type(components[1]))
 end
 
 """
@@ -29,7 +34,6 @@ function VectorField(
     init_u::NTuple{N,MPS},
     arch::Architecture,
     bcs::NTuple{N,BoundaryConditions{N}},
-    array_type::Union{Nothing, Type{<:AbstractArray}}=nothing
 ) where N
 
     total_site_count = total_sites(arch)
@@ -37,12 +41,14 @@ function VectorField(
         @assert length(init_u[i]) == total_site_count "Mismatch between init MPS length and arch for component $i"
     end
     @assert all(siteinds(init_u[1]) == siteinds(u) for u in init_u) "MPS site indices do not match across components."
+    @assert all(backend_type(init_u[1]) == backend_type(u) for u in init_u) "MPS backend types do not match across components."
 
+    array_type = backend_type(init_u[1])
     usites = siteinds(init_u[1])
 
     components = ntuple(i -> ScalarField(init_u[i], arch, bcs[i], array_type), N)
 
-    return VectorField(components, usites, arch)
+    return VectorField(components, usites, arch, backend_type(init_u[1]))
 end
 
 """
@@ -63,7 +69,7 @@ function VectorField(
 
     usites = [Index(site_dim(arch, i), "Site,n=$i") for i in 1:total_sites(arch)]
     components = ntuple(i -> ScalarField(usites, arch, bcs[i], array_type), N)
-    return VectorField(components, usites, arch)
+    return VectorField(components, usites, arch, array_type)
 end
 
 function VectorField(
@@ -74,7 +80,7 @@ function VectorField(
 ) where N
     @assert all(site_dims(arch) .== dim.(usites)) "Site dimensions do not match with architecture properties"
     components = ntuple(i -> ScalarField(usites, arch, bcs[i], array_type), N)
-    return VectorField(components, usites, arch)
+    return VectorField(components, usites, arch, array_type)
 end
 
 function Base.last(fields::VectorField{N}) where N
