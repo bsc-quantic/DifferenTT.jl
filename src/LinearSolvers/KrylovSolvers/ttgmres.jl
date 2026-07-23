@@ -9,7 +9,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(inner(b, operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)::T
     α₁ = convert(T, a₁)::T
     
@@ -81,7 +81,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
             
             # Modified Gram-Schmidt
             for i in 1:k
-                H_ik_op = inner(V[i], operator, V[k])
+                H_ik_op = ITensorMPS.inner(V[i]', operator, V[k])
                 H[i, k] = iszero(α₀) ? α₁ * H_ik_op : (i == k ? α₀ + α₁ * H_ik_op : α₁ * H_ik_op)
                 w = +(w, -H[i, k] * V[i]; kwargs_orth...)
             end
@@ -104,8 +104,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
             gs[k], R[k, k] = givens(R[k, k], H[k+1, k], k, k + 1)
             
             # Apply Givens rotation to right hand side
-            y_view = view(y, k:k+1)
-            lmul!(gs[k], y_view)
+            y[k + 1] = zero(T)
+            lmul!(gs[k], y)
             
             β_inner = convert(S, abs(y[k + 1]))
         end
@@ -159,7 +159,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(inner(b, operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)::T
     α₁ = convert(T, a₁)::T
     
@@ -233,7 +233,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
             
             # Modified Gram-Schmidt
             for i in 1:k
-                H[i, k] = inner(V[i], M⁻¹, v_out)
+                H[i, k] = ITensorMPS.inner(V[i]', M⁻¹, v_out)
                 w = +(w, -H[i, k] * V[i]; kwargs_orth...)
             end
             
@@ -255,8 +255,8 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
             gs[k], R[k, k] = givens(R[k, k], H[k+1, k], k, k + 1)
             
             # Apply Givens rotation to right hand side
-            y_view = view(y, k:k+1)
-            lmul!(gs[k], y_view)
+            y[k + 1] = zero(T)
+            lmul!(gs[k], y)
             
             β_inner = convert(S, abs(y[k + 1]))
         end
