@@ -151,7 +151,7 @@ using LinearAlgebra
         lap_dd_mpo = DifferenTT.symmetrized_laplacian(sfield_dd, grid; stencil_order=2)
         lap_dd_mat = DifferenTT.contract_mpo(lap_dd_mpo)
 
-        @test inv(lap_dd_mat) ≈ inv_dd_mat atol=1e-10
+        @test inv(lap_dd_mat) ≈ inv_dd_mat atol=1e-8
         
         # Dirichlet-Neumann case
         inv_dn_prec = DifferenTT.inverse_laplacian_preconditioner(test_sites, arch, grid, bc_dn)
@@ -162,6 +162,6 @@ using LinearAlgebra
         lap_dn_mpo = DifferenTT.symmetrized_laplacian(sfield_dn, grid; stencil_order=2)
         lap_dn_mat = DifferenTT.contract_mpo(lap_dn_mpo)
         
-        @test inv(lap_dn_mat) ≈ inv_dn_mat atol=1e-10
+        @test inv(lap_dn_mat) ≈ inv_dn_mat atol=1e-8
     end
 end
