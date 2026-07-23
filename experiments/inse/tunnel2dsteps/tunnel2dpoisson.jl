@@ -153,7 +153,7 @@ ENV["JULIA_DEBUG"] = ""
 # If this is uncommented, many dense matrices will start to be built to debug operator construction. 
 # ONLY ACTIVATE WITH SMALL NSITE < 12 OR SO (otherwise the simulation will run out of memory and crash)
 
-# ENV["JULIA_DEBUG"]="Pdetn"
+# ENV["JULIA_DEBUG"]="DifferenTT"
 
 #################################################
 
@@ -318,7 +318,7 @@ visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/i
 
 # Dirichlet correction on the pressure field moved to the rhs of the linear system
 Δp_correction_mpo = DifferenTT.pressure_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
-Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, array_backend(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
+Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
 
 # Apply the boundary nullifier
 ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff, maxdim=maxdim)
@@ -339,7 +339,7 @@ visualize_scalar(rhs, experiment.grid, experiment.u_fields.arch, "experiments/in
 # ---------------------------
 
 @time begin
-    pdt = isnothing(precond) ? DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p)[1] : DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)[1]
+    pdt = isnothing(precond) ? DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p) : DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)
 end
 
 divfree_p = pdt * (1 / dt)
@@ -370,7 +370,7 @@ div_free_u_mpss = ntuple(i -> begin
         dirichlet_correction_mpo = DifferenTT.pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order)#, cutoff=cutoff, maxdim=maxdim)
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, array_backend(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
 
         full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
 
@@ -399,7 +399,7 @@ visualize_vector(div_free_u_mpss, experiment.grid, experiment.u_fields.arch, "ex
         dirichlet_correction_mpo = DifferenTT.pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, array_backend(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
 
         full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction)#; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
         return full_dp
