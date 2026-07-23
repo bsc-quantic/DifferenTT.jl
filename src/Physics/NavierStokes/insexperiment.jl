@@ -55,7 +55,7 @@ struct INSExperiment{N} <: INSExperimentBase
         cutoff::Float64=1e-8
     ) where N
 
-        if !isnothing(object_mask) && u_fields.usites != p_field.usites != siteinds(object_mask)
+        if !isnothing(object_mask) && !(u_fields.usites == p_field.usites == siteinds(object_mask))
             throw(ArgumentError("Physical sites for velocity, pressure and mask fields do not match"))
         end
 
