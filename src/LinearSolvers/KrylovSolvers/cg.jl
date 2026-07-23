@@ -6,7 +6,7 @@ using KrylovKit: STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL
 function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     # Initial function operation and division defines number type
     y₀ = KrylovKit.apply(operator, x₀)
-    T = typeof(inner(b, y₀) / norm(b) * one(a₀) * one(a₁))
+    T = typeof(KrylovKit.inner(b, y₀) / norm(b) * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)
     α₁ = convert(T, a₁)
     # Continue computing r = b - a₀ * x₀ - a₁ * operator(x₀)
@@ -36,16 +36,16 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
     end
 
     z = KrylovKit.apply(M⁻¹, r)
-    ρ = inner(r, z)
+    ρ = KrylovKit.inner(r, z)
     p = scale!!(zerovector(z), z, 1)
     q = KrylovKit.apply(operator, p, α₀, α₁)
-    α = ρ / inner(p, q)
+    α = ρ / KrylovKit.inner(p, q)
     x = add!!(x, p, +α)
     r = add!!(r, q, -α)
     normr = norm(r)
     ρold = ρ
     z = KrylovKit.apply(M⁻¹, r)
-    ρ = inner(r, z)
+    ρ = KrylovKit.inner(r, z)
     β = ρ / ρold
     numops += 1
     numiter += 1
@@ -68,7 +68,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
     while true
         p = add!!(p, z, 1, β)
         q = KrylovKit.apply(operator, p, α₀, α₁)
-        α = ρ / inner(p, q)
+        α = ρ / KrylovKit.inner(p, q)
         x = add!!(x, p, α)
         r = add!!(r, q, -α)
         z = KrylovKit.apply(M⁻¹, r)
@@ -79,11 +79,11 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
             r = add!!(r, KrylovKit.apply(operator, x, α₀, α₁), -1)
             normr = norm(r)
             z = KrylovKit.apply(M⁻¹, r)
-            ρ = inner(r, z)
+            ρ = KrylovKit.inner(r, z)
             β = zero(β) # restart CG
         else
             ρold = ρ
-            ρ = inner(r, z)
+            ρ = KrylovKit.inner(r, z)
             β = ρ / ρold
         end
         @debug @show ρ
