@@ -13,9 +13,10 @@ Base.@kwdef struct TTCG <: KrylovKit.KrylovAlgorithm
     verbosity::Int = 0
     maxdim::Int = typemax(Int)
     cutoff::Float64 = 1e-8
+    orth_maxdim::Int = typemax(Int)
+    orth_cutoff::Float64 = 1e-12
 end
 
-# TODO Handle well the preconditioners and test behaviour
 """
     GlobalCG <: AbstractGlobalSolver
 
@@ -41,11 +42,13 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS, Nothing}; 
                  tol = merged_kwargs.rtol,
                  verbosity = merged_kwargs.verbosity,
                  maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                 cutoff = get(merged_kwargs, :cutoff, 1e-8)
+                 cutoff = get(merged_kwargs, :cutoff, 1e-8),
+                 orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
+                 orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
     )
                      
-    x, info = KrylovKit.linsolve(A, b, init, alg)
-    return x, (; info, residual=info.residual)
+    x, _ = KrylovKit.linsolve(A, b, init, alg)
+    return x
 end
 
 function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
@@ -57,11 +60,13 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPrecondit
                  tol = merged_kwargs.rtol,
                  verbosity = merged_kwargs.verbosity,
                  maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                 cutoff = get(merged_kwargs, :cutoff, 1e-8)
-    )
+                 cutoff = get(merged_kwargs, :cutoff, 1e-8),
+                 orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
+                 orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
+)
                      
-    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
-    return x, (; info, residual=info.residual)
+    x, _ = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    return x
 end
 
 
@@ -106,8 +111,8 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS, Nothing
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                     
-    x, info = KrylovKit.linsolve(A, b, init, alg)
-    return x, (; info, residual=info.residual)
+    x, _ = KrylovKit.linsolve(A, b, init, alg)
+    return x
 end
 
 function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
@@ -124,8 +129,8 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPrecon
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                         
-    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
-    return x, (; info, residual=info.residual)
+    x, _ = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    return x
 end
 
 #Helper functions in order to handle preconditioners in the TTCG, TTGMRES pipeline efficiently
@@ -139,17 +144,17 @@ function apply(P::FactorizedPreconditioner, v::MPS; kwargs...)
 end
 
 function ITensors.inner(v::MPS, P::Preconditioner, w::MPS)
-    return ITensors.inner(v, P.operator, w)
+    return ITensorMPS.inner(v, P.operator, w)
 end
 
 function KrylovKit.inner(v::MPS, P::Preconditioner, w::MPS)
-    return ITensors.inner(v, P.operator, w)
+    return ITensorMPS.inner(v, P.operator, w)
 end
 
 function ITensors.inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
-    return ITensors.inner(P.operator, v, P.operator, w)
+    return ITensorMPS.inner(P.operator, v, P.operator, w)
 end
 
 function KrylovKit.inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
-    return ITensors.inner(P.operator, v, P.operator, w)
+    return ITensorMPS.inner(P.operator, v, P.operator, w)
 end
