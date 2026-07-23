@@ -1,5 +1,6 @@
 using KrylovKit: ConvergenceInfo, normres2string, STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL
 using ITensors, ITensorMPS
+using ITensorMPS: apply, norm
 
 function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     kwargs_tt = (; maxdim=alg.maxdim, cutoff=alg.cutoff)
@@ -7,7 +8,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(inner(b, operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)
     α₁ = convert(T, a₁)
     
@@ -40,21 +41,21 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         @info "TTCG linsolve starts with norm of residual = $(normres2string(normr))"
     end
 
-    ρ = inner(r, r)
+    ρ = ITensorMPS.inner(r, r)
     p = copy(r)
     
     q_op = apply(operator, p; kwargs_tt...)
     q = iszero(α₀) ? (α₁ * q_op) : +(α₀ * p, α₁ * q_op; kwargs_tt...)
 
     # With TTs it is much more efficient to perform the full sandwich 
-    denom = iszero(α₀) ? α₁ * inner(p, operator, p) : α₁ * inner(p, p) + α₁ * inner(p, operator, p)
+    denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     α = ρ / denom
 
     x = +(x, α * p; kwargs_tt...)
     r = +(r, -α * q; kwargs_tt...)
     normr = norm(r)
     ρold = ρ
-    ρ = inner(r, r)
+    ρ = ITensorMPS.inner(r, r)
     β = ρ / ρold
     numops += 1
     numiter += 1
@@ -81,7 +82,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         q = iszero(α₀) ? (α₁ * q_op) : +(α₀ * p, α₁ * q_op; kwargs_tt...)
         
         # With TTs it is much more efficient to perform the full sandwich 
-        denom = iszero(α₀) ? α₁ * inner(p, operator, p) : α₁ * inner(p, p) + α₁ * inner(p, operator, p)
+        denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)
         r = +(r, -α * q; kwargs_tt...)
@@ -93,11 +94,11 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
             q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
             r = +(r, -1 * q_x; kwargs_tt...)
             normr = norm(r)
-            ρ = inner(r, r)
+            ρ = ITensorMPS.inner(r, r)
             β = zero(β) # restart CG
         else
             ρold = ρ
-            ρ = inner(r, r)
+            ρ = ITensorMPS.inner(r, r)
             β = ρ / ρold
         end
         @debug @show ρ
@@ -132,7 +133,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(inner(b, operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)
     α₁ = convert(T, a₁)
     
@@ -166,14 +167,14 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     end
 
     z = apply(M⁻¹, r; kwargs_tt...)
-    ρ = inner(r, M⁻¹, r)
+    ρ = ITensorMPS.inner(r', M⁻¹, r)
     p = copy(z)
     
     q_op = apply(operator, p; kwargs_tt...)
     q = iszero(α₀) ? (α₁ * q_op) : +(α₀ * p, α₁ * q_op; kwargs_tt...)
 
     # With TTs it is much more efficient to perform the full sandwich 
-    denom = iszero(α₀) ? α₁ * inner(p, operator, p) : α₁ * inner(p, p) + α₁ * inner(p, operator, p)
+    denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     α = ρ / denom
 
     x = +(x, α * p; kwargs_tt...)
@@ -181,7 +182,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     normr = norm(r)
     ρold = ρ
     z = apply(M⁻¹, r; kwargs_tt...)
-    ρ = inner(r, M⁻¹, r)
+    ρ = ITensorMPS.inner(r', M⁻¹, r)
     β = ρ / ρold
     numops += 1
     numiter += 1
@@ -208,7 +209,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         q = iszero(α₀) ? (α₁ * q_op) : +(α₀ * p, α₁ * q_op; kwargs_tt...)
         
         # With TTs it is much more efficient to perform the full sandwich 
-        denom = iszero(α₀) ? α₁ * inner(p, operator, p) : α₁ * inner(p, p) + α₁ * inner(p, operator, p)
+        denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)
         r = +(r, -α * q; kwargs_tt...)
@@ -222,11 +223,11 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
             r = +(r, -1 * q_x; kwargs_tt...)
             normr = norm(r)
             z = apply(M⁻¹, r; kwargs_tt...)
-            ρ = inner(r, M⁻¹, r)
+            ρ = ITensorMPS.inner(r', M⁻¹, r)
             β = zero(β) # restart CG
         else
             ρold = ρ
-            ρ = inner(r, M⁻¹, r)
+            ρ = ITensorMPS.inner(r', M⁻¹, r)
             β = ρ / ρold
         end
         @debug @show ρ
