@@ -82,7 +82,7 @@ function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::
             neumann_symmetrization = onedim_neumann_symmetrization_correction(onedim_op, field.arch, i, field.bcu[i]; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
             
             if !isnothing(neumann_symmetrization)
-                onedim_op = +(onedim_op, neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
+                onedim_op = _nothing_sum_handler(onedim_op, neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
             end
 
             if onedim_op isa MPO

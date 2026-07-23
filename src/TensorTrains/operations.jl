@@ -74,8 +74,13 @@ function _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=ty
     end
 end
 
-_sum_elements(elements::NTuple{N, AbstractMPS} where N; cutoff, maxdim) = sum(collect(elements); cutoff=cutoff, maxdim=maxdim)
-_sum_elements(elements::Tuple; kwargs...) = sum(elements)
+function _sum_elements(elements; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    if cutoff == 0.0 && maxdim == typemax(Int)
+        return sum(collect(elements); alg="directsum")
+    else
+        return sum(collect(elements); cutoff=cutoff, maxdim=maxdim)
+    end
+end
 
 # TODO Test this function
 """

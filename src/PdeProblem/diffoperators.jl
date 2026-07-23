@@ -50,7 +50,7 @@ function onedim_differential_operator(derivative_order::Int, arch::QTTArchitectu
     neumann_corr = _nothing_sum_handler(neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
 
     if !isnothing(neumann_corr)
-        onedim_mpo = +(onedim_mpo, -1.0 * neumann_corr; cutoff=cutoff, maxdim=maxdim)
+        onedim_mpo = _nothing_sum_handler(onedim_mpo, -1.0 * neumann_corr; cutoff=cutoff, maxdim=maxdim)
     end
     
     if n_eyepad > 0
