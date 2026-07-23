@@ -12,7 +12,7 @@ using ITensorMPS
         new_sites = siteinds(2, nsite)
         mpo = random_mpo(old_sites)
 
-        Pdetn.replace_siteinds!(mpo, new_sites)
+        DifferenTT.replace_siteinds!(mpo, new_sites)
 
         # After replacement, old site indices should be gone
         for i in 1:nsite
@@ -51,14 +51,14 @@ using ITensorMPS
         b = random_mps(sites)
 
         # All nothing → nothing
-        @test isnothing(Pdetn._nothing_sum_handler(nothing, nothing))
+        @test isnothing(DifferenTT._nothing_sum_handler(nothing, nothing))
 
         # One element → returns that element
-        result = Pdetn._nothing_sum_handler(a, nothing)
+        result = DifferenTT._nothing_sum_handler(a, nothing)
         @test result isa MPS
 
         # Two elements → sum
-        result2 = Pdetn._nothing_sum_handler(a, b)
+        result2 = DifferenTT._nothing_sum_handler(a, b)
         @test result2 isa MPS
     end
 

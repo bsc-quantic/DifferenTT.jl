@@ -65,13 +65,13 @@ using ITensorMPS
 
     @testset "Conversions" begin
         # base 2 (binary)
-        @test decimal_to_binary(5, 4) == [0, 1, 0, 1]
-        @test decimal_to_binary(0, 3) == [0, 0, 0]
-        @test decimal_to_binary(7, 3) == [1, 1, 1]
+        @test DifferenTT.decimal_to_binary(5, 4) == [0, 1, 0, 1]
+        @test DifferenTT.decimal_to_binary(0, 3) == [0, 0, 0]
+        @test DifferenTT.decimal_to_binary(7, 3) == [1, 1, 1]
         
-        @test binary_to_decimal([0, 1, 0, 1]) == 5
-        @test binary_to_decimal([0, 0, 0]) == 0
-        @test binary_to_decimal([1, 1, 1]) == 7
+        @test DifferenTT.binary_to_decimal([0, 1, 0, 1]) == 5
+        @test DifferenTT.binary_to_decimal([0, 0, 0]) == 0
+        @test DifferenTT.binary_to_decimal([1, 1, 1]) == 7
 
         # base 3
         @test DifferenTT.decimal_to_base(14, 3, 3) == [1, 1, 2] # 1*9 + 1*3 + 2*1 = 14

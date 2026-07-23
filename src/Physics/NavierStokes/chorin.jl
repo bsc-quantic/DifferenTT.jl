@@ -35,7 +35,7 @@ function poisson_pressure(
 
     Δp_correction_mpo = pressure_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
     # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-    Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, array_backend(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
+    Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
 
     # @debug_plots begin
     #     @show visualize_scalar(Δp_correction, experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/lapp_correction/lapp_correction_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
@@ -69,26 +69,25 @@ function poisson_pressure(
         # 1. Project RHS to guarantee consistency by explicitly removing the mean divergence 
         # (This is mandatory for pure Neumann / Periodic systems)
         total_div = integrate(rhs) * prod(experiment.grid.dx)
-        rhs = +(rhs, -(1 / vol) * total_div * ones_mps(experiment.p_field.usites, 1, array_backend(rhs)); cutoff=cutoff, maxdim=maxdim)
+        rhs = +(rhs, -(1 / vol) * total_div * ones_mps(experiment.p_field.usites, 1, backend_type(rhs)); cutoff=cutoff, maxdim=maxdim)
 
         # 2. Exact Pressure Pinning (Rank-1 Deflation)
         N_sites = length(experiment.p_field.usites)
         c_shift = 1.0 / (2^N_sites)
-        mean_pin_mpo = ones_mpo(experiment.p_field.usites, array_backend(Δ))
+        mean_pin_mpo = ones_mpo(experiment.p_field.usites, backend_type(Δ))
         
         Δ = +(Δ, -c_shift * mean_pin_mpo; cutoff=cutoff, maxdim=maxdim)
     end
 
 
     # @timeit_debug timeit_to "poisson solver" begin 
-        pdt_sol = linearsolve(solver, -1.0 * Δ, rhs, previous_p)
-        pdt = pdt_sol[1]
+        pdt = linearsolve(solver, -1.0 * Δ, rhs, previous_p)
     # end
 
     # l2 error of the linear solver = ||Ax - b||² = <psi|A†A|psi> - 2Re<psi|A†|b> + <b|b>
     term1 = ITensorMPS.inner(Δ, pdt, Δ, pdt)
     term2 = 2 * real(ITensorMPS.inner(rhs', -1.0 * Δ, pdt))
-    term3 = ITensorMPS.inner(rhs', rhs)
+    term3 = ITensorMPS.inner(rhs, rhs)
 
     res_l2norm = sqrt(max(0.0, term1 - term2 + term3))
 
@@ -155,7 +154,7 @@ function ∇p_correction(u_mpss::NTuple{N,MPS}, experiment::INSExperiment{N}, p_
             dirichlet_correction_mpo = pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 
             # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-            dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, array_backend(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+            dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
 
             full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
 
@@ -220,8 +219,6 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     u_boundary_nullifier = BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     p_diff_ops = DifferentialOpsScalar(experiment.grid, experiment.p_field; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=experiment.stencil_order, maxdim=experiment.maxdim, cutoff=experiment.cutoff)
-
-
 
     regularization_needed = regularization_check(experiment)
     @info "regularization = $regularization_needed"
