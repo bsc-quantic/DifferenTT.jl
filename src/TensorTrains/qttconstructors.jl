@@ -170,6 +170,7 @@ Construct an MPO that acts on a "corner" of the full domain, usually for handlin
 """
 function corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vector{<:Index}, flag::Symbol=:upper, array_type::Type{<:AbstractArray}=Array)
     corner_tensors = AbstractArray[]
+    dummy_sites = siteinds(2, 2)
 
     eye = adapt(array_type, identity_array(2))
 
@@ -184,16 +185,17 @@ function corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vecto
     end
 
     block1 = hcat(eye, J)
-    tensor = permutedims(reshape(block1, 2, 1, 2, 2), (1, 3, 2, 4))
+    tensor = permutedims(reshape(block1, 2, 2, 2), (1, 2, 3)) # Does this permute do anything?
     push!(corner_tensors, tensor)
 
     term1 = coefficients[1] * eye + coefficients[1] * J
     term2 = coefficients[3] * eye + coefficients[2] * J' + coefficients[4] * J
 
     block2 = vcat(term1, term2)
-    tensor = permutedims(reshape(block2, 2, 2, 2, 1), (1, 3, 2, 4)) # In this case, since 2 = 2, the output would be the same without the permutedims, but for the sake of consistency...
+    tensor = permutedims(reshape(block2, 2, 2, 2), (1, 3, 2)) 
 
     push!(corner_tensors, tensor)
+    corner_mpo = arrays2mpo(dummy_sites, corner_tensors)
 
-    return zeros_padding(corner_tensors, site_inds, zeros_padding_corner)
+    return zeros_padding(corner_mpo, site_inds, zeros_padding_corner)
 end
