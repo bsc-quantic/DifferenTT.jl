@@ -8,9 +8,12 @@ abstract type AbstractGlobalSolver <: AbstractLinearSolver end
 
 """
     linearsolve(solver::AbstractLinearSolver, A, b, x0; kwargs...)
+    linearsolve(solver::AbstractLinearSolver, A, b, M⁻¹, x0; kwargs...)
 
-Solve the linear system A x = b with initial guess x0 using the specified `solver`.
-Returns the solution `x` and a `NamedTuple` with solver statistics (e.g., info).
+Solve the linear system `A x = b` using the specified `solver`.
+
+# Returns
+- `x`: the solved state.
 """
 function linearsolve end
 
