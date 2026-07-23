@@ -58,9 +58,9 @@ function poisson_pressure(
     epsilon = 1e-10
     rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 
-    # @timeit_debug timeit_to "mean correction integration" begin
-    #     total_div = integrate(rhs) * prod(grid.dx)
-    # end
+    @timeit_debug timeit_to "mean correction integration" begin
+        total_div = integrate(rhs) * prod(experiment.grid.dx)
+    end
 
     vol = prod(experiment.grid.box_size)
 
@@ -79,10 +79,9 @@ function poisson_pressure(
         Δ = +(Δ, -c_shift * mean_pin_mpo; cutoff=cutoff, maxdim=maxdim)
     end
 
-
-    # @timeit_debug timeit_to "poisson solver" begin 
+    @timeit_debug timeit_to "poisson solver" begin 
         pdt = linearsolve(solver, -1.0 * Δ, rhs, previous_p)
-    # end
+    end
 
     # l2 error of the linear solver = ||Ax - b||² = <psi|A†A|psi> - 2Re<psi|A†|b> + <b|b>
     term1 = ITensorMPS.inner(Δ, pdt, Δ, pdt)
@@ -112,10 +111,14 @@ function (rhs::NavierStokesPredictorRHS)(u::Tuple, t::Real, stage::Int)
     N = length(u)
 
     # 1. Advection
-    advection_terms = advection(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    @timeit_debug timeit_to "advection" begin
+        advection_terms = advection(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    end
     
     # 2. Diffusion
-    diffusion_terms = diffusion(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    @timeit_debug timeit_to "diffusion" begin
+        diffusion_terms = diffusion(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    end
 
     # 3. Combine RHS = - (u.∇)u + (1/Re) ∇²u
     b_terms = ntuple(i -> +(-1.0 * advection_terms[i], inv_Re * diffusion_terms[i]; cutoff=cutoff, maxdim=maxdim), N)
@@ -148,20 +151,21 @@ function ∇p_correction(u_mpss::NTuple{N,MPS}, experiment::INSExperiment{N}, p_
     maxdim = experiment.maxdim
     dt = experiment.time_evol_settings.dt
 
-    u_corrected = ntuple(i -> begin
-            dp = apply(p_diff_ops.d_ops[i], p; cutoff=cutoff, maxdim=maxdim)
-            # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
-            dirichlet_correction_mpo = pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+    @timeit_debug timeit_to "divfree correction" begin 
+        u_corrected = ntuple(i -> begin
+                dp = apply(p_diff_ops.d_ops[i], p; cutoff=cutoff, maxdim=maxdim)
+                # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
+                dirichlet_correction_mpo = pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 
-            # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-            dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+                # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
+                dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
 
-            full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
+                full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
 
-            output = +(u_mpss[i], (-1.0 * dt) * full_dp; cutoff=cutoff, maxdim=maxdim)
-            return output
-        end, N)
-
+                output = +(u_mpss[i], (-1.0 * dt) * full_dp; cutoff=cutoff, maxdim=maxdim)
+                return output
+            end, N)
+    end
     return u_corrected
 end
 
@@ -215,10 +219,19 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     save_checkpoints = collect(1:save_every:experiment.time_evol_settings.nsteps)
     save_checkpoints = save_checkpoints[end] == experiment.time_evol_settings.nsteps ? save_checkpoints : push!(save_checkpoints, experiment.time_evol_settings.nsteps)
 
-    u_diff_ops = DifferentialOps(experiment.grid, experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    u_boundary_nullifier = BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    p_diff_ops = DifferentialOpsScalar(experiment.grid, experiment.p_field; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=experiment.stencil_order, maxdim=experiment.maxdim, cutoff=experiment.cutoff)
+    @timeit_debug timeit_to "u_diff_ops" begin
+        u_diff_ops = DifferentialOps(experiment.grid, experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    end
+    @timeit_debug timeit_to "u_diff_ops" begin
+        u_boundary_nullifier = BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    end
+    @timeit_debug timeit_to "u_diff_ops" begin
+        p_diff_ops = DifferentialOpsScalar(experiment.grid, experiment.p_field; stencil_order=experiment.stencil_order, cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    end
+    
+    @timeit_debug timeit_to "u_diff_ops" begin
+        Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=experiment.stencil_order, maxdim=experiment.maxdim, cutoff=experiment.cutoff)
+    end
 
     regularization_needed = regularization_check(experiment)
     @info "regularization = $regularization_needed"
@@ -238,8 +251,9 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     for s in 1:experiment.time_evol_settings.nsteps
         try
             prev_u_mpss = last(experiment.u_fields)
-
-            masked_u_mpss = mask_correction(prev_u_mpss, experiment.object_mask; cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+            @timeit_debug timeit_to "mask correction" begin 
+                masked_u_mpss = mask_correction(prev_u_mpss, experiment.object_mask; cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+            end
 
             divfree_p, linsolve_error = poisson_pressure(experiment, masked_u_mpss, u_diff_ops, Δ_cache, solver; regularize=regularization_needed)
             
@@ -253,7 +267,9 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
             div_free_u_mpss = ∇p_correction(masked_u_mpss, experiment, p_diff_ops, u_boundary_nullifier)
 
             # Predictor step: Explict integration of advection-diffusion
-            timestepped_u_mpss = timestep(stepper, div_free_u_mpss, experiment.time_evol_settings.dt, rhs_func, s * experiment.time_evol_settings.dt)
+            @timeit_debug timeit_to "timestep" begin 
+                timestepped_u_mpss = timestep(stepper, div_free_u_mpss, experiment.time_evol_settings.dt, rhs_func, s * experiment.time_evol_settings.dt)
+            end
 
             if s in save_checkpoints
                 push!(experiment.u_fields, timestepped_u_mpss)
@@ -270,9 +286,8 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     end
 
     if !isnothing(logger)
-        # Note: logger logic depends on external save implementations
-        # log_data(logger, log_filename, "u_fields", experiment.u_fields)
-        # log_data(logger, log_filename, "p_field", experiment.p_field)
-        # log_data(logger, log_filename, "linsolve_errorlog", linsolve_errorlog)
+        log_data(logger, log_filename, "u_fields", experiment.u_fields)
+        log_data(logger, log_filename, "p_field", experiment.p_field)
+        log_data(logger, log_filename, "linsolve_errorlog", linsolve_errorlog)
     end
 end
