@@ -124,6 +124,8 @@ function ones_mps(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
+ones_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = ones_mps(site_inds, 1, array_type)
+
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mps(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     site_inds = siteinds(site_dims)
@@ -131,9 +133,10 @@ function ones_mps(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:Abst
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
-function ones_mps(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    return ones_mps(collect(Int, site_dims(arch)), bond_dim, array_type)
-end
+ones_mps(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array) = ones_mps(site_dims, 1, array_type)
+
+ones_mps(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) = ones_mps(collect(Int, site_dims(arch)), bond_dim, array_type)
+ones_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array) = ones_mps(collect(Int, site_dims(arch)), 1, array_type)
 
 # TODO Test these functions
 """
@@ -171,6 +174,8 @@ function ones_mpo(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
+ones_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = ones_mpo(site_inds, 1, array_type)
+
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mpo(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     site_inds = siteinds(site_dims)
@@ -178,9 +183,10 @@ function ones_mpo(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:Abst
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
-function ones_mpo(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    return ones_mpo(collect(Int, site_dims(arch)), bond_dim, array_type)
-end
+ones_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array) = ones_mpo(site_dims, 1, array_type)
+
+ones_mpo(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) = ones_mpo(collect(Int, site_dims(arch)), bond_dim, array_type)
+ones_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array) = ones_mpo(collect(Int, site_dims(arch)), 1, array_type)
 
 function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
     n = length(site_inds)
