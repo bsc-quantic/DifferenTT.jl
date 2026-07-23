@@ -17,7 +17,7 @@ using ITensorMPS
         mpo_1 = MPO(sites_1, "Id")
         lifted_mpo_1 = DifferenTT.ndim_operator_mpo(mpo_1, 1, full_sites, arch)
         @test length(lifted_mpo_1) == length(full_sites)
-        mps_test = randomMPS(full_sites)
+        mps_test = random_mps(full_sites)
         @test norm(apply(lifted_mpo_1, mps_test)) > 0
         
         # Reversal case
@@ -30,7 +30,7 @@ using ITensorMPS
         full_sites_int = siteinds(arch_int)
         lifted_mpo_int = DifferenTT.ndim_operator_mpo(mpo_1, 1, full_sites_int, arch_int)
         @test length(lifted_mpo_int) == length(full_sites_int)
-        mps_test_int = randomMPS(full_sites_int)
+        mps_test_int = random_mps(full_sites_int)
         @test norm(apply(lifted_mpo_int, mps_test_int)) > 0
     end
 end

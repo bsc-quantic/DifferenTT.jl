@@ -16,37 +16,37 @@ using LinearAlgebra
 
     @testset "toeplitz_mpo" begin        
         # Periodic
-        bc_periodic = Pdetn.BoundaryCond1d(Pdetn.PeriodicBC(), Pdetn.PeriodicBC())
+        bc_periodic =BoundaryCond1d(PeriodicBC(),PeriodicBC())
         
-        eigth_order_mpo = Pdetn.toeplitz_mpo(sites, coeffs, bc_periodic)
+        eigth_order_mpo = DifferenTT.toeplitz_mpo(sites, coeffs, bc_periodic)
         @test eigth_order_mpo isa MPO
         @test length(eigth_order_mpo) == n
         @test linkdim(eigth_order_mpo, 1) == 3
         @test linkdim(eigth_order_mpo, n-1) == 9
 
-        second_order_mpo = Pdetn.toeplitz_mpo(sites, short_coeffs, bc_periodic)
+        second_order_mpo = DifferenTT.toeplitz_mpo(sites, short_coeffs, bc_periodic)
         @test second_order_mpo isa MPO
         @test length(second_order_mpo) == n
         @test linkdim(second_order_mpo, 1) == 3
         @test linkdim(second_order_mpo, n-1) == 3
 
-        @test_throws ArgumentError Pdetn.toeplitz_mpo(sites, Dict(0 => 2.0, 1 => -1.0), bc_periodic)
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(sites, Dict(0 => 2.0, 1 => -1.0), bc_periodic)
 
         # Dirichlet
-        bc_dirichlet = Pdetn.BoundaryCond1d(Pdetn.DirichletBC(0.0), Pdetn.DirichletBC(0.0))
-        mpo_d = Pdetn.toeplitz_mpo(sites, coeffs, bc_dirichlet)
+        bc_dirichlet =BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        mpo_d = DifferenTT.toeplitz_mpo(sites, coeffs, bc_dirichlet)
         @test mpo_d isa MPO
         @test length(mpo_d) == n
     end
 
     @testset "column_pick_mpo" begin
         col_idx = 2
-        mpo = Pdetn.column_pick_mpo(sites, col_idx)
+        mpo = DifferenTT.column_pick_mpo(sites, col_idx)
         @test mpo isa MPO
         @test length(mpo) == n
     
         # Test vector version
-        mpo_sum = Pdetn.column_pick_mpo(sites, [1, 2])
+        mpo_sum = DifferenTT.column_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
 
         # Test MPO entries
@@ -59,12 +59,12 @@ using LinearAlgebra
 
     @testset "row_pick_mpo" begin
         row_idx = 2
-        mpo = Pdetn.row_pick_mpo(sites, row_idx)
+        mpo = DifferenTT.row_pick_mpo(sites, row_idx)
         @test mpo isa MPO
         @test length(mpo) == n
         
         # Test vector version
-        mpo_sum = Pdetn.row_pick_mpo(sites, [1, 2])
+        mpo_sum = DifferenTT.row_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
 
         # Test MPO entries
@@ -75,7 +75,7 @@ using LinearAlgebra
 
     @testset "corner_pick_mpo" begin
         coefficients = [1.0, 2.0, 3.0, 4.0]
-        mpo = Pdetn.corner_pick_mpo(coefficients, sites)
+        mpo = DifferenTT.corner_pick_mpo(coefficients, sites)
         @test mpo isa MPO
         @test length(mpo) == n
         @test linkdim(mpo, n - 2) == 1
