@@ -1,5 +1,4 @@
 import ITensorMPS: apply
-import ITensors: inner
 
 """
     TTCG <: KrylovKit.KrylovAlgorithm
@@ -139,10 +138,18 @@ function apply(P::FactorizedPreconditioner, v::MPS; kwargs...)
     return apply(transpose(P.operator), v_out; kwargs...)
 end
 
-function inner(v::MPS, P::Preconditioner, w::MPS)
-    return inner(v, P.operator, w)
+function ITensors.inner(v::MPS, P::Preconditioner, w::MPS)
+    return ITensors.inner(v, P.operator, w)
 end
 
-function inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
-    return inner(P.operator, v, P.operator, w)
+function KrylovKit.inner(v::MPS, P::Preconditioner, w::MPS)
+    return ITensors.inner(v, P.operator, w)
+end
+
+function ITensors.inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
+    return ITensors.inner(P.operator, v, P.operator, w)
+end
+
+function KrylovKit.inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)
+    return ITensors.inner(P.operator, v, P.operator, w)
 end
