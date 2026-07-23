@@ -16,10 +16,17 @@ end
 """
     Base.transpose(mpo::MPO)
 
-Transpose an MPO by swapping the prime levels of site indices at each site.
+Transpose an MPO by physically swapping the prime levels of site indices at each site.
 """
-Base.transpose(mpo::MPO) = swapprime!(copy(mpo), 0, 1)
-    
+function Base.transpose(mpo::MPO)
+    nsite = length(mpo)
+    new_mpo = MPO(nsite)
+    for site in 1:nsite
+        index = siteind(mpo, site)
+        new_mpo[site] = swapinds(mpo[site], index, index')
+    end
+    return new_mpo
+end
 
 """
     Base.reverse(mpo::MPO)
