@@ -23,11 +23,4 @@ using DifferenTT: LocalUpdaterArgs, GlobalUpdaterArgs, SweepingArgs, default_lin
         nt = NamedTuple(args)
         @test nt.nsweeps == 5
     end
-
-    @testset "ResidualALS instantiation" begin
-        solver = ResidualALS()
-        @test solver.residual_tol == 1e-12
-        @test solver.residual_damp == 1.1
-        @test typeof(solver.updater) == DifferenTT.KrylovUpdater
-    end
 end

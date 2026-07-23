@@ -24,7 +24,7 @@ using LinearAlgebra
         )
         x = linearsolve(solver, A, b, nothing)
         @test x isa MPS
-        @test norm(contract(A, x) - b) < 1e-6
+        @test norm(apply(A, x) - b) < 1e-6
     end
 
     @testset "Preconditioned linearsolve" begin
@@ -35,6 +35,6 @@ using LinearAlgebra
         M_prec = rank1_preconditioner(A)
         x = linearsolve(solver, A, b, M_prec, nothing)
         @test x isa MPS
-        @test norm(contract(A, x) - b) < 1e-6
+        @test norm(apply(A, x) - b) < 1e-6
     end
 end
