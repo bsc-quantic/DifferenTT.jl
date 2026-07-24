@@ -55,6 +55,13 @@ function rhs_f(x)
     return -delta_u
 end
 
+function get_1d_A(i::Int, grid, arch)
+    bc = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    mat = DifferenTT.onedim_differential_operator(2, arch, i, bc, Array)
+    mat = -1.0 * mat .* (1.0 / grid.dx[i]^2)
+    return mat
+end
+
 N = 20
 d = 10
 println("Setting up $(N)D Poisson problem on TT Architecture with dimension $(d) per site.")
@@ -117,12 +124,51 @@ println("Solving linear system...")
 println("norm(rhs_mps) = ", norm(rhs_mps))
 println("norm(exact_mps) = ", norm(exact_mps))
 
-out_mps = linearsolve(solver1, A, rhs_mps, nothing)
+println("\n--- Baseline (No preconditioner) ---")
+time_baseline = @elapsed out_mps_base = linearsolve(solver1, A, rhs_mps, init_mps)
+diff_base = +(out_mps_base, -1.0 * exact_mps; cutoff=1e-10)
+rel_error_base = norm(diff_base) / norm(exact_mps)
+println("Baseline relative error: ", rel_error_base, " | Time: ", time_baseline)
+println("Solution maxlinkdim: ", maxlinkdim(out_mps_base))
 
-# Compare against exact solution
-diff = +(out_mps, -1.0 * exact_mps; cutoff=1e-10)
-rel_error = norm(diff) / norm(exact_mps)
+println("\n--- Sinc-Quadrature Preconditioner ---")
+M = 20
+println("Building Sinc-Quadrature PC (M = $M)...")
+A_list = [get_1d_A(i, grid, arch) for i in 1:N]
+time_sinc_build = @elapsed sinc_pc = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
 
-println("Relative error (MPS norm): ", rel_error)
-println("Solution maxlinkdim: ", maxlinkdim(out_mps))
+solver_sinc = ResidualALS(
+    sweep_kwargs=sweep_kwargs, 
+    updater_kwargs=updater_kwargs, 
+    residual_tol=1e-4
+)
+time_sinc_solve = @elapsed out_mps_sinc = linearsolve(solver_sinc, A, rhs_mps, sinc_pc, init_mps)
+diff_sinc = +(out_mps_sinc, -1.0 * exact_mps; cutoff=1e-10)
+rel_error_sinc = norm(diff_sinc) / norm(exact_mps)
+println("Sinc-Quadrature relative error: ", rel_error_sinc, " | Build Time: ", time_sinc_build, " | Solve Time: ", time_sinc_solve)
+println("Solution maxlinkdim: ", maxlinkdim(out_mps_sinc))
+
+println("\n--- FAI Preconditioner ---")
+μ = 1e5
+gdim = 5
+println("Building FAI PC (μ = $μ, gdim = $gdim)...")
+D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+fai_builder_solver = ResidualALS(sweep_kwargs=SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12), residual_tol=1e-9)
+
+time_fai_build = @elapsed begin
+    unscaledG, D = DifferenTT.fai_dg(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
+    Gl = apply(D, unscaledG; maxdim=gdim)
+    fai_pc = DifferenTT.FactorizedPreconditioner(Gl)
+end
+
+solver_fai = ResidualALS(
+    sweep_kwargs=sweep_kwargs, 
+    updater_kwargs=updater_kwargs, 
+    residual_tol=1e-4
+)
+time_fai_solve = @elapsed out_mps_fai = linearsolve(solver_fai, A, rhs_mps, fai_pc, init_mps)
+diff_fai = +(out_mps_fai, -1.0 * exact_mps; cutoff=1e-10)
+rel_error_fai = norm(diff_fai) / norm(exact_mps)
+println("FAI relative error: ", rel_error_fai, " | Build Time: ", time_fai_build, " | Solve Time: ", time_fai_solve)
+println("Solution maxlinkdim: ", maxlinkdim(out_mps_fai))
 
