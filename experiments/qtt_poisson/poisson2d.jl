@@ -99,9 +99,24 @@ sweep_kwargs = SweepingArgs(;
     cutoff=1e-11
 )
 
-solver = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
+residual_solver = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
-output_mps = linearsolve(solver, -1.0 * Δ, rhs_mps, nothing)
+global_updater_kwargs = GlobalUpdaterArgs(;
+    ishermitian = true,
+    isposdef = true,
+    krylovdim = 1,
+    maxiter = 100,
+    rtol = 1e-8,
+    verbosity = 0,
+    maxdim = typemax(Int),
+    cutoff = 1e-8,
+    orth_maxdim = typemax(Int),
+    orth_cutoff = 1e-12,
+)
+
+ttcg_solver = GlobalCG(; updater_kwargs = global_updater_kwargs)
+
+output_mps = linearsolve(ttcg_solver, -1.0 * Δ, rhs_mps, nothing)
 visualize_scalar(output_mps, grid, arch, "experiments/qtt_poisson/numerical_2d.png"; npoints=200, aspect_ratio=:equal, size = fig_size)
 
 # Compare against exact solution directly in MPS space.

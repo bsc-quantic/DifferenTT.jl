@@ -42,7 +42,7 @@ end
 box_size = (2.0, 1.0)
 fig_size = (1200, 600)
 clims = (-20, 20)
-nodes = (8, 8)
+nodes = (13, 12)
 sites = load_timevolved_mps ? siteinds(kickstart_mps_vx) : siteinds(2, sum(abs, nodes))
 
 ############################################################
@@ -275,15 +275,12 @@ end
 
 #---------------------------------------------------
 
-# Choose between the preconditioners built before or nothing
-precond = fai_precond
-
 # Struct initialization to track how many iterations does the cg take ate each site, check the struct docstirng for more info.
 stats = KrylovSweepStats()
 
 local_updater_kwargs = LocalUpdaterArgs(;
-    ishermitian=true,
-    isposdef=true,
+    ishermitian=false,
+    isposdef=false,
     compute_cond=false,
     rtol=1e-4,
     krylovdim=1,
@@ -296,7 +293,22 @@ sweep_kwargs = SweepingArgs(;
     maxdim=150,
     cutoff=1e-11
 )
-solver = ALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=local_updater_kwargs)
+als_solver = ALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=local_updater_kwargs)
+
+global_updater_kwargs = GlobalUpdaterArgs(;
+    ishermitian = true,
+    isposdef = true,
+    krylovdim = 1,
+    maxiter = 50,
+    rtol = 1e-6,
+    verbosity = 1,
+    maxdim = 70,
+    cutoff = 1e-8,
+    orth_maxdim = 150,
+    orth_cutoff = 1e-12,
+)
+
+ttcg_solver = GlobalCG(; updater_kwargs = global_updater_kwargs)
 
 dt = experiment.time_evol_settings.dt
 cutoff = experiment.cutoff
@@ -336,8 +348,10 @@ visualize_scalar(rhs, experiment.grid, experiment.u_fields.arch, "experiments/in
 
 # ---------------------------
 
+# Choose between the preconditioners built before or nothing
+precond = nothing
 @time begin
-    pdt = isnothing(precond) ? DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p) : DifferenTT.linearsolve(solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)
+    pdt = isnothing(precond) ? DifferenTT.linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p) : DifferenTT.linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)
 end
 
 divfree_p = pdt * (1 / dt)
