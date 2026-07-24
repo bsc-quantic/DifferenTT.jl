@@ -90,7 +90,7 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
     linsolve_b = MPS([linsolve_b...]) # Convert the still MPO object into an MPS
 
     if isnothing(linsolve_x0)
-        _linsolve_x0 = MPS([zeros_mpo(sites, backend_type(operator))...])
+        _linsolve_x0 = MPS([1e-12 * adapt(backend_type(operator), random_mpo(sites, 1))...])
         for i in 1:N
             replaceind!(_linsolve_x0[i], sites[i]' => helper_sites[i])
             _linsolve_x0[i] = _linsolve_x0[i] * combiners[i]
@@ -147,7 +147,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
 
     projected_A = +(apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum")
     projected_b = MPS([linsolve_b...])
-    projected_x0 = zeros_mps(combiner_inds, array_type)
+    projected_x0 = 1e-12 * adapt(array_type, random_mps(combiner_inds; linkdims=1))
 
     if preconditioning
         preconditioner = rank1_preconditioner(projected_A)
@@ -366,7 +366,7 @@ end
 """
     inverse_laplacian_preconditioner(arch::QTTArchitecture{1}, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
 
-Construct the exact explicit QTT representation of the 1D inverse Laplacian following
+Construct the exact explicit QTT representation of the -1.0 * 1D inverse Laplacian following
 Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
 Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
 """
