@@ -53,6 +53,19 @@ Base.@kwdef struct GlobalUpdaterArgs
     orth_cutoff::Float64 = 1e-12
 end
 
+# Bridge beween DifferenTT and ITensorMPS to avoid crashes in the observer pipeline
+function default_differenTT_checkdone(; kwargs...)
+    obs = get(kwargs, :observer, get(kwargs, :observer!, ITensorMPS.default_observer()))
+    sweep_obs = get(kwargs, :sweep_observer, get(kwargs, :sweep_observer!, ITensorMPS.default_sweep_observer()))
+    
+    clean_kwargs = filter(kv -> kv.first ∉ (:observer, :observer!, :sweep_observer, :sweep_observer!), kwargs)
+    
+    obs_done = (typeof(obs) === typeof(ITensorMPS.default_observer())) ? false : ITensorMPS.checkdone!(obs; clean_kwargs...)
+    sweep_obs_done = (typeof(sweep_obs) === typeof(ITensorMPS.default_sweep_observer())) ? false : ITensorMPS.checkdone!(sweep_obs; clean_kwargs...)
+    
+    return obs_done || sweep_obs_done
+end
+
 """
     SweepingArgs
 
@@ -66,7 +79,7 @@ Base.@kwdef struct SweepingArgs
     outputlevel::Int = 0
     observer!::Any = ITensorMPS.default_observer()
     sweep_observer!::Any = ITensorMPS.default_sweep_observer()
-    checkdone::Any = ITensorMPS.default_checkdone()
+    checkdone::Any = default_differenTT_checkdone
 end
 
 """
@@ -142,3 +155,31 @@ end
 Abstract type for local updaters used in alternating linear schemes.
 """
 abstract type AbstractUpdater end
+
+
+"""
+    ResidualObserver <: AbstractObserver
+
+An observer that computes the global residual norm `||A * x - b||` 
+and terminates the DMRG/ALS sweeps early if the residual falls below a given tolerance.
+"""
+Base.@kwdef struct ResidualObserver <: AbstractObserver
+    A::Any
+    b::MPS
+    tol::Float64 = 1e-8
+end
+
+function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
+    normb2 = norm(o.b)^2
+    normAx2 = inner(o.A, state, o.A, state)
+    Ax_b = conj(inner(o.b', o.A, state))
+    
+    res2 = normAx2 - 2 * real(Ax_b) + normb2
+    res = res2 > 0 ? sqrt(res2) : 0.0
+    
+    if res < o.tol
+        @info "Residual early truncation condition met: norm(residual) = $(res) < $(o.tol)"
+        return true
+    end
+    return false
+end
