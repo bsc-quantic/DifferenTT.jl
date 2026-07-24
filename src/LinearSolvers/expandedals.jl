@@ -30,7 +30,8 @@ function linearsolve(solver::ExpandedALS, A, b, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
     updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
-    return alternating_update(reduced_problem, init, solver.expander_func; solver.updater, updater_kwargs, NamedTuple(solver.sweep_kwargs)...)
+    sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
+    return alternating_update(reduced_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...)
 end
 
 # TODO Check if this works
@@ -38,7 +39,8 @@ function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
     updater_kwargs = (; coefficients = (false, true), updater_kwargs...)
-    return alternating_update(reduced_precond_problem, init, solver.expander_func; solver.updater, updater_kwargs, NamedTuple(solver.sweep_kwargs)...)
+    sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
+    return alternating_update(reduced_precond_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...)
 end
 
 """
