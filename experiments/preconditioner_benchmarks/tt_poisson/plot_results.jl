@@ -72,7 +72,7 @@ end
 # 3. Site-by-site Iteration Profile (N=8)
 if nrow(df_N) > 0 && !use_nocond
     fig_iter = Figure(size=(900, 500))
-    ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Average Krylov Iterations", title = "Site-by-Site Iteration Profile (N=$target_N)")
+    ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Total Krylov Iterations", title = "Site-by-Site Iteration Profile (N=$target_N)")
     
     df_b = df_N[df_N.method .== "baseline", :]
     if nrow(df_b) > 0 && hasproperty(df_b, :iters_per_site)

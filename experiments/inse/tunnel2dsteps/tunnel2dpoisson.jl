@@ -368,7 +368,7 @@ res_l2norm = sqrt(max(0.0, term1 - term2 + term3))
 @show res_l2norm / norm(rhs) # 0.03, but has gone up in some tests upt to 0.76 with the same resources as the coarse case...
 
 #show the iteration stats from the solve
-@show DifferenTT.positions_mean(stats)
+@show DifferenTT.positions_sum(stats)
 
 #---------------------------------------------------
 

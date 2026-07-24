@@ -58,7 +58,7 @@ for nodes in system_sizes
     # 3. Iteration Profile
     if !use_nocond
         fig_iter = Figure(size=(900, 500))
-        ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Average Krylov Iterations", title = "Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])")
+        ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Total Krylov Iterations", title = "Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])")
         
         if nrow(df_base) > 0 && hasproperty(df_base, :iters_per_site)
             iters_b = df_base.iters_per_site[1]

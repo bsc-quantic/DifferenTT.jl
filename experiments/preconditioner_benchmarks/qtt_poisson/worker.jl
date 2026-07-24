@@ -8,16 +8,16 @@ using LinearAlgebra
 using JLD2
 using DifferenTT
 
-use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
+base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
 # We extrapolate system sizes from FAI. QTT uses 1D. (16,), (20,), (24,) correspond to 2^16, 2^20, 2^24.
-system_sizes = [(16,), (20,), (24,)]
+system_sizes = [(8,), (20,), (24,)]
 mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
 
 G_maxdims_map = Dict(
+    (8,) => [2, 3, 4, 5, 6, 7, 8],
     (16,) => [2, 3, 4, 5, 6, 7, 8],
     (20,) => [2, 3, 4, 5, 6, 7, 8],
     (24,) => [2, 3, 4, 5, 6, 7, 8]
@@ -25,16 +25,6 @@ G_maxdims_map = Dict(
 
 cutoff = 1e-13
 box_size = (1.0,)
-
-Glinsolve_kwargs_base = (;
-    sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=30, maxdim=20, cutoff=1e-12),
-    residual_tol = 1e-9
-)
-
-D_kwargs = (;
-    cutoff=1e-11,
-    oversample=10,
-)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -64,7 +54,7 @@ function setup_problem(nodes)
     grid = Grid(arch, box_size)
     
     bc = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
-    sites = siteinds(2, sum(nodes))
+    sites = siteinds(arch)
     # Dummy field to generate the Laplacian
     dummy_mps = zeros_mps(sites)
     
@@ -74,28 +64,10 @@ function setup_problem(nodes)
     A = -1.0 * Δ
     
     # Exact Inverse Laplacian MPO
-    exact_inv = DifferenTT.exact_inverse_laplacian(sites, arch, bc, Array)
-    # The analytical laplacian in Kazeev is for step size h=1 (i.e. matrix index).
-    # Discretized Laplacian is A = -D2 / h^2. So A^-1 = -h^2 D2^-1.
-    # Actually, Kazeev returns the exact inverse of the tridiagonal matrix directly.
-    # The symmetrized_laplacian also constructs the tridiagonal matrix, scaled by 1/h^2.
-    # Let's scale exact_inv to match A^{-1}.
-    # A = (1/h^2) * T, so A^{-1} = h^2 * T^{-1}.
-    # Wait, Kazeev returns the inverse of T, where T is the tridiagonal matrix with 2 on diag and -1 on off-diag.
-    # symmetrized_laplacian builds exactly this matrix scaled by 1/h^2.
-    h = grid.dx[1]
-    exact_inv = h^2 * exact_inv
-    
-    return A, exact_inv
+    exact_inv_op = inverse_laplacian_preconditioner(sites, arch, grid, bc).operator
+    return A, exact_inv_op
 end
 
-function get_fai(A, μ, gdim, solver)
-    D_kwargs_local = (; D_kwargs..., maxdim=gdim)
-    # We call the FAI builder
-    unscaledG, D = DifferenTT.fai_dg(A, μ, solver, D_kwargs_local; preconditioning=false)
-    Gl = apply(D, unscaledG; maxdim=gdim)
-    return Gl
-end
 
 function run_task(task::TaskSpec, A, exact_inv)
     μ = task.mu
@@ -103,31 +75,21 @@ function run_task(task::TaskSpec, A, exact_inv)
     
     @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
 
-    solver = DifferenTT.ResidualALS(; Glinsolve_kwargs_base...)
+    solver = ResidualALS(
+        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
+        residual_tol = 1e-9
+    )
     
     t_build = @elapsed begin
-        Gl = get_fai(A, μ, gdim, solver)
+        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+        precond = DifferenTT.fai_preconditioner(A, μ, solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+        Gl = precond.operator
     end
     
     # We want to compare Gl^T Gl against exact_inv.
     # Gl^T Gl
-    Gl_T = transpose(Gl)
-    replace_siteinds!(Gl_T, siteinds(Gl)) # Wait, transpose might flip the siteinds primes.
-    # Actually, FAI builds G_l such that G_l^T G_l approximates A^-1.
-    # In DifferenTT, FAI Gl returns an MPO. 
-    # MPOs have unprimed indices on one side, primed on the other. 
-    # apply(dag(Gl), Gl) would give G_l^T G_l? Let's just compare by computing Frobenius norm of (exact_inv - Gl^T Gl).
-    # Since G_l is real, dag(Gl) is transpose.
-    # But wait, we can just apply both to a random vector and compare? No, exact norm is better.
-    # Frobenius norm of an MPO diff = inner(diff, diff)
-    
-    # To do Gl^T Gl:
-    # First we need to make sure the indices match
-    Gl_dag = dag(Gl)
-    Gl_T_Gl = apply(Gl_dag, Gl; maxdim=20, cutoff=1e-10)
-    
-    # ensure primes are matched with exact_inv
-    replace_siteinds!(Gl_T_Gl, siteinds(exact_inv))
+    Gl_T = dag(transpose(Gl))
+    Gl_T_Gl = apply(Gl_T, Gl; alg="naive")
     
     # Frobenius norm
     diff = +(exact_inv, -1.0 * Gl_T_Gl; cutoff=1e-10, maxdim=20)
@@ -150,7 +112,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     return result
 end
 
-task_id = parse(Int, ARGS[1])
+task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
 all_tasks = build_task_list()
 
 if task_id < 1 || task_id > length(all_tasks)
@@ -159,6 +121,21 @@ end
 
 task = all_tasks[task_id]
 @info "Task $task_id / $(length(all_tasks)): nodes=$(task.nodes), μ=$(task.mu), G=$(task.gdim)"
+
+@info "Running JIT warmup..."
+dummy_A, dummy_exact = setup_problem((4,))
+dummy_solver = ResidualALS(
+    sweep_kwargs = SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-12),
+    residual_tol=1e-9
+)
+dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
+dummy_precond = DifferenTT.fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
+dummy_Gl = dummy_precond.operator
+dummy_Gl_T = dag(transpose(dummy_Gl))
+dummy_Gl_T_Gl = apply(dummy_Gl_T, dummy_Gl; alg="naive")
+replace_siteinds!(dummy_Gl_T_Gl, siteinds(dummy_exact))
++(dummy_exact, -1.0 * dummy_Gl_T_Gl; cutoff=1e-10, maxdim=2)
+@info "JIT warmup complete."
 
 A, exact_inv = setup_problem(task.nodes)
 result = run_task(task, A, exact_inv)

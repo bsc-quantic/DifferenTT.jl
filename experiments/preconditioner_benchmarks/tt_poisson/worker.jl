@@ -6,6 +6,7 @@ using ITensors
 using ITensorMPS
 using LinearAlgebra
 using JLD2
+using TensorCrossInterpolation
 using DifferenTT
 
 use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
@@ -14,8 +15,8 @@ const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
-system_dims = [3, 4, 5, 6, 7, 8, 9, 10]
-const N_SITES_PER_DIM = 16
+system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
+const N_SITES_PER_DIM = 5
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
@@ -54,12 +55,84 @@ end
 function get_1d_A(i::Int, grid, arch)
     noneye_dim = arch.var_dims[i]
     bc = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
-    # onedim_differential_operator(2, arch, i, bc)
+    # onedim_differential_operator with an arch::TTArchitecture{N} returns the matrix we need
     mat = DifferenTT.onedim_differential_operator(2, arch, i, bc, Array)
     # the exact Laplacian has a minus sign to be positive definite
     # also scale by 1 / dx^2
     mat = -1.0 * mat .* (1.0 / grid.dx[i]^2)
     return mat
+end
+
+# TODO Make sure this problem is well suited to be atacked with an MPS of bond dimension neither too large nor too small
+# The solution is defined as:
+#     u(x) = v(x) ⋅ g(x)²
+
+# where:
+#     • v(x) = ∏ᵢ₌₁ᴺ sin(π xᵢ)
+#     • g(x) = ∑ᵢ₌₁ᴺ sin(π xᵢ)
+
+function sol_func(x)
+    N = length(x)
+    val = 1.0
+    for i in 1:N
+        val *= sin(pi * x[i])
+    end
+    
+    g = 0.0
+    for i in 1:N
+        g += sin(pi * x[i])
+    end
+    
+    return val * (g^2)
+end
+
+# Using the product rule for the Laplacian operator Δ:
+#     Δu = Δ(v ⋅ g²) = v ⋅ Δ(g²) + 2 (∇v ⋅ ∇(g²)) + g² ⋅ Δv
+
+# where the components are derived as:
+#     • v(x)     = ∏ᵢ₌₁ᴺ sin(π xᵢ)
+#     • g(x)     = ∑ᵢ₌₁ᴺ sin(π xᵢ)
+#     • Δv       = -N π² v
+#     • Δ(g²)    = 2 π² ∑ᵢ₌₁ᴺ cos²(π xᵢ) - 2 π² g²
+#     • ∇v ⋅ ∇(g²) = 2 π² g ∑ᵢ₌₁ᴺ [ cos²(π xᵢ) ∏ⱼneq i sin(π xⱼ) ]
+
+# The function returns f(x) = -Δexact_solution(x).
+
+function rhs_func(x)
+    N = length(x)
+    
+    v = 1.0
+    for i in 1:N
+        v *= sin(pi * x[i])
+    end
+    
+    g = 0.0
+    for i in 1:N
+        g += sin(pi * x[i])
+    end
+    
+    delta_g2 = 0.0
+    for i in 1:N
+        delta_g2 += 2 * pi^2 * cos(pi * x[i])^2
+    end
+    delta_g2 -= 2 * pi^2 * g^2
+    
+    grad_v_dot_grad_g2 = 0.0
+    for i in 1:N
+        prod_j = 1.0
+        for j in 1:N
+            if j != i
+                prod_j *= sin(pi * x[j])
+            end
+        end
+        grad_v_dot_grad_g2 += 2 * g * pi^2 * cos(pi * x[i])^2 * prod_j
+    end
+    
+    delta_v = -N * pi^2 * v
+    
+    delta_u = v * delta_g2 + 2 * grad_v_dot_grad_g2 + g^2 * delta_v
+    
+    return -delta_u
 end
 
 function build_problem(N::Int)
@@ -73,12 +146,7 @@ function build_problem(N::Int)
     bcs = ntuple(i -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)
     bc = BoundaryConditions(bcs...)
     
-    sites = siteinds(2, N) # Wait, TTArchitecture has var_dims. ITensor siteinds should match var_dims!
-    # For TTArchitecture, sites are `siteinds(arch.var_dims)`. Actually DifferenTT uses `siteinds(d, N)`? No, `Index(var_dims[i])`.
-    # Let's generate it correctly using ScalarField.
-    
-    # We need a target function u(x) = prod sin(pi * x_i)
-    # Then f(x) = N * pi^2 * prod sin(pi * x_i)
+    sites = siteinds(arch)
     
     function rhs_func(x)
         val = 1.0
@@ -97,17 +165,17 @@ function build_problem(N::Int)
     end
 
     # Cross interpolate RHS
-    rhs_initialpivot = DifferenTT.optfirstpivot(Float64, rhs_func, grid, arch)
-    rhs_tci, _ = DifferenTT.crossinterpolate2(Float64, rhs_func, grid, arch; initialpivots=[rhs_initialpivot])
+    rhs_initialpivot = optfirstpivot(Float64, rhs_func, grid, arch)
+    rhs_tci, _ = crossinterpolate2(Float64, rhs_func, grid, arch; initialpivots=[rhs_initialpivot])
     rhs_mps = MPS(rhs_tci)
     
-    sol_initialpivot = DifferenTT.optfirstpivot(Float64, sol_func, grid, arch)
-    sol_tci, _ = DifferenTT.crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot])
+    sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
+    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot])
     sol_mps = MPS(sol_tci)
     replace_siteinds!(sol_mps, siteinds(rhs_mps))
     
     field = ScalarField(rhs_mps, arch, bc)
-    Δ = DifferenTT.symmetrized_laplacian(field, grid)
+    Δ = symmetrized_laplacian(field, grid)
     A = -1.0 * Δ
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
@@ -121,35 +189,37 @@ function run_task(task::TaskSpec)
     A, rhs, sol_mps, A_list, grid = build_problem(N)
     
     sites = siteinds(rhs)
-    init_mps = zeros_mps(sites)
+    init_mps = random_mps(sites)
     
-    sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=30, maxdim=20, cutoff=1e-10)
+    # Tight maxdim truncation may mess up the residual truncation...
+    sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=50, cutoff=0.0)
     
-    numiter_store = DifferenTT.KrylovSweepStats()
-    cond_store = DifferenTT.KrylovCondStats()
-    pc_cond_store = DifferenTT.KrylovCondStats()
-    updater_kwargs = DifferenTT.LocalUpdaterArgs(;
+    numiter_store = KrylovSweepStats()
+    cond_store = use_nocond ? nothing : KrylovCondStats()
+    pc_cond_store = use_nocond ? nothing : KrylovCondStats()
+    updater_kwargs = LocalUpdaterArgs(
+        rtol = 1e-3,
         compute_cond = !use_nocond,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
     )
+
+    residual_observer = ResidualObserver(A, rhs, 1e-2)
     
     if task.method == "baseline"
         @info "Running Baseline N=$N"
-        solver = DifferenTT.ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-3)
         
         t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps; observer! = residual_observer)
         
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = DifferenTT.positions_mean(numiter_store)
-        conds_per_site = DifferenTT.positions_mean_cond(cond_store)
-        avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
+        iters_per_site = positions_sum(numiter_store)
         
-        return Dict(
+        result_dict = Dict{String, Any}(
             "key" => "baseline",
             "N" => N,
             "method" => "baseline",
@@ -158,30 +228,35 @@ function run_task(task::TaskSpec)
             "total_time" => t_solve,
             "relative_error" => rel_error,
             "iters_per_site" => iters_per_site,
-            "conds_per_site" => conds_per_site,
-            "avg_cond" => avg_cond,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
+        
+        if !use_nocond
+            conds_per_site = positions_mean_cond(cond_store)
+            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
+            result_dict["conds_per_site"] = conds_per_site
+            result_dict["avg_cond"] = avg_cond
+        end
+        
+        return result_dict
         
     elseif task.method == "sinc"
         M = Int(task.param1)
         @info "Running Sinc (M=$M) N=$N"
         
         t_build = @elapsed begin
-            sinc_pc = DifferenTT.sincquadrature_preconditioner(grid.arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
+            sinc_pc = sincquadrature_preconditioner(grid.arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
         end
         
-        solver = DifferenTT.ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6, preconditioner=sinc_pc)
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
+        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps; observer! = residual_observer)
         
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = DifferenTT.positions_mean(numiter_store)
-        cond_improv_per_site = DifferenTT.positions_mean_cond(pc_cond_store)
-        avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
+        iters_per_site = positions_sum(numiter_store)
         
-        return Dict(
+        result_dict = Dict{String, Any}(
             "key" => "sinc_M_$(M)",
             "N" => N,
             "method" => "sinc",
@@ -191,39 +266,43 @@ function run_task(task::TaskSpec)
             "total_time" => t_build + t_solve,
             "relative_error" => rel_error,
             "iters_per_site" => iters_per_site,
-            "cond_improv_per_site" => cond_improv_per_site,
-            "avg_cond_improv" => avg_cond_improv,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
+        
+        if !use_nocond
+            cond_improv_per_site = positions_mean_cond(pc_cond_store)
+            avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
+            result_dict["cond_improv_per_site"] = cond_improv_per_site
+            result_dict["avg_cond_improv"] = avg_cond_improv
+        end
+        
+        return result_dict
         
     elseif task.method == "fai"
         μ = task.param1
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_builder_solver = DifferenTT.ResidualALS(
-            sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
-            residual_tol=1e-9
+        fai_builder_solver = ResidualALS(
+            sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
+            residual_tol=1e-5
         )
+
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            fai_pc = DifferenTT.FactorizedPreconditioner(Gl)
+            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
         end
         
-        solver = DifferenTT.ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6, preconditioner=fai_pc)
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
+        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps; observer! = residual_observer)
         
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = DifferenTT.positions_mean(numiter_store)
-        cond_improv_per_site = DifferenTT.positions_mean_cond(pc_cond_store)
-        avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
+        iters_per_site = positions_sum(numiter_store)
         
-        return Dict(
+        result_dict = Dict{String, Any}(
             "key" => "fai_mu_$(μ)_gdim_$(gdim)",
             "N" => N,
             "method" => "fai",
@@ -234,10 +313,17 @@ function run_task(task::TaskSpec)
             "total_time" => t_build + t_solve,
             "relative_error" => rel_error,
             "iters_per_site" => iters_per_site,
-            "cond_improv_per_site" => cond_improv_per_site,
-            "avg_cond_improv" => avg_cond_improv,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
+        
+        if !use_nocond
+            cond_improv_per_site = positions_mean_cond(pc_cond_store)
+            avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
+            result_dict["cond_improv_per_site"] = cond_improv_per_site
+            result_dict["avg_cond_improv"] = avg_cond_improv
+        end
+        
+        return result_dict
     end
 end
 
@@ -249,6 +335,22 @@ if task_id < 1 || task_id > length(all_tasks)
 end
 
 task = all_tasks[task_id]
+
+@info "Running JIT warmup..."
+dummy_N = 2
+dummy_arch = TTArchitecture(ntuple(i -> N_SITES_PER_DIM, dummy_N))
+dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid = build_problem(dummy_N)
+dummy_sites = siteinds(dummy_rhs)
+dummy_init = random_mps(dummy_sites)
+dummy_solver = ResidualALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    residual_tol=1e-2
+)
+sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2; maxdim=10, cutoff=1e-12)
+fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
+@info "JIT warmup complete."
+
 result = run_task(task)
 
 output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
