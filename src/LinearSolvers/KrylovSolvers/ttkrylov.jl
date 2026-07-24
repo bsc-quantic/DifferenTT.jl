@@ -144,11 +144,11 @@ function apply(P::FactorizedPreconditioner, v::MPS; kwargs...)
 end
 
 function ITensors.inner(v::MPS, P::Preconditioner, w::MPS)
-    return ITensorMPS.inner(v, P.operator, w)
+    return ITensorMPS.inner(v', P.operator, w)
 end
 
 function KrylovKit.inner(v::MPS, P::Preconditioner, w::MPS)
-    return ITensorMPS.inner(v, P.operator, w)
+    return ITensorMPS.inner(v', P.operator, w)
 end
 
 function ITensors.inner(v::MPS, P::FactorizedPreconditioner, w::MPS; kwargs...)

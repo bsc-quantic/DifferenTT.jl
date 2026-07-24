@@ -167,7 +167,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     end
 
     z = apply(M⁻¹, r; kwargs_tt...)
-    ρ = ITensorMPS.inner(r', M⁻¹, r)
+    ρ = ITensorMPS.inner(r, M⁻¹, r)
     p = copy(z)
     
     q_op = apply(operator, p; kwargs_tt...)
@@ -182,7 +182,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     normr = norm(r)
     ρold = ρ
     z = apply(M⁻¹, r; kwargs_tt...)
-    ρ = ITensorMPS.inner(r', M⁻¹, r)
+    ρ = ITensorMPS.inner(r, M⁻¹, r)
     β = ρ / ρold
     numops += 1
     numiter += 1
@@ -223,11 +223,11 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
             r = +(r, -1 * q_x; kwargs_tt...)
             normr = norm(r)
             z = apply(M⁻¹, r; kwargs_tt...)
-            ρ = ITensorMPS.inner(r', M⁻¹, r)
+            ρ = ITensorMPS.inner(r, M⁻¹, r)
             β = zero(β) # restart CG
         else
             ρold = ρ
-            ρ = ITensorMPS.inner(r', M⁻¹, r)
+            ρ = ITensorMPS.inner(r, M⁻¹, r)
             β = ρ / ρold
         end
         @debug @show ρ
