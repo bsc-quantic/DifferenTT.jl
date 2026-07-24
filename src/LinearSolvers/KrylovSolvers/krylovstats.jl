@@ -73,7 +73,26 @@ _krylov_lpos(problem::ReducedFAIPrecondLinearProblem) = problem.linear_problem.r
 
 function positions_mean(stats::KrylovSweepStats)
     visits_sum = [sum.(v) for v in stats.numiters]
-    return [sum(visits_sum[i]) for i in 1:length(visits_sum)]
+    visits_len = [length.(v) for v in stats.numiters]
+    
+    means = Float64[]
+    for i in 1:length(visits_sum)
+        total_sum = sum(visits_sum[i])
+        total_len = sum(visits_len[i])
+        push!(means, total_len > 0 ? total_sum / total_len : 0.0)
+    end
+    return means
+end
+
+function positions_sum(stats::KrylovSweepStats)
+    visits_sum = [sum.(v) for v in stats.numiters]
+    
+    sums = Float64[]
+    for i in 1:length(visits_sum)
+        total_sum = sum(visits_sum[i])
+        push!(sums, Float64(total_sum))
+    end
+    return sums
 end
 
 """
