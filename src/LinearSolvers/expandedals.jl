@@ -49,15 +49,16 @@ end
 An expansion strategy that does nothing.
 """
 struct NullExpansion <: AbstractALSExpansion end
-(expander::NullExpansion)(sites::Vector{<:Index}) = nothing
+(expander::NullExpansion)(state::MPS) = state
 
 """
     RandomSPSDexpansion <: AbstractALSExpansion
 
-An expansion strategy that expands the tensor train with a random symmetric positive semi-definite (SPSD) tensor train.
+An expansion strategy that expn with a random symmetric positive semi-definite (SPSD) tensor train.
 """
 struct RandomSPSDexpansion <: AbstractALSExpansion end
-function (expander::RandomSPSDexpansion)(sites::Vector{<:Index})
+function (expander::RandomSPSDexpansion)(state::MPS)
+    sites = siteinds(state)
     helper_sites = siteinds(2, length(sites))
 
     rand = random_mpo(helper_sites)
@@ -71,7 +72,8 @@ function (expander::RandomSPSDexpansion)(sites::Vector{<:Index})
         combiner_ind = combinedind(combiners[i])
         replaceind!(randSPSD[i], combiner_ind => sites[i])
     end
-    return MPS([randSPSD...])
+    expansion = MPS([randSPSD...])
+    return +(state, expansion; alg="directsum")
 end
 
 """
@@ -80,7 +82,8 @@ end
 An expansion strategy that expands the tensor train with a random lower triangular tensor train.
 """
 struct RandomLTexpansion <: AbstractALSExpansion end
-function (expander::RandomLTexpansion)(sites::Vector{<:Index})
+function (expander::RandomLTexpansion)(state::MPS)
+    sites = siteinds(state)
     helper_sites = siteinds(2, length(sites))
 
     rand_mpo = random_mpo(helper_sites)
@@ -94,7 +97,19 @@ function (expander::RandomLTexpansion)(sites::Vector{<:Index})
         combiner_ind = combinedind(combiners[i])
         replaceind!(randLT_mpo[i], combiner_ind => sites[i])
     end
-    return MPS([randLT_mpo...])
+    expansion = MPS([randLT_mpo...])
+    return +(state, expansion; alg="directsum")
+end
+
+struct ResidualExpansion <: AbstractALSExpansion
+    A::MPO
+    b::MPS
+    function ResidualExpansion(A::MPO, b::MPS)
+        siteinds_A = only.(siteinds(A; plev=0))
+        siteinds_b = siteinds(b)
+        siteinds_A !== siteinds_b && error("Operator and rhs sites do not match")
+        return new(A, b)
+    end
 end
 
 function ITensorMPS.alternating_update(
@@ -136,8 +151,7 @@ function ITensorMPS.alternating_update(
         # TODO This is quite expensive -> Set up an environment cleaner for the reduced_operator instead of a full deepcopy
         reduced_operator = deepcopy(ITensorMPS.reduced_operator(operator))
         if maxlinkdim(state) < maxdim[sweep] && sweep > 1
-            expander_mps = expander_func(sites)
-            state = isnothing(expander_mps) ? state : +(state, expander_mps; alg="directsum")
+            state = expander_func(state)
             orthogonalize!(state, 1)
             if normalize
                 state ./= norm(state)

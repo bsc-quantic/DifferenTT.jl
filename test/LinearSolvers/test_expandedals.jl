@@ -1,7 +1,7 @@
 using DifferenTT
 using Test
 using ITensors: ITensors, siteinds
-using ITensorMPS: MPS
+using ITensorMPS: MPS, random_mps
 using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpansion, SweepingArgs, LocalUpdaterArgs, KrylovUpdater, QRUpdater
 
 @testset "ExpandedALS functionality" begin
@@ -29,22 +29,23 @@ using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpan
     end
 
     @testset "Expansions" begin
-        # Create dummy sites
+        # Create dummy state
         sites = siteinds(4, 3)
+        state = random_mps(sites)
         
         # Test NullExpansion
         null_exp = NullExpansion()
-        @test null_exp(sites) === nothing
+        @test null_exp(state) === state
 
         # Testing RandomSPSDexpansion and RandomLTexpansion requires 
         # random_mpo and lower_triang_mpo from DifferenTT which should be available
         spsd_exp = RandomSPSDexpansion()
-        spsd_mps = spsd_exp(sites)
+        spsd_mps = spsd_exp(state)
         @test spsd_mps isa MPS
         @test length(spsd_mps) == 3
 
         lt_exp = RandomLTexpansion()
-        lt_mps = lt_exp(sites)
+        lt_mps = lt_exp(state)
         @test lt_mps isa MPS
         @test length(lt_mps) == 3
     end
