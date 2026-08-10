@@ -13,7 +13,7 @@ ALS(t + z) for solving linear systems. It executes a 1-site DMRG and at the end 
 tensor train with another one given by the expander func.
 """
 Base.@kwdef struct ExpandedALS <: AbstractDMRGSolver
-    sweep_kwargs::SweepingArgs = SweepingArgs()
+    sweep_kwargs::SweepingArgs = SweepingArgs(nsite=1)
     updater_kwargs::LocalUpdaterArgs = LocalUpdaterArgs()
     expander_func::AbstractALSExpansion = NullExpansion()
     updater::AbstractUpdater = KrylovUpdater()
