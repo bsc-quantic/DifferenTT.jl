@@ -1,8 +1,8 @@
 using DifferenTT
 using Test
-using ITensors: ITensors, siteinds
-using ITensorMPS: MPS, random_mps
-using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpansion, SweepingArgs, LocalUpdaterArgs, KrylovUpdater, QRUpdater
+using ITensors: ITensors, siteinds, OpSum
+using ITensorMPS: MPS, MPO, random_mps
+using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpansion, ResidualExpansion, linearsolve, SweepingArgs, LocalUpdaterArgs, KrylovUpdater, QRUpdater
 
 @testset "ExpandedALS functionality" begin
     @testset "ExpandedALS creation" begin
@@ -48,5 +48,58 @@ using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpan
         lt_mps = lt_exp(state)
         @test lt_mps isa MPS
         @test length(lt_mps) == 3
+
+        # Test ResidualExpansion
+        os_dummy = OpSum()
+        for i in 1:2
+            os_dummy += 1.0, "I", i, "I", i+1
+        end
+        A_dummy = MPO(os_dummy, sites)
+        b_dummy = random_mps(sites)
+        
+        # Test creation and parameters
+        res_exp = ResidualExpansion(A_dummy, b_dummy)
+        @test res_exp.cutoff == 1e-8
+        @test res_exp.maxdim == 5
+        
+        res_exp_custom = ResidualExpansion(A_dummy, b_dummy; cutoff=1e-5, maxdim=2)
+        @test res_exp_custom.cutoff == 1e-5
+        @test res_exp_custom.maxdim == 2
+        
+        # Test expansion functor
+        expanded_mps = res_exp(state)
+        @test expanded_mps isa MPS
+        @test length(expanded_mps) == length(state)
+    end
+
+    @testset "ResidualExpansion Integration with 1D Laplacian" begin
+        # Build a simple 1D Laplacian MPO on 5 sites
+        N = 5
+        s = siteinds("S=1/2", N)
+        
+        # 1D Laplacian-like symmetric positive definite operator
+        os = OpSum()
+        for j in 1:N-1
+            os += -1.0, "Sz", j, "Sz", j+1
+            os += 2.0, "Sz", j
+        end
+        os += 2.0, "Sz", N
+        
+        A = MPO(os, s)
+        b = random_mps(s; linkdims=2)
+        x0 = random_mps(s; linkdims=2)
+        
+        # Solve with ExpandedALS and ResidualExpansion
+        solver = ExpandedALS(
+            sweep_kwargs = SweepingArgs(nsite=1, nsweeps=2, maxdim=10),
+            updater_kwargs = LocalUpdaterArgs(),
+            expander_func = ResidualExpansion(A, b),
+            updater = KrylovUpdater()
+        )
+        
+        x_sol = linearsolve(solver, A, b, x0)
+        
+        @test x_sol isa MPS
+        @test length(x_sol) == N
     end
 end

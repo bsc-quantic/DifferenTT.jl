@@ -104,12 +104,24 @@ end
 struct ResidualExpansion <: AbstractALSExpansion
     A::MPO
     b::MPS
-    function ResidualExpansion(A::MPO, b::MPS)
+    cutoff::Float64
+    maxdim::Int
+    function ResidualExpansion(A::MPO, b::MPS; cutoff=1e-8, maxdim=5)
         siteinds_A = only.(siteinds(A; plev=0))
         siteinds_b = siteinds(b)
         siteinds_A !== siteinds_b && error("Operator and rhs sites do not match")
-        return new(A, b)
+        return new(A, b, cutoff, maxdim)
     end
+end
+
+function (expander::ResidualExpansion)(state::MPS)
+    residual = expander.b - apply(expander.A, state)
+    
+    truncate!(residual; cutoff=expander.cutoff, maxdim=expander.maxdim)
+
+    # zero-shift condition
+    residual[1] .*= 0.0
+    return +(state, residual; alg="directsum")
 end
 
 function ITensorMPS.alternating_update(
