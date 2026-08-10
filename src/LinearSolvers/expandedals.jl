@@ -109,7 +109,7 @@ struct ResidualExpansion <: AbstractALSExpansion
     function ResidualExpansion(A::MPO, b::MPS; cutoff=1e-8, maxdim=5)
         siteinds_A = only.(siteinds(A; plev=0))
         siteinds_b = siteinds(b)
-        siteinds_A !== siteinds_b && error("Operator and rhs sites do not match")
+        siteinds_A != siteinds_b && error("Operator and rhs sites do not match")
         return new(A, b, cutoff, maxdim)
     end
 end

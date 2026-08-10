@@ -96,6 +96,6 @@ using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpan
         x_sol = linearsolve(solver, A, b, x0)
         
         @test x_sol isa MPS
-        @test length(x_sol) == N
+        @test length(x_sol) == length(s)
     end
 end
