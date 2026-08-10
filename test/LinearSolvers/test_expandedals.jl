@@ -73,19 +73,15 @@ using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpan
     end
 
     @testset "ResidualExpansion Integration with 1D Laplacian" begin
-        # Build a simple 1D Laplacian MPO on 5 sites
-        N = 5
-        s = siteinds("S=1/2", N)
+        # Build a 1D Laplacian MPO on 5 QTT sites with Dirichlet BCs
+        arch = QTTArchitecture((5,))
+        grid = Grid(arch, (1.0,))
+        bc = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+        s = siteinds(arch)
+        dummy_mps = zeros_mps(s)
+        field = ScalarField(dummy_mps, arch, bc)
         
-        # 1D Laplacian-like symmetric positive definite operator
-        os = OpSum()
-        for j in 1:N-1
-            os += -1.0, "Sz", j, "Sz", j+1
-            os += 2.0, "Sz", j
-        end
-        os += 2.0, "Sz", N
-        
-        A = MPO(os, s)
+        A = -1.0 * symmetrized_laplacian(field, grid)
         b = random_mps(s; linkdims=2)
         x0 = random_mps(s; linkdims=2)
         
