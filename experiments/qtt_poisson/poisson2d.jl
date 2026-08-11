@@ -77,7 +77,7 @@ field = ScalarField(sites, arch, bc)
 visualize_scalar(-1.0 * apply(Δ, exact_mps), grid, arch, "experiments/qtt_poisson/opexact_2d.png"; npoints=200, aspect_ratio=:equal, size = fig_size)
 
 # Dirichlet correction on the pressure field moved to the rhs of the linear system
-rhs_correction_mpo = DifferenTT.pressure_dirichlet_correction(field, grid, 2)
+rhs_correction_mpo = DifferenTT.scalar_dirichlet_correction(field, grid, 2)
 rhs_correction = (isnothing(rhs_correction_mpo)) ? nothing : apply(rhs_correction_mpo, DifferenTT.ones_mps(sites, 1, Array); alg="naive")
 
 # Apply the boundary nullifier

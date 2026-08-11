@@ -336,7 +336,7 @@ end
 # -------------------------------------------------------------------------------------------------
 # Dirichlet Boundary Corrections -> To move Dirichlet BC values to the RHS of a linear system. These 
 # assume for now that the BC Dirichlet value, which then has to be rescaled to the desired value. See 
-# [`pressure_dirichlet_correction_dim`](@ref) in the NavierStokes submodule as an exampel
+# [`scalar_dirichlet_correction_dim`](@ref) in the Physics submodule as an exampel
 # -------------------------------------------------------------------------------------------------
 
 function onedim_left_dirichlet_correction(derivative_order::Int, arch::QTTArchitecture, axis::Int, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8)
