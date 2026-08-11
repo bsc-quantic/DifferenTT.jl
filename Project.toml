@@ -22,7 +22,7 @@ TimerOutputs = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
 [compat]
 Adapt = "4.5.0"
 DataFrames = "1.7"
-ITensorMPS = "0.3.44"
+ITensorMPS = "0.3.44, 0.4"
 ITensors = "0.9.25"
 JLD2 = "0.6.3"
 KrylovKit = "0.10.2"
