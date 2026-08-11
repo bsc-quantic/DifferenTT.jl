@@ -56,7 +56,7 @@ function get_1d_A(i::Int, grid, arch)
     noneye_dim = arch.var_dims[i]
     bc = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
     # onedim_differential_operator with an arch::TTArchitecture{N} returns the matrix we need
-    mat = DifferenTT.onedim_differential_operator(2, arch, i, bc, Array)
+    mat = DifferenTT.onedim_differential_operator(2, arch, i, bc, Array; stencil_order=2)
     # the exact Laplacian has a minus sign to be positive definite
     # also scale by 1 / dx^2
     mat = -1.0 * mat .* (1.0 / grid.dx[i]^2)
@@ -148,22 +148,6 @@ function build_problem(N::Int)
     
     sites = siteinds(arch)
     
-    function rhs_func(x)
-        val = 1.0
-        for i in 1:length(x)
-            val *= sin(pi * x[i])
-        end
-        return length(x) * (pi^2) * val
-    end
-    
-    function sol_func(x)
-        val = 1.0
-        for i in 1:length(x)
-            val *= sin(pi * x[i])
-        end
-        return val
-    end
-
     # Cross interpolate RHS
     rhs_initialpivot = optfirstpivot(Float64, rhs_func, grid, arch)
     rhs_tci, _ = crossinterpolate2(Float64, rhs_func, grid, arch; initialpivots=[rhs_initialpivot])
@@ -175,18 +159,29 @@ function build_problem(N::Int)
     replace_siteinds!(sol_mps, siteinds(rhs_mps))
     
     field = ScalarField(rhs_mps, arch, bc)
-    Δ = symmetrized_laplacian(field, grid)
+    Δ = symmetrized_laplacian(field, grid; stencil_order=2)
     A = -1.0 * Δ
+    
+    # Incorporate Dirichlet boundary corrections through library functions (even if they do not do anything)
+    Δ_correction_mpo = DifferenTT.scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
+    Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive", cutoff=1e-12)
+    rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; cutoff=1e-12)
+    
+    # Symmetrize the RHS
+    rhs_mps = DifferenTT.symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
+    
+    # Redefine RHS as A * sol_mps to avoid finite difference truncation errors dominating
+    rhs_mps = apply(A, sol_mps; alg="naive", cutoff=1e-12)
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
     
-    return A, rhs_mps, sol_mps, A_list, grid
+    return A, rhs_mps, sol_mps, A_list, grid, arch
 end
 
 function run_task(task::TaskSpec)
     N = task.N
     @info "Building problem for N=$N..."
-    A, rhs, sol_mps, A_list, grid = build_problem(N)
+    A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
     init_mps = random_mps(sites)
@@ -217,7 +212,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "baseline",
@@ -245,7 +240,7 @@ function run_task(task::TaskSpec)
         @info "Running Sinc (M=$M) N=$N"
         
         t_build = @elapsed begin
-            sinc_pc = sincquadrature_preconditioner(grid.arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
+            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
         end
         
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
@@ -254,7 +249,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "sinc_M_$(M)",
@@ -300,7 +295,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "fai_mu_$(μ)_gdim_$(gdim)",
@@ -338,8 +333,7 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_N = 2
-dummy_arch = TTArchitecture(ntuple(i -> N_SITES_PER_DIM, dummy_N))
-dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid = build_problem(dummy_N)
+dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
 dummy_sites = siteinds(dummy_rhs)
 dummy_init = random_mps(dummy_sites)
 dummy_solver = ResidualALS(

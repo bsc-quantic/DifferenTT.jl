@@ -75,6 +75,13 @@ function residual_replacebond!(
 )
     # ── 1. Full SVD ──────────────────────────────────────────────────
     indsMb = inds(state[b])
+    phi_data = array(phi)
+    if !all(isfinite, phi_data)
+        throw(ArgumentError(
+            "residual_replacebond!: bond tensor at site $b contains NaN/Inf; " *
+            "refusing SVD (often caused by a broken preconditioner or Krylov update)."
+        ))
+    end
     U_full, S_full, V_full = svd(phi, indsMb; alg="recursive")
 
     bond_ind = commoninds(U_full, S_full)
@@ -119,8 +126,8 @@ function residual_replacebond!(
 
     # ── 5. Also apply Frobenius cutoff as a floor ────────────────────
     # (in case the user still wants a minimum spectral cutoff)
-    if cutoff > 0
-        total_weight = sum(abs2, svals)
+    total_weight = sum(abs2, svals)
+    if cutoff > 0 && total_weight > 0
         frob_rank = full_rank
         cumulative = 0.0
         for k in full_rank:-1:2
@@ -138,7 +145,7 @@ function residual_replacebond!(
     chosen_rank = min(chosen_rank, maxdim)
 
     # ── 6. Perform the actual truncation ─────────────────────────────
-    truncerr = sqrt(sum(abs2, svals[(chosen_rank + 1):end]) / sum(abs2, svals))
+    truncerr = total_weight > 0 ? sqrt(sum(abs2, svals[(chosen_rank + 1):end]) / total_weight) : 0.0
 
     spec = replacebond!(
         state, b, phi;

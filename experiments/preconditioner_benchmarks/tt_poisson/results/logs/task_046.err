@@ -1,0 +1,250 @@
+load JULIA/1.12.0 (PATH, LD_LIBRARY_PATH, LIBRARY_PATH, C_INCLUDE_PATH,
+CPLUS_INCLUDE_PATH, MANPATH) 
+┌ Warning: Circular dependency detected.
+│ Precompilation will be skipped for dependencies in this cycle:
+│  ─ DifferenTT
+└ @ Base.Precompilation precompilation.jl:684
+[ Info: Running JIT warmup...
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: JIT warmup complete.
+[ Info: Building problem for N=30...
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Running FAI (μ=100000.0, G_maxdim=10) N=30
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.944313603849275e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.944313603849275e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.0572860361504841e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.0572860361504841e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -5.094227620502117e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -5.094227620502117e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -7.507153457328502e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -7.507153457328502e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -5.360763877486126e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -5.360763877486126e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.2131989095112867e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.2131989095112867e-92
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.3666689312261726e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.3666689312261726e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.4870189845550013e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.4870189845550013e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.946120432258993e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.946120432258993e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -9.00866640230379e-94
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -9.00866640230379e-94
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.72513090493636e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.72513090493636e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -2.888414501226225e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -2.888414501226225e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.3860716492019974e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -3.3860716492019974e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.678838498357617e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126
+┌ Error: Preconditioner IS NOT SPD!
+│   minimum_eigval_pc = -1.678838498357617e-93
+│   pos = 0
+└ @ DifferenTT /gpfs/scratch/bsc21/bsc807882/DifferenTT.jl/src/LinearSolvers/KrylovSolvers/krylovupdaters.jl:126

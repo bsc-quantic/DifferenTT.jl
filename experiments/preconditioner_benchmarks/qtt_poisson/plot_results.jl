@@ -31,7 +31,7 @@ for nodes in system_sizes
         df_mu = df_nodes[df_nodes.mu .== mu, :]
         sort!(df_mu, :G_maxdim)
         
-        lines!(ax, df_mu.G_maxdim, df_mu.relative_error, label="μ=$(mu)", linewidth=2, marker=:circle)
+        scatterlines!(ax, df_mu.G_maxdim, df_mu.relative_error, label="μ=$(mu)", linewidth=2, marker=:circle)
     end
     
     axislegend(ax, position=:rt)

@@ -1,4 +1,18 @@
 """
+    _regularized_inv(mat; rtol=eps(Float64)) -> Matrix
+
+Invert `mat` with Tikhonov regularization: `(mat + ε I)⁻¹` where
+`ε = rtol * max(‖mat‖₂, 1)`. Avoids `SingularException` / huge entries when
+TT truncation leaves a nearly singular local tensor.
+"""
+function _regularized_inv(mat::AbstractMatrix; rtol::Float64 = eps(Float64))
+    n = size(mat, 1)
+    @assert size(mat, 1) == size(mat, 2) "Local rank-1 tensor must be square"
+    ε = rtol * max(opnorm(mat), 1.0)
+    return inv(mat + ε * I(n))
+end
+
+"""
     rank1_preconditioner(operator::MPO)
 
 Build a rank-1 preconditioner by truncating the operator to bond dimension 1 and inverting each local n×n matrix.
@@ -14,7 +28,7 @@ function rank1_preconditioner(operator::MPO)
     # TODO Ensure that this method of getting rid of the dummy legs is robust
     for tensor in rank1_operator
         mat = order(tensor) == 3 ? dropdims(array(tensor); dims=3) : dropdims(array(tensor); dims=(3, 4))
-        invmat = inv(mat)
+        invmat = _regularized_inv(mat)
         push!(preconditioner_tensors, ITensor(reshape(invmat, dims(tensor)), inds(tensor)...))
     end
     return Preconditioner(MPO(preconditioner_tensors))
@@ -166,7 +180,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     unscaledG = MPO([unscaledG...])
     unscaledGdiag_mps = diagmps(unscaledG)
 
-    f(x) = x^(-0.5)
+    f(x) = inv(sqrt(max(x, eps(Float64))))
     cutoff = get(D_kwargs, :cutoff, 1e-15)
     maxdim = get(D_kwargs, :maxdim, typemax(Int))
     oversample = get(D_kwargs, :oversample, 10)

@@ -6,6 +6,9 @@
 #
 # Usage: bash experiments/preconditioner_benchmarks/chorin_pipeline/submit.sh [nocond]
 #
+# By default, condition-number estimates are collected only for (8,8) and (10,10).
+# Pass "nocond" to skip condition-number estimates for all grid sizes.
+#
 
 SCRIPT_DIR="experiments/preconditioner_benchmarks/chorin_pipeline"
 
@@ -32,9 +35,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --chdir=.
 #SBATCH --array=1-135
 #SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
+#SBATCH --cpus-per-task=32
 #SBATCH --time=24:00:00
 #SBATCH --qos=gp_bsccase
 
@@ -45,6 +46,12 @@ echo "Task \${SLURM_ARRAY_TASK_ID} / 135 — Job \${SLURM_JOB_ID} on \${HOSTNAME
 julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} \${NOCOND_ARG}
 ARRAY_EOF
 )
+
+if [ -n "${NOCOND_ARG}" ]; then
+    echo "Mode: nocond (no condition-number estimates)"
+else
+    echo "Mode: default (condition-number estimates on 8x8 and 10x10 only)"
+fi
 
 echo "Submitted array job: ${ARRAY_JOB_ID} (135 tasks)"
 

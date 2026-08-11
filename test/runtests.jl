@@ -9,6 +9,7 @@ using Test
         include("PdeProblem/test_vectorfields.jl")
         include("PdeProblem/test_diffoperators.jl")
         include("PdeProblem/test_bcoperators.jl")
+        include("PdeProblem/test_linearsyscorrections.jl")
     end
     @testset "TensorTrains" begin
         include("TensorTrains/test_architecture.jl")
@@ -48,7 +49,6 @@ using Test
         include("Physics/test_chorin.jl")
         include("Physics/test_equationterms.jl")
         include("Physics/test_fdstencils.jl")
-        include("Physics/test_corrections.jl")
         include("Physics/test_insexperiment.jl")
         include("Physics/test_end2end.jl")
     end
