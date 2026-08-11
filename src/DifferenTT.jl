@@ -23,6 +23,7 @@ include("PdeProblem/scalarfields.jl")
 include("PdeProblem/vectorfields.jl")
 include("PdeProblem/bcoperators.jl")
 include("PdeProblem/diffoperators.jl")
+include("PdeProblem/linearsyscorrections.jl")
 
 include("Physics/equationterms.jl")
 
@@ -60,7 +61,6 @@ include("LinearSolvers/KrylovSolvers/ttgmres.jl")
 
 # Include Navier Stokes
 include("Physics/NavierStokes/insexperiment.jl")
-include("Physics/NavierStokes/corrections.jl")
 include("Physics/NavierStokes/chorin.jl")
 
 # Include Utils
@@ -88,11 +88,11 @@ export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d,
 export ScalarField, VectorField, Grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
+export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs
 
 # Export types and functions from Physics
-export advection, diffusion, divergence, gradient, symmetrized_laplacian, symmetrize_rhs
+export advection, diffusion, divergence, gradient, symmetrized_laplacian
 export INSExperiment, check_cfl, check_kolmogorov_scale
-export divergence_dirichlet_correction, pressure_dirichlet_correction
 export chorin_evolve!, NavierStokesPredictorRHS
 
 # Export types and functions from Linear Solvers

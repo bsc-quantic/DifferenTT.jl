@@ -146,7 +146,7 @@ function build_rhs(grid, masked_u)
 
     ∇u = DifferenTT.divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
     ∇u_correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    Δp_correction_mpo = DifferenTT.pressure_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
+    Δp_correction_mpo = DifferenTT.scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
     
     Δp_correction = isnothing(Δp_correction_mpo) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites); alg="naive", cutoff=cutoff_val, maxdim=maxdim_val)
     
