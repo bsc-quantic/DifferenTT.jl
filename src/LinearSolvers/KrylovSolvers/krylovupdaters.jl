@@ -176,13 +176,14 @@ function _report_spectral_κ(
     λ_max::Real;
     label::AbstractString,
     lpos,
+    compute_cond::Bool=true
 )::Float64
     status = _classify_spd(λ_min, λ_max)
     if status === SPD_INDEFINITE
-        @error "$(label) IS NOT SPD — κ undefined" λ_min λ_max lpos
+        compute_cond && @error "$(label) IS NOT SPD — κ undefined" λ_min λ_max lpos
         return NaN
     elseif status === SPD_AMBIGUOUS
-        @warn "$(label) is numerically semidefinite/ambiguous — κ undefined" λ_min λ_max lpos
+        compute_cond && @warn "$(label) is numerically semidefinite/ambiguous — κ undefined" λ_min λ_max lpos
         return NaN
     end
     return _spectral_condition(λ_min, λ_max)
@@ -275,7 +276,7 @@ function _compute_and_record_cond!(problem::ReducedLinearProblem, b_tensor, use_
     if use_cg
         op_func = v -> operator(problem)(v)
         λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
-        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
         if compute_cond && verbosity > 0
             @info "local cond (CG/spectral)" lpos λmin_A λmax_A κ_A
         end
@@ -303,16 +304,16 @@ function _compute_and_record_cond!(problem::ReducedPrecondLinearProblem, b_tenso
         # Get the callable ProjMPO object from the linear problem
         op_func = v -> operator(problem.linear_problem)(v)
         λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
-        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
 
         # Get the callable ProjMPO object from the preconditioner
         pc_func = v -> problem.preconditioner(v)
         λmin_Pinv, λmax_Pinv = _matrixfree_eigvals(pc_func, b_tensor; ishermitian=true)
         status_Pinv = _classify_spd(λmin_Pinv, λmax_Pinv)
         if status_Pinv === SPD_INDEFINITE
-            @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+            compute_cond && @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
         elseif status_Pinv === SPD_AMBIGUOUS
-            @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+            compute_cond && @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
         end
 
         κ_PC, λmin_PA, λmax_PA = NaN, NaN, NaN
@@ -320,7 +321,7 @@ function _compute_and_record_cond!(problem::ReducedPrecondLinearProblem, b_tenso
             # Apply first the ProjMPO from the linear problem and then the one from the preconditioner
             pc_op_func = v -> problem.preconditioner(operator(problem.linear_problem)(v))
             λmin_PA, λmax_PA = _matrixfree_eigvals(pc_op_func, b_tensor; ishermitian=false)
-            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos)
+            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos, compute_cond=compute_cond)
         end
 
         if compute_cond && verbosity > 0
@@ -364,15 +365,16 @@ function _compute_and_record_cond!(problem::ReducedFAIPrecondLinearProblem, b_te
     if use_cg
         op_func = v -> operator(problem.linear_problem)(v)
         λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
-        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
 
+        # Calling the preconditioner already applies the two cholesky factors
         pc_func = v -> problem.preconditioner(v)
         λmin_Pinv, λmax_Pinv = _matrixfree_eigvals(pc_func, b_tensor; ishermitian=true)
         status_Pinv = _classify_spd(λmin_Pinv, λmax_Pinv)
         if status_Pinv === SPD_INDEFINITE
-            @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+            compute_cond && @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
         elseif status_Pinv === SPD_AMBIGUOUS
-            @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+            compute_cond && @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
         end
 
         κ_PC, λmin_PA, λmax_PA = NaN, NaN, NaN
@@ -381,7 +383,7 @@ function _compute_and_record_cond!(problem::ReducedFAIPrecondLinearProblem, b_te
             # for fai operators, the _apply_fai_operator computes Gl * A * Gl' (v), which is guaranteed to be hermitian
             fai_op_func = v -> _apply_fai_operator(problem.preconditioner, A, v)
             λmin_PA, λmax_PA = _matrixfree_eigvals(fai_op_func, b_tensor; ishermitian=true)
-            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos)
+            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos, compute_cond=compute_cond)
         end
 
         if compute_cond && verbosity > 0
