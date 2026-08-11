@@ -327,7 +327,7 @@ visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/i
 ∇u_correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 
 # Dirichlet correction on the pressure field moved to the rhs of the linear system
-Δp_correction_mpo = DifferenTT.pressure_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+Δp_correction_mpo = DifferenTT.scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
 
 # Apply the boundary nullifier
@@ -379,7 +379,7 @@ res_l2norm = sqrt(max(0.0, term1 - term2 + term3))
 div_free_u_mpss = ntuple(i -> begin
         dp = apply(p_diff_ops.d_ops[i], divfree_p; cutoff=cutoff, maxdim=maxdim)
         # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
-        dirichlet_correction_mpo = DifferenTT.pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order)#, cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order)#, cutoff=cutoff, maxdim=maxdim)
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
         dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
@@ -408,7 +408,7 @@ visualize_vector(div_free_u_mpss, experiment.grid, experiment.u_fields.arch, "ex
 ∇p = ntuple(i -> begin
         dp = apply(p_diff_ops.d_ops[i], divfree_p)#; cutoff=cutoff, maxdim=maxdim)
         # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
-        dirichlet_correction_mpo = DifferenTT.pressure_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
         dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, DifferenTT.ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)

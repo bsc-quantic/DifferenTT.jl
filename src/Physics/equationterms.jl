@@ -98,19 +98,3 @@ function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::
 
     return sum([d2_ops...]; alg="directsum")
 end
-
-"""
-    symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=0.0, maxdim::Int=typemax(Int)) where N
-
-Apply Neumann symmetrization correction to an arbitrary right-hand side `MPS`.
-This function encapsulates the behaviour of getting the Neumann symmetrization correction
-for the RHS and adding it to the RHS if required, which is meant to be used alongside
-`symmetrized_laplacian`.
-
-# Returns
-- `MPS`: The symmetrized right-hand side.
-"""
-function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=0.0, maxdim::Int=typemax(Int)) where N
-    rhs_neumann_symmetrization = neumann_symmetrization_correction_mps(field.arch, field.bcu, rhs; cutoff=cutoff, maxdim=maxdim)
-    return isnothing(rhs_neumann_symmetrization) ? rhs : +(rhs, rhs_neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
-end

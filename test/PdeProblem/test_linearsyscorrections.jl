@@ -3,7 +3,7 @@ using Test
 using ITensors
 using ITensorMPS
 
-@testset "corrections.jl" begin
+@testset "linearsyscorrections.jl" begin
     n = 3
     qtt_arch = QTTArchitecture((n, n))
     grid = Grid(qtt_arch, (1.0, 1.0))
@@ -22,7 +22,7 @@ using ITensorMPS
         div_corr = DifferenTT.divergence_dirichlet_correction(vfield_per; stencil_order=2)
         @test isnothing(div_corr)
         
-        p_corr = DifferenTT.pressure_dirichlet_correction(sfield_per, grid, 2; stencil_order=2)
+        p_corr = DifferenTT.scalar_dirichlet_correction(sfield_per, grid, 2; stencil_order=2)
         @test isnothing(p_corr)
     end
     
@@ -36,13 +36,13 @@ using ITensorMPS
         div_corr = DifferenTT.divergence_dirichlet_correction(vfield_dir; stencil_order=2)
         @test div_corr isa MPO
         
-        p_corr_dim1 = DifferenTT.pressure_dirichlet_correction_dim(sfield_dir, grid, 2, 1; stencil_order=2)
+        p_corr_dim1 = DifferenTT.scalar_dirichlet_correction_dim(sfield_dir, grid, 2, 1; stencil_order=2)
         @test p_corr_dim1 isa MPO
         
-        p_corr_dim2 = DifferenTT.pressure_dirichlet_correction_dim(sfield_dir, grid, 2, 2; stencil_order=2)
+        p_corr_dim2 = DifferenTT.scalar_dirichlet_correction_dim(sfield_dir, grid, 2, 2; stencil_order=2)
         @test p_corr_dim2 isa MPO
         
-        p_corr_total = DifferenTT.pressure_dirichlet_correction(sfield_dir, grid, 2; stencil_order=2)
+        p_corr_total = DifferenTT.scalar_dirichlet_correction(sfield_dir, grid, 2; stencil_order=2)
         @test p_corr_total isa MPO
     end
 end
