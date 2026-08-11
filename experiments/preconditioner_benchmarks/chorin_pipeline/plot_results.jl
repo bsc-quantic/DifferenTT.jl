@@ -7,6 +7,12 @@ use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
 input_file = joinpath(base_folder, "collected_results.jld2")
 
+const COND_NODES = [(8, 8), (10, 10)]
+
+function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+    return !use_nocond && nodes in COND_NODES
+end
+
 df = load(input_file, "df")
 plots_folder = joinpath(base_folder, "plots")
 mkpath(plots_folder)
@@ -55,25 +61,49 @@ for nodes in system_sizes
     axislegend(ax_pareto)
     save(joinpath(plots_folder, "pareto_$(nodes[1]).png"), fig_pareto)
     
-    # 3. Iteration Profile
-    if !use_nocond
-        fig_iter = Figure(size=(900, 500))
-        ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Total Krylov Iterations", title = "Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])")
-        
-        if nrow(df_base) > 0 && hasproperty(df_base, :iters_per_site)
-            iters_b = df_base.iters_per_site[1]
-            lines!(ax_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, linewidth=3)
-        end
-        
-        if hasproperty(df_fai, :iters_per_site)
-            best_fai = df_fai[argmin(df_fai.total_solve_time), :]
-            iters_f = best_fai.iters_per_site
+    # 3. Iteration Profile (available for all grid sizes)
+    fig_iter = Figure(size=(900, 500))
+    ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Total Krylov Iterations", title = "Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])")
+    
+    if nrow(df_base) > 0 && hasproperty(df_base, :iters_per_site) && !ismissing(df_base.iters_per_site[1])
+        iters_b = df_base.iters_per_site[1]
+        lines!(ax_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, linewidth=3)
+    end
+    
+    if hasproperty(df_fai, :iters_per_site)
+        best_fai = df_fai[argmin(df_fai.total_solve_time), :]
+        iters_f = best_fai.iters_per_site
+        if !ismissing(iters_f)
             lines!(ax_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, linewidth=3)
-            if nrow(df_base) > 0
+            if nrow(df_base) > 0 && !ismissing(df_base.iters_per_site[1])
                 band!(ax_iter, 1:length(iters_f), iters_f, df_base.iters_per_site[1], color=(:blue, 0.2))
             end
         end
-        axislegend(ax_iter)
-        save(joinpath(plots_folder, "iters_profile_$(nodes[1]).png"), fig_iter)
+    end
+    axislegend(ax_iter)
+    save(joinpath(plots_folder, "iters_profile_$(nodes[1]).png"), fig_iter)
+
+    # 4. Condition-number profile (only collected for 8x8 and 10x10)
+    if should_compute_cond(Tuple(nodes), use_nocond)
+        fig_cond = Figure(size=(900, 500))
+        ax_cond = Axis(fig_cond[1, 1], xlabel = "MPS Site", ylabel = "Mean Condition Number", title = "Site-by-Site Condition Profile - $(nodes[1])x$(nodes[2])")
+
+        if nrow(df_base) > 0 && hasproperty(df_base, :conds_per_site) && !ismissing(df_base.conds_per_site[1])
+            conds_b = df_base.conds_per_site[1]
+            lines!(ax_cond, 1:length(conds_b), conds_b, label="Baseline", color=:black, linewidth=3)
+        end
+
+        if hasproperty(df_fai, :cond_improv_per_site)
+            best_fai = df_fai[argmin(df_fai.total_solve_time), :]
+            conds_f = best_fai.cond_improv_per_site
+            if !ismissing(conds_f)
+                lines!(ax_cond, 1:length(conds_f), conds_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, linewidth=3)
+                if nrow(df_base) > 0 && hasproperty(df_base, :conds_per_site) && !ismissing(df_base.conds_per_site[1])
+                    band!(ax_cond, 1:length(conds_f), conds_f, df_base.conds_per_site[1], color=(:blue, 0.2))
+                end
+            end
+        end
+        axislegend(ax_cond)
+        save(joinpath(plots_folder, "cond_profile_$(nodes[1]).png"), fig_cond)
     end
 end

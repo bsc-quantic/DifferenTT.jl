@@ -28,12 +28,14 @@ n_steps_map = Dict(
 )
 
 system_sizes = [(8, 8), (10, 10), (12, 12)]
+cond_nodes  = [(8, 8), (10, 10)]
+
+function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+    return !use_nocond && nodes in cond_nodes
+end
+
 mu_values = [5e6, 1e7, 5e7, 1e8]
-G_maxdims_map = Dict(
-    (8, 8) => [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-    (10, 10) => [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-    (12, 12) => [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-)
+g_maxdims = 2:12
 
 maxdims_map = Dict(
     (8, 8) => 80,
@@ -66,9 +68,8 @@ end
 function build_task_list()
     tasks = TaskSpec[]
     for nodes in system_sizes
-        G_maxdims = G_maxdims_map[nodes]
         push!(tasks, TaskSpec(nodes, true, 0.0, 0))
-        for gdim in G_maxdims
+        for gdim in g_maxdims
             for μ in mu_values
                 push!(tasks, TaskSpec(nodes, false, μ, gdim))
             end
@@ -79,7 +80,7 @@ end
 
 function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     sites = siteinds(2, sum(nodes))
-    arch = QTTArchitecture(nodes)
+    arch = QTTArchitecture(nodes; interleaved=true)
     grid = Grid(arch, BOX_SIZE)
     
     # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
@@ -156,19 +157,19 @@ function build_rhs(grid, masked_u)
     return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
 end
 
-function chorin_step!(grid, sweep_kwargs, use_nocond, precond=nothing)
+function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
     
     numiter_store = DifferenTT.KrylovSweepStats()
-    cond_store = use_nocond ? nothing : DifferenTT.KrylovCondStats()
-    pc_cond_store = use_nocond ? nothing : DifferenTT.KrylovCondStats()
+    cond_store = compute_cond ? DifferenTT.KrylovCondStats() : nothing
+    pc_cond_store = compute_cond ? DifferenTT.KrylovCondStats() : nothing
     updater_kwargs = DifferenTT.LocalUpdaterArgs(;
         ishermitian = true,
         isposdef = true,
         rtol = 1e-4,
-        compute_cond = !use_nocond,
+        compute_cond = compute_cond,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
@@ -205,7 +206,7 @@ function chorin_step!(grid, sweep_kwargs, use_nocond, precond=nothing)
     
     res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
     
-    if !use_nocond
+    if compute_cond
         cond_improv_vals = isnothing(precond) ? DifferenTT.positions_mean_cond(cond_store) : DifferenTT.positions_mean_cond(pc_cond_store)
         cond_improv_mean = isempty(cond_improv_vals) ? NaN : mean(cond_improv_vals)
         res_dict = merge(res_dict, (; cond_improv_vals, cond_improv_mean))
@@ -216,6 +217,7 @@ end
 
 function run_task(task::TaskSpec)
     N_STEPS = n_steps_map[task.nodes]
+    compute_cond = should_compute_cond(task.nodes, use_nocond)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
     nsweep_val = nsweeps_map[task.nodes]
@@ -227,7 +229,7 @@ function run_task(task::TaskSpec)
         @info "Running baseline for $(task.nodes)"
         
         # Warmup
-        chorin_step!(grid, sweep_kwargs, use_nocond)
+        chorin_step!(grid, sweep_kwargs, compute_cond)
         
         solve_times = Float64[]
         iters = Vector{Float64}[]
@@ -240,7 +242,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, sweep_kwargs, use_nocond)
+            step_res = chorin_step!(grid, sweep_kwargs, compute_cond)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -252,7 +254,7 @@ function run_task(task::TaskSpec)
                 iters_per_site .+= step_res.iters_per_site
             end
             
-            if !use_nocond
+            if compute_cond
                 # For baseline, cond_improv_vals contains the standard condition numbers
                 if isempty(conds_per_site)
                     conds_per_site = step_res.cond_improv_vals
@@ -266,6 +268,7 @@ function run_task(task::TaskSpec)
         result_dict = Dict{String, Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
+            "compute_cond" => compute_cond,
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
             "iters" => iters,
@@ -275,7 +278,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => 0.0
         )
         
-        if !use_nocond
+        if compute_cond
             conds_per_site ./= N_STEPS
             result_dict["conds_per_site"] = conds_per_site
             result_dict["avg_cond"] = mean(avg_conds)
@@ -301,7 +304,7 @@ function run_task(task::TaskSpec)
         end
         
         # Warmup
-        chorin_step!(grid, sweep_kwargs, use_nocond, precond)
+        chorin_step!(grid, sweep_kwargs, compute_cond, precond)
         
         solve_times = Float64[]
         iters = Vector{Float64}[]
@@ -314,7 +317,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, sweep_kwargs, use_nocond, precond)
+            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, precond)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -326,7 +329,7 @@ function run_task(task::TaskSpec)
                 iters_per_site .+= step_res.iters_per_site
             end
             
-            if !use_nocond
+            if compute_cond
                 if isempty(cond_improv_per_site)
                     cond_improv_per_site = step_res.cond_improv_vals
                 else
@@ -339,6 +342,7 @@ function run_task(task::TaskSpec)
         result_dict = Dict{String, Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
+            "compute_cond" => compute_cond,
             "mu" => μ,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
@@ -350,7 +354,7 @@ function run_task(task::TaskSpec)
             "solution_maxdims" => solution_maxdims
         )
         
-        if !use_nocond
+        if compute_cond
             cond_improv_per_site ./= N_STEPS
             result_dict["cond_improv_per_site"] = cond_improv_per_site
             result_dict["avg_cond_improv"] = mean(avg_cond_improvs)

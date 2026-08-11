@@ -60,7 +60,7 @@ function setup_problem(nodes)
     
     field = ScalarField(dummy_mps, arch, bc)
     
-    Δ = symmetrized_laplacian(field, grid)
+    Δ = symmetrized_laplacian(field, grid; stencil_order=2)
     A = -1.0 * Δ
     
     # Exact Inverse Laplacian MPO
@@ -86,15 +86,16 @@ function run_task(task::TaskSpec, A, exact_inv)
         Gl = precond.operator
     end
     
-    # We want to compare Gl^T Gl against exact_inv.
-    # Gl^T Gl
+    # Gl^T Gl approximates A^{-1} = (-Δ)^{-1}; exact_inv is Δ^{-1}
+    target_inv = -1.0 * exact_inv
     Gl_T = dag(transpose(Gl))
     Gl_T_Gl = apply(Gl_T, Gl; alg="naive")
+    replace_siteinds!(Gl_T_Gl, only.(siteinds(exact_inv; plev=0)))
     
     # Frobenius norm
-    diff = +(exact_inv, -1.0 * Gl_T_Gl; cutoff=1e-10, maxdim=20)
+    diff = +(target_inv, -1.0 * Gl_T_Gl; cutoff=1e-10, maxdim=20)
     norm_diff = sqrt(abs(inner(diff, diff)))
-    norm_exact = sqrt(abs(inner(exact_inv, exact_inv)))
+    norm_exact = sqrt(abs(inner(target_inv, target_inv)))
     rel_error = norm_diff / norm_exact
     
     result = Dict(
@@ -133,8 +134,8 @@ dummy_precond = DifferenTT.fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_
 dummy_Gl = dummy_precond.operator
 dummy_Gl_T = dag(transpose(dummy_Gl))
 dummy_Gl_T_Gl = apply(dummy_Gl_T, dummy_Gl; alg="naive")
-replace_siteinds!(dummy_Gl_T_Gl, siteinds(dummy_exact))
-+(dummy_exact, -1.0 * dummy_Gl_T_Gl; cutoff=1e-10, maxdim=2)
+replace_siteinds!(dummy_Gl_T_Gl, only.(siteinds(dummy_exact; plev=0)))
++( -1.0 * dummy_exact, -1.0 * dummy_Gl_T_Gl; cutoff=1e-10, maxdim=2)
 @info "JIT warmup complete."
 
 A, exact_inv = setup_problem(task.nodes)

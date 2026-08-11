@@ -180,13 +180,13 @@ function build_problem(N::Int)
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
     
-    return A, rhs_mps, sol_mps, A_list, grid
+    return A, rhs_mps, sol_mps, A_list, grid, arch
 end
 
 function run_task(task::TaskSpec)
     N = task.N
     @info "Building problem for N=$N..."
-    A, rhs, sol_mps, A_list, grid = build_problem(N)
+    A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
     init_mps = random_mps(sites)
@@ -217,7 +217,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "baseline",
@@ -245,7 +245,7 @@ function run_task(task::TaskSpec)
         @info "Running Sinc (M=$M) N=$N"
         
         t_build = @elapsed begin
-            sinc_pc = sincquadrature_preconditioner(grid.arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
+            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
         end
         
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
@@ -254,7 +254,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "sinc_M_$(M)",
@@ -300,7 +300,7 @@ function run_task(task::TaskSpec)
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
         
-        iters_per_site = positions_sum(numiter_store)
+        iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
             "key" => "fai_mu_$(μ)_gdim_$(gdim)",
@@ -338,8 +338,7 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_N = 2
-dummy_arch = TTArchitecture(ntuple(i -> N_SITES_PER_DIM, dummy_N))
-dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid = build_problem(dummy_N)
+dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
 dummy_sites = siteinds(dummy_rhs)
 dummy_init = random_mps(dummy_sites)
 dummy_solver = ResidualALS(

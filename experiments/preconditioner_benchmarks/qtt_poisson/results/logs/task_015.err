@@ -1,0 +1,18 @@
+unload JULIA/1.12.6 (PATH, LD_LIBRARY_PATH, LIBRARY_PATH, C_INCLUDE_PATH,
+CPLUS_INCLUDE_PATH, MANPATH) 
+load JULIA/1.12.0 (PATH, LD_LIBRARY_PATH, LIBRARY_PATH, C_INCLUDE_PATH,
+CPLUS_INCLUDE_PATH, MANPATH) 
+
+The following have been reloaded with a version change:
+  1) julia/1.12.6 => julia/1.12.0
+
+[ Info: Task 15 / 105: nodes=(8,), μ=1.0e6, G=4
+[ Info: Running JIT warmup...
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: JIT warmup complete.
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object
+[ Info: Running (μ=1.0e6, G_maxdim=4) for (8,)
+[ Info:   build=64.46s, rel_error=0.581
+[ Info: Task 15 saved to experiments/preconditioner_benchmarks/qtt_poisson/results/tasks/task_015.jld2

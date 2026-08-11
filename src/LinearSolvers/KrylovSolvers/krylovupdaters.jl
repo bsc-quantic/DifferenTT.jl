@@ -15,10 +15,44 @@ via `kwargs`.
 
 struct KrylovUpdater <: AbstractUpdater end
 
+# Floor for κ = σ_max / max(σ_min, floor) and relative tolerance for SPD checks
+# (truncation / roundoff can produce eigenvalues like -1e-136 that are not meaningful).
+const _COND_EIG_FLOOR = 1e-16
+const _SPD_EIG_RTOL = 1e-12
+
+"""
+    _matrix_condition(mat) -> Float64
+
+2-norm condition number via singular values: κ₂ = σ_max / max(σ_min, ε).
+More robust than λ_max/λ_min for non-Hermitian products (e.g. P⁻¹A).
+"""
+function _matrix_condition(mat::AbstractMatrix)::Float64
+    σ = svdvals(mat)
+    isempty(σ) && return NaN
+    return Float64(σ[1] / max(σ[end], _COND_EIG_FLOOR))
+end
+
+"""
+    _is_significantly_not_spd(λ_min, λ_max; rtol) -> Bool
+
+True only if the most negative real eigenvalue is larger in magnitude than
+`rtol * max(|λ_max|, |λ_min|, 1)`, filtering TT truncation noise.
+"""
+function _is_significantly_not_spd(λ_min::Real, λ_max::Real; rtol::Float64 = _SPD_EIG_RTOL)::Bool
+    scale = max(abs(λ_max), abs(λ_min), 1.0)
+    return λ_min < -rtol * scale
+end
+
+function _real_eig_extremes(mat::AbstractMatrix)
+    eigs = real.(eigvals(mat))
+    return minimum(eigs), maximum(eigs)
+end
+
 function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
+    verbosity = get(kwargs, :verbosity, 0)
     kwargs = filter(p -> first(p) != :compute_cond && first(p) != :numiter_store && first(p) != :cond_store && first(p) != :pc_cond_store, kwargs)
 
     x, info = linsolve(
@@ -40,19 +74,16 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
         coldim = prod(dim.(colinds))
 
         op_mat = reshape(array(op, rowinds..., colinds...), rowdim, coldim)
-        eigs_op = eigvals(op_mat)
+        minimum_eigval, maximum_eigval = _real_eig_extremes(op_mat)
 
-        minimum_eigval = minimum(real.(eigs_op))
-        maximum_eigval = maximum(real.(eigs_op))
-
-        if minimum_eigval < 0
-            @error "OPERATOR IS NOT SPD!" minimum_eigval pos = problem.reduced_operator.lpos
+        if _is_significantly_not_spd(minimum_eigval, maximum_eigval)
+            @error "OPERATOR IS NOT SPD!" minimum_eigval maximum_eigval pos = problem.reduced_operator.lpos
         end
-        if compute_cond
-            @show problem.reduced_operator.lpos, minimum_eigval, maximum_eigval
+        cond_val = _matrix_condition(op_mat)
+        if compute_cond && verbosity > 0
+            @info "local cond" lpos = problem.reduced_operator.lpos minimum_eigval maximum_eigval cond = cond_val
         end
         if !isnothing(cond_store)
-            cond_val = abs(maximum_eigval) / max(abs(minimum_eigval), 1e-16)
             record_krylov_cond!(cond_store, _krylov_lpos(problem), cond_val)
         end
     end
@@ -78,6 +109,7 @@ function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,Reduc
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
     pc_cond_store = get(kwargs, :pc_cond_store, nothing)
+    verbosity = get(kwargs, :verbosity, 0)
     kwargs = filter(p -> first(p) != :compute_cond && first(p) != :numiter_store && first(p) != :cond_store && first(p) != :pc_cond_store, kwargs)
 
     x, info = linsolve(
@@ -90,7 +122,7 @@ function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,Reduc
         kwargs...,
     )
 
-    if compute_cond || (!isnothing(cond_store) && !isnothing(pc_cond_store))
+    if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
         op = contract(operator(problem.linear_problem))
         b_tensor = constant_term(problem.linear_problem)
 
@@ -100,44 +132,31 @@ function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,Reduc
         coldim = prod(dim.(colinds))
 
         op_mat = reshape(array(op, rowinds..., colinds...), rowdim, coldim)
-        eigs_op = eigvals(op_mat)
-
-        minimum_eigval_op = minimum(real.(eigs_op))
-        maximum_eigval_op = maximum(real.(eigs_op))
+        minimum_eigval_op, maximum_eigval_op = _real_eig_extremes(op_mat)
 
         pc = contract(problem.preconditioner)
         pc_mat = reshape(array(pc, rowinds..., colinds...), rowdim, coldim)
-        eigs_pc = eigvals(pc_mat)
-
-        minimum_eigval_pc = minimum(real.(eigs_pc))
-        maximum_eigval_pc = maximum(real.(eigs_pc))
+        minimum_eigval_pc, maximum_eigval_pc = _real_eig_extremes(pc_mat)
 
         product_mat = pc_mat * op_mat
-        eigs_prod = eigvals(product_mat)
 
-        minimum_eigval_prod = minimum(real.(eigs_prod))
-        maximum_eigval_prod = maximum(real.(eigs_prod))
-
-        if minimum_eigval_op < 0
-            @error "OPERATOR IS NOT SPD!" minimum_eigval_op pos = problem.linear_problem.reduced_operator.lpos
+        if _is_significantly_not_spd(minimum_eigval_op, maximum_eigval_op)
+            @error "OPERATOR IS NOT SPD!" minimum_eigval_op maximum_eigval_op pos = problem.linear_problem.reduced_operator.lpos
         end
 
-        if minimum_eigval_pc < 0
-            @error "Preconditioner IS NOT SPD!" minimum_eigval_pc pos = problem.linear_problem.reduced_operator.lpos
+        if _is_significantly_not_spd(minimum_eigval_pc, maximum_eigval_pc)
+            @error "Preconditioner IS NOT SPD!" minimum_eigval_pc maximum_eigval_pc pos = problem.linear_problem.reduced_operator.lpos
         end
-        if compute_cond
-            @show problem.linear_problem.reduced_operator.lpos, (maximum_eigval_op / minimum_eigval_op),  (maximum_eigval_prod / minimum_eigval_prod)
+
+        unprecond_cond = _matrix_condition(op_mat)
+        precond_cond = _matrix_condition(product_mat)
+        if compute_cond && verbosity > 0
+            @info "local precond cond" lpos = problem.linear_problem.reduced_operator.lpos unprecond_cond precond_cond
         end
         if !isnothing(cond_store)
-            unprecond_cond = abs(maximum_eigval_op) / max(abs(minimum_eigval_op), 1e-16)
-            precond_cond = abs(maximum_eigval_prod) / max(abs(minimum_eigval_prod), 1e-16)
-            cond_improvement = unprecond_cond / precond_cond
             record_krylov_cond!(cond_store, _krylov_lpos(problem), unprecond_cond)
         end
         if !isnothing(pc_cond_store)
-            unprecond_cond = abs(maximum_eigval_op) / max(abs(minimum_eigval_op), 1e-16)
-            precond_cond = abs(maximum_eigval_prod) / max(abs(minimum_eigval_prod), 1e-16)
-            cond_improvement = unprecond_cond / precond_cond
             record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), precond_cond)
         end
     end

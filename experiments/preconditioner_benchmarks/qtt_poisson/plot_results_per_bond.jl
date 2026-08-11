@@ -30,7 +30,7 @@ for nodes in system_sizes
         df_gdim = df_nodes[df_nodes.G_maxdim .== gdim, :]
         sort!(df_gdim, :mu)
         
-        lines!(ax, df_gdim.mu, df_gdim.relative_error, label="χ=$(gdim)", linewidth=2, marker=:rect)
+        scatterlines!(ax, df_gdim.mu, df_gdim.relative_error, label="χ=$(gdim)", linewidth=2, marker=:rect)
     end
     
     axislegend(ax, position=:lt)
