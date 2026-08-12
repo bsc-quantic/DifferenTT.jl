@@ -3,3 +3,10 @@
 .vscode
 *.png
 *.jld2
+
+# Keep collected results tracked despite *.jld2 above
+!collected_results.jld2
+
+# Ignore experiment outputs
+experiments/**/logs/
+experiments/**/tasks/
