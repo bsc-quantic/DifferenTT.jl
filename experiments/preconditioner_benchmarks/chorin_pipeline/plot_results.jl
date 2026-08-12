@@ -1,7 +1,10 @@
 using JLD2
 using DataFrames
-using CairoMakie
+using Plots
 using Statistics
+
+gr()
+default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
@@ -14,6 +17,12 @@ function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
 end
 
 df = load(input_file, "df")
+
+if ncol(df) == 0 || nrow(df) == 0
+    println("Warning: Dataframe is empty or has no columns in $(input_file). Exiting gracefully.")
+    exit(0)
+end
+
 plots_folder = joinpath(base_folder, "plots")
 mkpath(plots_folder)
 
@@ -34,76 +43,99 @@ for nodes in system_sizes
     gdim_values = sort(unique(filter(!ismissing, df_fai.G_maxdim)))
     
     # 1. Heatmap (Solve Speedup)
-    speedup_mat = fill(NaN, length(mu_values), length(gdim_values))
+    speedup_mat = fill(NaN, length(gdim_values), length(mu_values))
     for (i, mu) in enumerate(mu_values)
         for (j, gdim) in enumerate(gdim_values)
             row = df_fai[(df_fai.mu .== mu) .& (df_fai.G_maxdim .== gdim), :]
             if nrow(row) > 0
-                speedup_mat[i, j] = base_t / row.total_solve_time[1]
+                speedup_mat[j, i] = base_t / row.total_solve_time[1]
             end
         end
     end
     
-    fig_heat = Figure(size=(800, 600))
-    ax_heat = Axis(fig_heat[1, 1], xlabel = "G_maxdim (χ)", ylabel = "mu (μ)", title = "Solve Speedup Heatmap - $(nodes[1])x$(nodes[2])",
-                   xticks = (1:length(gdim_values), string.(gdim_values)), 
-                   yticks = (1:length(mu_values), string.(mu_values)))
-    
-    hm = heatmap!(ax_heat, speedup_mat', colormap=:viridis)
-    Colorbar(fig_heat[1, 2], hm, label="Speedup Factor")
-    save(joinpath(plots_folder, "heatmap_speedup_$(nodes[1]).png"), fig_heat)
+    valid_speedups = filter(!isnan, speedup_mat)
+    if !isempty(valid_speedups)
+        hm = heatmap(string.(mu_values), string.(gdim_values), speedup_mat,
+            title = "Solve Speedup - $(nodes[1])x$(nodes[2])",
+            xlabel = "mu (μ)",
+            ylabel = "G_maxdim (χ)",
+            color = :viridis,
+            clim = (minimum(valid_speedups), maximum(valid_speedups)),
+            right_margin = 5Plots.mm)
+        savefig(hm, joinpath(plots_folder, "heatmap_speedup_$(nodes[1]).png"))
+    end
     
     # 2. Pareto Front (Build vs Solve)
-    fig_pareto = Figure(size=(800, 600))
-    ax_pareto = Axis(fig_pareto[1, 1], xlabel = "Preconditioner Build Time (s)", ylabel = "Solve Time (s)", title = "Pareto Front - $(nodes[1])x$(nodes[2])")
-    hlines!(ax_pareto, [base_t], color=:red, linestyle=:dash, label="Baseline Solve Time")
-    scatter!(ax_pareto, df_fai.precond_build_time, df_fai.total_solve_time, color=:blue, markersize=12, label="FAI Preconditioners")
-    axislegend(ax_pareto)
-    save(joinpath(plots_folder, "pareto_$(nodes[1]).png"), fig_pareto)
+    pf_plot = plot(title="Pareto Front - $(nodes[1])x$(nodes[2])",
+        xlabel="Preconditioner Build Time (s)",
+        ylabel="Solve Time (s)",
+        legend=:outertopright,
+        framestyle=:box)
+        
+    hline!(pf_plot, [base_t], label="Baseline Solve Time", color=:red, lw=2, ls=:dash)
     
-    # 3. Iteration Profile (available for all grid sizes)
-    fig_iter = Figure(size=(900, 500))
-    ax_iter = Axis(fig_iter[1, 1], xlabel = "MPS Site", ylabel = "Total Krylov Iterations", title = "Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])")
+    # Shade the "profit" region (total time < baseline time)
+    if base_t > 0
+        plot!(pf_plot, [0, base_t], [base_t, 0],
+            fillrange=0, fillalpha=0.1, fillcolor=:green,
+            linealpha=0, label="Net Speedup Region")
+    end
     
+    pf_colors = palette(:tab20)
+    for (i, gdim) in enumerate(gdim_values)
+        df_g = df_fai[coalesce.(df_fai.G_maxdim .== gdim, false), :]
+        if nrow(df_g) > 0
+            scatter!(pf_plot, df_g.precond_build_time, df_g.total_solve_time, label="χ=$gdim", color=pf_colors[mod1(i, length(pf_colors))], markersize=6)
+        end
+    end
+    
+    xlims!(pf_plot, 0, maximum(df_fai.precond_build_time) * 1.05)
+    ylims!(pf_plot, 0, max(maximum(df_fai.total_solve_time), base_t) * 1.05)
+    
+    savefig(pf_plot, joinpath(plots_folder, "pareto_$(nodes[1]).png"))
+    
+    # 3. Iteration Profile
+    p_iter = plot(title="Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])",
+        xlabel="MPS Site", ylabel="Total Krylov Iterations", legend=:outertopright)
+        
     if nrow(df_base) > 0 && hasproperty(df_base, :iters_per_site) && !ismissing(df_base.iters_per_site[1])
         iters_b = df_base.iters_per_site[1]
-        lines!(ax_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, linewidth=3)
+        plot!(p_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, lw=3, marker=:circle)
     end
     
     if hasproperty(df_fai, :iters_per_site)
         best_fai = df_fai[argmin(df_fai.total_solve_time), :]
         iters_f = best_fai.iters_per_site
         if !ismissing(iters_f)
-            lines!(ax_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, linewidth=3)
+            plot!(p_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=3, marker=:square)
             if nrow(df_base) > 0 && !ismissing(df_base.iters_per_site[1])
-                band!(ax_iter, 1:length(iters_f), iters_f, df_base.iters_per_site[1], color=(:blue, 0.2))
+                plot!(p_iter, 1:length(iters_f), df_base.iters_per_site[1], fillrange=iters_f, fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
             end
         end
     end
-    axislegend(ax_iter)
-    save(joinpath(plots_folder, "iters_profile_$(nodes[1]).png"), fig_iter)
+    savefig(p_iter, joinpath(plots_folder, "iters_profile_$(nodes[1]).png"))
 
-    # 4. Condition-number profile (only collected for 8x8 and 10x10)
+    # 4. Condition-number profile
     if should_compute_cond(Tuple(nodes), use_nocond)
-        fig_cond = Figure(size=(900, 500))
-        ax_cond = Axis(fig_cond[1, 1], xlabel = "MPS Site", ylabel = "Mean Condition Number", title = "Site-by-Site Condition Profile - $(nodes[1])x$(nodes[2])")
-
+        p_cond = plot(title="Site-by-Site Condition Profile - $(nodes[1])x$(nodes[2])",
+            xlabel="MPS Site", ylabel="Mean Condition Number", legend=:outertopright)
+            
         if nrow(df_base) > 0 && hasproperty(df_base, :conds_per_site) && !ismissing(df_base.conds_per_site[1])
             conds_b = df_base.conds_per_site[1]
-            lines!(ax_cond, 1:length(conds_b), conds_b, label="Baseline", color=:black, linewidth=3)
+            plot!(p_cond, 1:length(conds_b), conds_b, label="Baseline", color=:black, lw=3, marker=:circle)
         end
-
+        
         if hasproperty(df_fai, :cond_improv_per_site)
             best_fai = df_fai[argmin(df_fai.total_solve_time), :]
             conds_f = best_fai.cond_improv_per_site
             if !ismissing(conds_f)
-                lines!(ax_cond, 1:length(conds_f), conds_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, linewidth=3)
+                plot!(p_cond, 1:length(conds_f), conds_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=3, marker=:square)
+                
                 if nrow(df_base) > 0 && hasproperty(df_base, :conds_per_site) && !ismissing(df_base.conds_per_site[1])
-                    band!(ax_cond, 1:length(conds_f), conds_f, df_base.conds_per_site[1], color=(:blue, 0.2))
+                    plot!(p_cond, 1:length(conds_f), df_base.conds_per_site[1], fillrange=conds_f, fillalpha=0.2, fillcolor=:blue, label="Difference", linealpha=0)
                 end
             end
         end
-        axislegend(ax_cond)
-        save(joinpath(plots_folder, "cond_profile_$(nodes[1]).png"), fig_cond)
+        savefig(p_cond, joinpath(plots_folder, "cond_profile_$(nodes[1]).png"))
     end
 end

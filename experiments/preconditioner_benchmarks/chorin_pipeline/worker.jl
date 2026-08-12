@@ -21,38 +21,39 @@ const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
 const DT = 0.00005
+
 n_steps_map = Dict(
-    (8, 8) => 10,
-    (10, 10) => 15,
-    (12, 12) => 15
+    (8, 8) => 50,
+    (10, 10) => 25,
+    (12, 12) => 10
 )
 
 system_sizes = [(8, 8), (10, 10), (12, 12)]
-cond_nodes  = [(8, 8), (10, 10)]
+cond_nodes  = [(8, 8), (10, 10), (12, 12)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
 mu_values = [5e6, 1e7, 5e7, 1e8]
-g_maxdims = 2:12
+g_maxdims = 2:10
 
 maxdims_map = Dict(
-    (8, 8) => 80,
-    (10, 10) => 100,
-    (12, 12) => 120
+    (8, 8) => 150,
+    (10, 10) => 200,
+    (12, 12) => 250
 )
 
 cutoff_map = Dict(
-    (8, 8) => 1e-12,
-    (10, 10) => 5e-13,
-    (12, 12) => 1e-13
+    (8, 8) => 0.0,
+    (10, 10) => 0.0,
+    (12, 12) => 0.0
 )
 
 nsweeps_map = Dict(
-    (8, 8) => 20,
-    (10, 10) => 30,
-    (12, 12) => 40
+    (8, 8) => 30,
+    (10, 10) => 40,
+    (12, 12) => 50
 )
 
 ITensors.disable_warn_order()

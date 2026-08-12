@@ -8,6 +8,11 @@ input_file = joinpath(base_folder, "collected_results.jld2")
 
 df = load(input_file, "df")
 
+if ncol(df) == 0 || nrow(df) == 0
+    println("Warning: Dataframe is empty or has no columns in $(input_file). Exiting gracefully.")
+    exit(0)
+end
+
 plots_folder = joinpath(base_folder, "plots")
 mkpath(plots_folder)
 
