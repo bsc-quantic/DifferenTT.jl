@@ -41,7 +41,7 @@ module load julia/1.12.0
 
 echo "Task \${SLURM_ARRAY_TASK_ID} / 105 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
-julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} \${NOCOND_ARG}
+julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 )
 
@@ -64,7 +64,7 @@ module load julia/1.12.0 2>/dev/null || true
 
 echo "Collecting results from array job..."
 
-julia --project=. ${SCRIPT_DIR}/collect.jl \${NOCOND_ARG}
+julia --project=. ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
 COLLECT_EOF
 )
 

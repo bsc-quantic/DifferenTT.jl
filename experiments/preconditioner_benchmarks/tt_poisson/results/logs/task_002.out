@@ -1,9 +1,0 @@
-Task 2 / 64 — Job 44401078 on gs04r1b53
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (0, 3.0816403655882247, 1.1930825112661325)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (1, 4.627666510109922, 1.1457667526686883)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (2, 6.529671703671699, 1.0943733239644735)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (3, 12.544578929367512, 1.0532089473207398)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (3, 12.544578929367512, 1.0532089473207398)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (2, 16.24758929931235, 1.03794470492532)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (1, 17.53051982408943, 1.0424916348868123)
-(problem.linear_problem.reduced_operator.lpos, maximum_eigval_op / minimum_eigval_op, maximum_eigval_prod / minimum_eigval_prod) = (0, 14.083747891178477, 1.041563227515974)
