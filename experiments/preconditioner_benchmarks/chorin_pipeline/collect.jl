@@ -21,7 +21,9 @@ for file in readdir(tasks_folder)
             if !haskey(result, "compute_cond")
                 result["compute_cond"] = should_compute_cond(Tuple(result["nodes"]), use_nocond)
             end
-            push!(df, result, cols=:union)
+            
+            result_sym = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in result)
+            push!(df, result_sym, cols=:union)
         catch e
             println("Error loading $file: $e")
         end
