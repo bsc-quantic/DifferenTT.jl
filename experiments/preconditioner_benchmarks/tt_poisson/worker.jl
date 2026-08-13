@@ -16,7 +16,7 @@ mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
 system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_SITES_PER_DIM = 5
+const N_NODES_PER_DIM = 5
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
@@ -137,7 +137,7 @@ end
 
 function build_problem(N::Int)
     box_size = ntuple(i -> 1.0, N)
-    nodes = ntuple(i -> N_SITES_PER_DIM, N)
+    nodes = ntuple(i -> N_NODES_PER_DIM, N)
     
     arch = TTArchitecture(nodes)
     grid = Grid(arch, box_size)
@@ -148,7 +148,9 @@ function build_problem(N::Int)
     
     sites = siteinds(arch)
     
-    # Cross interpolate RHS
+    # Cross interpolate RHS / manufactured solution.
+    # optfirstpivot starts at the grid center so Dirichlet-vanishing functions
+    # (∏ sin(π xᵢ)) do not yield maxsamplevalue=0 in high dimension.
     rhs_initialpivot = optfirstpivot(Float64, rhs_func, grid, arch)
     rhs_tci, _ = crossinterpolate2(Float64, rhs_func, grid, arch; initialpivots=[rhs_initialpivot])
     rhs_mps = MPS(rhs_tci)
