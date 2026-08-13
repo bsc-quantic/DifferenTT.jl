@@ -3,3 +3,8 @@
 .vscode
 *.png
 *.jld2
+
+!collected_results.jld2
+
+experiments/**/logs/
+experiments/**/tasks/

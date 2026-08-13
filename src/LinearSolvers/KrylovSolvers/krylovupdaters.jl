@@ -155,36 +155,8 @@ function _extremal_eigvals(mat::AbstractMatrix)
 end
 
 """
-    _extremal_eigvals_pcg(A, P⁻¹) -> (λ_min, λ_max)
 
-Extremal eigenvalues of a matrix S with `spec(S) = spec(P⁻¹ A)` when A and
-P⁻¹ are SPD.
-
-Construction: Cholesky `P⁻¹ = U'U`, then `S = U A U'`. By XY↔YX,
-`spec(U A U') = spec(U'U A) = spec(P⁻¹ A)`. U is the Cholesky factor, not
-necessarily `P^{-1/2}`; S shares the spectrum of the symmetrically
-preconditioned operator but is not that operator itself.
-
-If Cholesky fails, the SPD hypothesis on P⁻¹ has failed: returns `(NaN, NaN)`.
-No fallback through `real.(eigvals(P⁻¹ A))` — complex eigenvalues do not
-define a PCG spectral condition number.
 """
-function _extremal_eigvals_pcg(A::AbstractMatrix, Pinv::AbstractMatrix)
-    Ah = Matrix(_hermitianize(A))
-    Ph = _hermitianize(Pinv)
-    n = size(Ah, 1)
-    n == 0 && return (NaN, NaN)
-
-    F = cholesky(Ph; check=false)
-    if !issuccess(F)
-        @error "Cholesky of symmetrized P⁻¹ failed; P⁻¹ is not SPD — κ_PCG undefined"
-        return (NaN, NaN)
-    end
-
-    # P⁻¹ = U'U  ⇒  spec(U A U') = spec(P⁻¹ A)  (XY↔YX), S SPD when A is
-    S = F.U * (Ah * F.U')
-    return _extremal_hermitian_eigvals(_hermitianize(S))
-end
 
 """
     _report_spectral_κ(λ_min, λ_max; label, lpos) -> Float64
@@ -196,13 +168,14 @@ function _report_spectral_κ(
     λ_max::Real;
     label::AbstractString,
     lpos,
+    compute_cond::Bool=true
 )::Float64
     status = _classify_spd(λ_min, λ_max)
     if status === SPD_INDEFINITE
-        @error "$(label) IS NOT SPD — κ undefined" λ_min λ_max lpos
+        compute_cond && @error "$(label) IS NOT SPD — κ undefined" λ_min λ_max lpos
         return NaN
     elseif status === SPD_AMBIGUOUS
-        @warn "$(label) is numerically semidefinite/ambiguous — κ undefined" λ_min λ_max lpos
+        compute_cond && @warn "$(label) is numerically semidefinite/ambiguous — κ undefined" λ_min λ_max lpos
         return NaN
     end
     return _spectral_condition(λ_min, λ_max)
@@ -270,6 +243,190 @@ function _local_dense_matrix(op, b_tensor)
     return A, rowinds, colinds, rowdim, coldim
 end
 
+function _matrixfree_eigvals(f, x0; ishermitian::Bool)
+    λmax_vals, = eigsolve(f, x0, 1, :LR; ishermitian=ishermitian)
+    λmin_vals, = eigsolve(f, x0, 1, :SR; ishermitian=ishermitian)
+    return (Float64(real(λmin_vals[1])), Float64(real(λmax_vals[1])))
+end
+
+function _apply_fai_operator(P::ReducedFactorizedPreconditioner, A, v)
+    v_primed = ITensors.prime(v)
+    transpose_itensor_map = _itensor_map(P.reduced_op)
+    if ITensors.dim(first(transpose_itensor_map)) == 1
+        reverse!(transpose_itensor_map)
+    end
+    w = v_primed
+    for it in transpose_itensor_map
+        w *= it
+    end
+    Aw = A(w)
+    return ITensors.noprime(contract(P.reduced_op, Aw))
+end
+
+function _compute_and_record_cond!(problem::ReducedLinearProblem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+    lpos = problem.reduced_operator.lpos
+    if use_cg
+        op_func = v -> operator(problem)(v)
+        λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
+        if compute_cond && verbosity > 0
+            @info "local cond (CG/spectral)" lpos λmin_A λmax_A κ_A
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+    else
+        op = contract(operator(problem))
+        A, = _local_dense_matrix(op, b_tensor)
+        σmin_A, σmax_A = _extremal_singular_values(A)
+        κ_A = _svd_condition(σmin_A, σmax_A)
+        if compute_cond && verbosity > 0
+            @info "local cond (GMRES/κ₂)" lpos σmin_A σmax_A κ_A
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+    end
+end
+
+# TODO Look for a way to compute convergence metrics for GMRES also from the ProjMPO obejcts, if possible
+function _compute_and_record_cond!(problem::ReducedPrecondLinearProblem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+    lpos = problem.linear_problem.reduced_operator.lpos
+    if use_cg
+        # Get the callable ProjMPO object from the linear problem
+        op_func = v -> operator(problem.linear_problem)(v)
+        λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
+
+        # Get the callable ProjMPO object from the preconditioner
+        pc_func = v -> problem.preconditioner(v)
+        λmin_Pinv, λmax_Pinv = _matrixfree_eigvals(pc_func, b_tensor; ishermitian=true)
+        status_Pinv = _classify_spd(λmin_Pinv, λmax_Pinv)
+        if status_Pinv === SPD_INDEFINITE
+            compute_cond && @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+        elseif status_Pinv === SPD_AMBIGUOUS
+            compute_cond && @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+        end
+
+        κ_PC, λmin_PA, λmax_PA = NaN, NaN, NaN
+        if status_Pinv === SPD_DEFINITE && isfinite(κ_A)
+            # Apply first the ProjMPO from the linear problem and then the one from the preconditioner
+            pc_op_func = v -> problem.preconditioner(operator(problem.linear_problem)(v))
+            λmin_PA, λmax_PA = _matrixfree_eigvals(pc_op_func, b_tensor; ishermitian=false)
+            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos, compute_cond=compute_cond)
+        end
+
+        if compute_cond && verbosity > 0
+            @info "local precond cond (PCG/spectral)" lpos κ_A κ_PC λmin_A λmax_A λmin_Pinv λmax_Pinv λmin_PA λmax_PA
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+        if !isnothing(pc_cond_store) && isfinite(κ_PC)
+            record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_PC)
+        end
+    else
+        # For GMRES, proceed with the dense matrices, as we do not have an object tracking the adjoint of the operator
+        op = contract(operator(problem.linear_problem))
+        b_tensor_for_matrix = constant_term(problem.linear_problem)
+        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(op, b_tensor_for_matrix)
+        pc = contract(problem.preconditioner)
+        Pinv = reshape(array(pc, rowinds..., colinds...), rowdim, coldim)
+
+        σmin_A, σmax_A = _extremal_singular_values(A)
+        κ_A = _svd_condition(σmin_A, σmax_A)
+
+        PA = Matrix(Pinv) * Matrix(A)
+        σmin_PA, σmax_PA = _extremal_singular_values(PA)
+        κ_PC = _svd_condition(σmin_PA, σmax_PA)
+
+        if compute_cond && verbosity > 0
+            @info "local precond cond (GMRES/κ₂)" lpos κ_A κ_PC σmin_A σmax_A σmin_PA σmax_PA
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+        if !isnothing(pc_cond_store) && isfinite(κ_PC)
+            record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_PC)
+        end
+    end
+end
+
+function _compute_and_record_cond!(problem::ReducedFAIPrecondLinearProblem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+    lpos = problem.linear_problem.reduced_operator.lpos
+    if use_cg
+        op_func = v -> operator(problem.linear_problem)(v)
+        λmin_A, λmax_A = _matrixfree_eigvals(op_func, b_tensor; ishermitian=true)
+        κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos, compute_cond=compute_cond)
+
+        # Calling the preconditioner already applies the two cholesky factors
+        pc_func = v -> problem.preconditioner(v)
+        λmin_Pinv, λmax_Pinv = _matrixfree_eigvals(pc_func, b_tensor; ishermitian=true)
+        status_Pinv = _classify_spd(λmin_Pinv, λmax_Pinv)
+        if status_Pinv === SPD_INDEFINITE
+            compute_cond && @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+        elseif status_Pinv === SPD_AMBIGUOUS
+            compute_cond && @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
+        end
+
+        κ_PC, λmin_PA, λmax_PA = NaN, NaN, NaN
+        if status_Pinv === SPD_DEFINITE && isfinite(κ_A)
+            A = operator(problem.linear_problem)
+            # for fai operators, the _apply_fai_operator computes Gl * A * Gl' (v), which is guaranteed to be hermitian
+            fai_op_func = v -> _apply_fai_operator(problem.preconditioner, A, v)
+            λmin_PA, λmax_PA = _matrixfree_eigvals(fai_op_func, b_tensor; ishermitian=true)
+            κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos, compute_cond=compute_cond)
+        end
+
+        if compute_cond && verbosity > 0
+            @info "local precond cond (PCG/spectral)" lpos κ_A κ_PC λmin_A λmax_A λmin_Pinv λmax_Pinv λmin_PA λmax_PA
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+        if !isnothing(pc_cond_store) && isfinite(κ_PC)
+            record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_PC)
+        end
+    else
+        op = contract(operator(problem.linear_problem))
+        b_tensor_for_matrix = constant_term(problem.linear_problem)
+        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(op, b_tensor_for_matrix)
+        pc = contract(problem.preconditioner)
+        Pinv = reshape(array(pc, rowinds..., colinds...), rowdim, coldim)
+
+        σmin_A, σmax_A = _extremal_singular_values(A)
+        κ_A = _svd_condition(σmin_A, σmax_A)
+
+        PA = Matrix(Pinv) * Matrix(A)
+        σmin_PA, σmax_PA = _extremal_singular_values(PA)
+        κ_PC = _svd_condition(σmin_PA, σmax_PA)
+
+        if compute_cond && verbosity > 0
+            @info "local precond cond (GMRES/κ₂)" lpos κ_A κ_PC σmin_A σmax_A σmin_PA σmax_PA
+        end
+        if !isnothing(cond_store) && isfinite(κ_A)
+            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+        end
+        if !isnothing(pc_cond_store) && isfinite(κ_PC)
+            record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_PC)
+        end
+    end
+end
+
+"""
+    (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
+
+Local updater for linear problems. Passes the preconditioner `ProjMPO` to KrylovKit's
+`linsolve` (PCG when `ishermitian && isposdef`, else preconditioned GMRES).
+
+Condition metrics:
+- CG/PCG: spectral κ(A) and κ_PCG from S = UAU' (Cholesky of P⁻¹).
+- GMRES: κ₂(A) and κ₂(P⁻¹ A) from extremal singular values (no SPD requirement on P⁻¹).
+
+# Returns
+- `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
+"""
 function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
@@ -288,30 +445,8 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     )
 
     if compute_cond || !isnothing(cond_store)
-        op = contract(operator(problem))
         b_tensor = constant_term(problem)
-        A, = _local_dense_matrix(op, b_tensor)
-        lpos = problem.reduced_operator.lpos
-
-        if use_cg
-            # CG: A ──→ λmin, λmax ──→ SPD? + κ_spectral(A)
-            λmin_A, λmax_A = _extremal_eigvals(A)
-            κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos)
-            if compute_cond && verbosity > 0
-                @info "local cond (CG/spectral)" lpos λmin_A λmax_A κ_A
-            end
-        else
-            # GMRES: A ──→ σmin, σmax ──→ κ₂(A)
-            σmin_A, σmax_A = _extremal_singular_values(A)
-            κ_A = _svd_condition(σmin_A, σmax_A)
-            if compute_cond && verbosity > 0
-                @info "local cond (GMRES/κ₂)" lpos σmin_A σmax_A κ_A
-            end
-        end
-
-        if !isnothing(cond_store) && isfinite(κ_A)
-            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
-        end
+        _compute_and_record_cond!(problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, nothing)
     end
 
     if !isnothing(numiter_store)
@@ -321,20 +456,9 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     return x, (; info)
 end
 
-"""
-    (up::KrylovUpdater)(problem::ReducedPrecondLinearProblem, init; internal_kwargs, coefficients, kwargs...)
-
-Local updater for preconditioned problems. Passes the preconditioner `ProjMPO` to KrylovKit's
-`linsolve` (PCG when `ishermitian && isposdef`, else preconditioned GMRES).
-
-Condition metrics:
-- CG/PCG: spectral κ(A) and κ_PCG from S = UAU' (Cholesky of P⁻¹).
-- GMRES: κ₂(A) and κ₂(P⁻¹ A) from extremal singular values (no SPD requirement on P⁻¹).
-
-# Returns
-- `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
-"""
-function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,ReducedPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
+# Since now we leverage multiple dispatch at the _compute_and_record_cond level, we can use the same function
+# for both types of preconditioned linear problems
+function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
     compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
@@ -354,61 +478,8 @@ function (up::KrylovUpdater)(problem::Union{ReducedFAIPrecondLinearProblem,Reduc
     )
 
     if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
-        op = contract(operator(problem.linear_problem))
         b_tensor = constant_term(problem.linear_problem)
-        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(op, b_tensor)
-        lpos = problem.linear_problem.reduced_operator.lpos
-
-        pc = contract(problem.preconditioner)
-        Pinv = reshape(array(pc, rowinds..., colinds...), rowdim, coldim)
-
-        κ_A = NaN
-        κ_PC = NaN
-
-        if use_cg
-            # PCG path -------------------------------------------------------
-            λmin_A, λmax_A = _extremal_eigvals(A)
-            κ_A = _report_spectral_κ(λmin_A, λmax_A; label="OPERATOR", lpos=lpos)
-
-            λmin_Pinv, λmax_Pinv = _extremal_eigvals(Pinv)
-            status_Pinv = _classify_spd(λmin_Pinv, λmax_Pinv)
-            if status_Pinv === SPD_INDEFINITE
-                @error "Preconditioner P⁻¹ IS NOT SPD — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
-            elseif status_Pinv === SPD_AMBIGUOUS
-                @warn "Preconditioner P⁻¹ is numerically semidefinite/ambiguous — κ_PCG undefined" λmin_Pinv λmax_Pinv lpos
-            end
-
-            λmin_PA, λmax_PA = (NaN, NaN)
-            if status_Pinv === SPD_DEFINITE && isfinite(κ_A)
-                λmin_PA, λmax_PA = _extremal_eigvals_pcg(A, Pinv)
-                κ_PC = _report_spectral_κ(λmin_PA, λmax_PA; label="PCG operator S∼P⁻¹A", lpos=lpos)
-            end
-
-            if compute_cond && verbosity > 0
-                @info "local precond cond (PCG/spectral)" lpos κ_A κ_PC λmin_A λmax_A λmin_Pinv λmax_Pinv λmin_PA λmax_PA
-            end
-        else
-            # GMRES path -----------------------------------------------------
-            # A ──→ σmin, σmax ──→ κ₂(A)
-            # P⁻¹A ──→ σmin, σmax ──→ κ₂(P⁻¹A)   (no SPD hypothesis)
-            σmin_A, σmax_A = _extremal_singular_values(A)
-            κ_A = _svd_condition(σmin_A, σmax_A)
-
-            PA = Matrix(Pinv) * Matrix(A)
-            σmin_PA, σmax_PA = _extremal_singular_values(PA)
-            κ_PC = _svd_condition(σmin_PA, σmax_PA)
-
-            if compute_cond && verbosity > 0
-                @info "local precond cond (GMRES/κ₂)" lpos κ_A κ_PC σmin_A σmax_A σmin_PA σmax_PA
-            end
-        end
-
-        if !isnothing(cond_store) && isfinite(κ_A)
-            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
-        end
-        if !isnothing(pc_cond_store) && isfinite(κ_PC)
-            record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_PC)
-        end
+        _compute_and_record_cond!(problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
     end
 
     if !isnothing(numiter_store)

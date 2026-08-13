@@ -30,24 +30,24 @@ using Test
         include("LinearSolvers/test_expandedals.jl")
         include("LinearSolvers/test_preconditioners.jl")
         include("LinearSolvers/test_preconditionedproblem.jl")
-        include("LinearSolvers/test_als.jl")
-        include("LinearSolvers/test_amen.jl")
-        include("LinearSolvers/test_exactupdaters.jl")
+        include("LinearSolvers/test_als.jl") # TODO: expand minimalist test in a future PR
+        include("LinearSolvers/test_amen.jl") # TODO: expand minimalist test in a future PR
+        include("LinearSolvers/test_exactupdaters.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/test_projectedproblem.jl")
         include("LinearSolvers/test_residualals.jl")
         
-        include("LinearSolvers/KrylovSolvers/test_cg.jl")
-        include("LinearSolvers/KrylovSolvers/test_gmres.jl")
+        include("LinearSolvers/KrylovSolvers/test_cg.jl") # TODO: expand minimalist test in a future PR
+        include("LinearSolvers/KrylovSolvers/test_gmres.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/KrylovSolvers/test_krylovstats.jl")
         include("LinearSolvers/KrylovSolvers/test_krylovupdaters.jl")
-        include("LinearSolvers/KrylovSolvers/test_preconditionedlinsolve.jl")
-        include("LinearSolvers/KrylovSolvers/test_ttcg.jl")
-        include("LinearSolvers/KrylovSolvers/test_ttgmres.jl")
+        include("LinearSolvers/KrylovSolvers/test_preconditionedlinsolve.jl") # TODO: expand minimalist test in a future PR
+        include("LinearSolvers/KrylovSolvers/test_ttcg.jl") # TODO: expand minimalist test in a future PR
+        include("LinearSolvers/KrylovSolvers/test_ttgmres.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/KrylovSolvers/test_ttkrylov.jl")
     end
     @testset "Physics" begin
         include("Physics/test_chorin.jl")
-        include("Physics/test_equationterms.jl")
+        include("Physics/test_equationterms.jl") # TODO: expand empty test in a future PR
         include("Physics/test_fdstencils.jl")
         include("Physics/test_insexperiment.jl")
         include("Physics/test_end2end.jl")

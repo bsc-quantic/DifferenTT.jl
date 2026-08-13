@@ -33,6 +33,13 @@ Base.@kwdef struct LocalUpdaterArgs
     numiter_store::Any = nothing
     cond_store::Any = nothing
     pc_cond_store::Any = nothing
+
+    function LocalUpdaterArgs(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store)
+        if compute_cond && (!ishermitian || !isposdef)
+            @warn "compute_cond=true is typically only meaningful for Conjugate Gradient (CG) solvers, which require ishermitian=true and isposdef=true."
+        end
+        new(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store)
+    end
 end
 
 """

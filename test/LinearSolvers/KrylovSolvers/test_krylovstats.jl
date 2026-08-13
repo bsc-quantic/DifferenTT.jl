@@ -13,9 +13,9 @@ using DifferenTT
     numiters = DifferenTT.krylov_numiters(stats)
     @test length(numiters) == 2 # positions 1 and 2
     
-    means = DifferenTT.positions_mean(stats)
-    @test means[1] == 10 + 9
-    @test means[2] == 12 + 11
+    sums = DifferenTT.positions_sum(stats)
+    @test sums[1] == 10 + 9
+    @test sums[2] == 12 + 11
 
     # KrylovCondStats
     cstats = DifferenTT.KrylovCondStats()

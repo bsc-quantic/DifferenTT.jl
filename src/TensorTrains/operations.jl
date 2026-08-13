@@ -75,6 +75,9 @@ function _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=ty
 end
 
 function _sum_elements(elements; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    if length(first(elements)) == 1
+        return typeof(first(elements))([sum([e[1] for e in elements])])
+    end
     if cutoff == 0.0 && maxdim == typemax(Int)
         return sum(collect(elements); alg="directsum")
     else
