@@ -142,6 +142,8 @@ function run_task(task::TaskSpec)
     cond_store = use_nocond ? nothing : KrylovCondStats()
     pc_cond_store = use_nocond ? nothing : KrylovCondStats()
     updater_kwargs = LocalUpdaterArgs(
+        ishermitian = true,
+        isposdef = true,
         rtol = 1e-3,
         compute_cond = !use_nocond,
         numiter_store = numiter_store,
