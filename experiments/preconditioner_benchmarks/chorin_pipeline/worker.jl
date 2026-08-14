@@ -14,7 +14,7 @@ base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipelin
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = "experiments/preconditioner_benchmarks/masks.jld2"
+const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.jld2"
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
@@ -81,7 +81,7 @@ end
 
 function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     sites = siteinds(2, sum(nodes))
-    arch = QTTArchitecture(nodes; interleaved=true)
+    arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
     
     # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
