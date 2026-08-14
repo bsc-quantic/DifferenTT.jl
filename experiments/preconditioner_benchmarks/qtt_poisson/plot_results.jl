@@ -1,6 +1,9 @@
 using JLD2
 using DataFrames
-using CairoMakie
+using Plots
+
+gr()
+default(fmt=:png, dpi=300, size=(800, 600), fontfamily="Computer Modern", margin=5Plots.mm)
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
@@ -22,24 +25,24 @@ system_sizes = unique(df.nodes)
 for nodes in system_sizes
     df_nodes = df[df.nodes .== Ref(nodes), :]
     
-    fig = Figure(size=(800, 600))
-    ax = Axis(fig[1, 1],
+    p = plot(
         xlabel = "FAI Bond Dimension",
         ylabel = "Relative Error to Exact Inverse",
         title = "FAI vs Exact Inverse (1D Poisson) - QTT L=$(nodes[1])",
-        yscale = log10
+        yaxis = :log10,
+        legend = :outertopright,
+        framestyle = :box
     )
     
     mu_values = sort(unique(df_nodes.mu))
+    colors = palette(:tab20)
     
-    for mu in mu_values
+    for (i, mu) in enumerate(mu_values)
         df_mu = df_nodes[df_nodes.mu .== mu, :]
         sort!(df_mu, :G_maxdim)
         
-        scatterlines!(ax, df_mu.G_maxdim, df_mu.relative_error, label="μ=$(mu)", linewidth=2, marker=:circle)
+        plot!(p, df_mu.G_maxdim, df_mu.relative_error, label="μ=$(mu)", lw=2, marker=:circle, color=colors[mod1(i, length(colors))])
     end
     
-    axislegend(ax, position=:rt)
-    
-    save(joinpath(plots_folder, "rel_error_nodes_$(nodes[1]).png"), fig)
+    savefig(p, joinpath(plots_folder, "rel_error_nodes_$(nodes[1]).png"))
 end
