@@ -72,17 +72,17 @@ bc_y = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
 bc = BoundaryConditions(bc_x, bc_y)
 
 field = ScalarField(sites, arch, bc)
-Δ = DifferenTT.symmetrized_laplacian(field, grid; asymmetry = ε, stencil_order=8)
+Δ = symmetrized_laplacian(field, grid; asymmetry = ε, stencil_order=8)
 
 visualize_scalar(-1.0 * apply(Δ, exact_mps), grid, arch, "experiments/qtt_poisson/opexact_2d.png"; npoints=200, aspect_ratio=:equal, size = fig_size)
 
 # Dirichlet correction on the pressure field moved to the rhs of the linear system
-rhs_correction_mpo = DifferenTT.scalar_dirichlet_correction(field, grid, 2)
-rhs_correction = (isnothing(rhs_correction_mpo)) ? nothing : apply(rhs_correction_mpo, DifferenTT.ones_mps(sites, 1, Array); alg="naive")
+rhs_correction_mpo = scalar_dirichlet_correction(field, grid, 2)
+rhs_correction = (isnothing(rhs_correction_mpo)) ? nothing : apply(rhs_correction_mpo, ones_mps(sites, 1, Array); alg="naive")
 
 # Apply the boundary nullifier
 rhs_mps = isnothing(rhs_correction) ? rhs_mps : +(rhs_mps, rhs_correction)
-rhs_mps = DifferenTT.symmetrize_rhs(field, rhs_mps)
+rhs_mps = symmetrize_rhs(field, rhs_mps)
 
 updater_kwargs = LocalUpdaterArgs(;
     ishermitian=true,
@@ -125,8 +125,8 @@ println("Relative error (MPS norm): ", rel_mps_error)
 
 # Also compare on a regular sampled grid for a pointwise-style metric.
 ncompare = (65, 65)
-_, numerical_data = DifferenTT.samples(output_mps, grid, arch, ncompare)
-_, exact_data = DifferenTT.samples(exact_mps, grid, arch, ncompare)
+_, numerical_data = samples(output_mps, grid, arch, ncompare)
+_, exact_data = samples(exact_mps, grid, arch, ncompare)
 abs_error = abs.(numerical_data .- exact_data)
 rel_l2_sample_error = norm(abs_error) / norm(exact_data)
 max_abs_sample_error = maximum(abs_error)

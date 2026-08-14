@@ -1,6 +1,7 @@
 using ITensors
 using ITensorMPS
 using LinearAlgebra
+using TensorCrossInterpolation
 using DifferenTT
 
 function exact_solution(x)
@@ -73,8 +74,8 @@ arch = TTArchitecture(nodes)
 grid = Grid(arch, box_size)
 
 # Cross interpolate exact solution
-sol_initialpivot = DifferenTT.optfirstpivot(Float64, exact_solution, grid, arch)
-sol_tci, sol_ranks, sol_error = DifferenTT.crossinterpolate2(
+sol_initialpivot = optfirstpivot(Float64, exact_solution, grid, arch)
+sol_tci, sol_ranks, sol_error = crossinterpolate2(
     Float64, exact_solution, grid, arch; initialpivots=[sol_initialpivot]
 )
 @show sol_ranks
@@ -83,8 +84,8 @@ exact_mps = MPS(sol_tci)
 
 # Cross interpolate RHS
 println("Cross interpolating RHS...")
-rhs_initialpivot = DifferenTT.optfirstpivot(Float64, rhs_f, grid, arch)
-rhs_tci, rhs_ranks, rhs_error = DifferenTT.crossinterpolate2(
+rhs_initialpivot = optfirstpivot(Float64, rhs_f, grid, arch)
+rhs_tci, rhs_ranks, rhs_error = crossinterpolate2(
     Float64, rhs_f, grid, arch; initialpivots=[rhs_initialpivot]
 )
 @show rhs_ranks
@@ -100,11 +101,11 @@ bc = BoundaryConditions(ntuple(i -> BoundaryCond1d(DirichletBC(0.0), DirichletBC
 field = ScalarField(rhs_mps, arch, bc)
 
 println("Building Laplacian MPO...")
-Δ = DifferenTT.symmetrized_laplacian(field, grid)
+Δ = symmetrized_laplacian(field, grid)
 A = -1.0 * Δ
 
 println("Setting up solver...")
-init_mps = DifferenTT.zeros_mps(sites)
+init_mps = zeros_mps(sites)
 
 sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=20, cutoff=0.0)
 updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, compute_cond=false, verbosity=2)
@@ -135,7 +136,7 @@ println("\n--- Sinc-Quadrature Preconditioner ---")
 M = 20
 println("Building Sinc-Quadrature PC (M = $M)...")
 A_list = [get_1d_A(i, grid, arch) for i in 1:N]
-time_sinc_build = @elapsed sinc_pc = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
+time_sinc_build = @elapsed sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
 
 solver_sinc = ResidualALS(
     sweep_kwargs=sweep_kwargs, 
@@ -158,7 +159,7 @@ fai_builder_solver = ResidualALS(sweep_kwargs=SweepingArgs(nsweeps=30, maxdim=gd
 time_fai_build = @elapsed begin
     unscaledG, D = DifferenTT.fai_dg(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
     Gl = apply(D, unscaledG; maxdim=gdim)
-    fai_pc = DifferenTT.FactorizedPreconditioner(Gl)
+    fai_pc = FactorizedPreconditioner(Gl)
 end
 
 solver_fai = ResidualALS(
@@ -171,4 +172,3 @@ diff_fai = +(out_mps_fai, -1.0 * exact_mps; cutoff=1e-10)
 rel_error_fai = norm(diff_fai) / norm(exact_mps)
 println("FAI relative error: ", rel_error_fai, " | Build Time: ", time_fai_build, " | Solve Time: ", time_fai_solve)
 println("Solution maxlinkdim: ", maxlinkdim(out_mps_fai))
-

@@ -115,12 +115,12 @@ function build_problem(N::Int)
     rhs_mps = apply(A, sol_mps; alg="naive", cutoff=1e-12)
     
     # Incorporate Dirichlet boundary corrections through library functions (even if they do not do anything)
-    Δ_correction_mpo = DifferenTT.scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
+    Δ_correction_mpo = scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
     Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive", cutoff=1e-12)
     rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; cutoff=1e-12)
     
     # Symmetrize the RHS
-    rhs_mps = DifferenTT.symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
+    rhs_mps = symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
     

@@ -83,7 +83,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     
     t_build = @elapsed begin
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        precond = DifferenTT.fai_preconditioner(A, μ, solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+        precond = fai_preconditioner(A, μ, solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
         Gl = precond.operator
     end
     
@@ -132,7 +132,7 @@ dummy_solver = ResidualALS(
     residual_tol=1e-9
 )
 dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
-dummy_precond = DifferenTT.fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
+dummy_precond = fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
 dummy_Gl = dummy_precond.operator
 dummy_Gl_T = dag(transpose(dummy_Gl))
 dummy_Gl_T_Gl = apply(dummy_Gl_T, dummy_Gl; alg="naive")

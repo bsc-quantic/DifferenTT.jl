@@ -95,7 +95,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = zeros_mps(sites)
     end
     
-    mps_vy = DifferenTT.tt_mul(object_mask, ones_mps(sites))
+    mps_vy = tt_mul(object_mask, ones_mps(sites))
     mps_vx = 0.0 * ones_mps(sites)
     
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
@@ -118,7 +118,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
     p_diff_ops = DifferentialOpsScalar(grid, experiment.p_field; stencil_order=STENCIL_ORDER)
-    Δ_cache = DifferenTT.symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=cutoff_map[nodes])
+    Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=cutoff_map[nodes])
     A = -1.0 * Δ_cache
     
     return (;
@@ -145,9 +145,9 @@ function build_rhs(grid, masked_u)
     maxdim_val = experiment.maxdim
     dt = experiment.time_evol_settings.dt
 
-    ∇u = DifferenTT.divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
-    ∇u_correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    Δp_correction_mpo = DifferenTT.scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
+    ∇u = divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
+    ∇u_correction = divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
+    Δp_correction_mpo = scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
     
     Δp_correction = isnothing(Δp_correction_mpo) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites); alg="naive", cutoff=cutoff_val, maxdim=maxdim_val)
     
@@ -163,10 +163,10 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
     
-    numiter_store = DifferenTT.KrylovSweepStats()
-    cond_store = compute_cond ? DifferenTT.KrylovCondStats() : nothing
-    pc_cond_store = compute_cond ? DifferenTT.KrylovCondStats() : nothing
-    updater_kwargs = DifferenTT.LocalUpdaterArgs(;
+    numiter_store = KrylovSweepStats()
+    cond_store = compute_cond ? KrylovCondStats() : nothing
+    pc_cond_store = compute_cond ? KrylovCondStats() : nothing
+    updater_kwargs = LocalUpdaterArgs(;
         ishermitian = true,
         isposdef = true,
         rtol = 1e-4,
@@ -176,11 +176,11 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     )
     
     if isnothing(precond)
-        solver = DifferenTT.ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = DifferenTT.ResidualObserver(grid.A, rhs, 1e-3))
+        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
     else
-        solver = DifferenTT.ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = DifferenTT.ResidualObserver(grid.A, rhs, 1e-3))
+        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
     end
     
     # Compute relative residual
@@ -196,9 +196,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     push!(experiment.p_field, divfree_p)
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
-    stepper = DifferenTT.ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    rhs_func = DifferenTT.NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
-    timestepped_u = DifferenTT.timestep(stepper, div_free_u, dt, rhs_func, 0.0)
+    stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
+    timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     
     push!(experiment.u_fields, timestepped_u)
     
@@ -207,7 +207,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
     
     if compute_cond
-        cond_improv_vals = isnothing(precond) ? DifferenTT.positions_mean_cond(cond_store) : DifferenTT.positions_mean_cond(pc_cond_store)
+        cond_improv_vals = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
         cond_improv_mean = isempty(cond_improv_vals) ? NaN : mean(cond_improv_vals)
         res_dict = merge(res_dict, (; cond_improv_vals, cond_improv_mean))
     end
@@ -223,7 +223,7 @@ function run_task(task::TaskSpec)
     nsweep_val = nsweeps_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
     
-    sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
+    sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
@@ -290,8 +290,8 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         
-        fai_builder_solver = DifferenTT.ResidualALS(
-            sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
+        fai_builder_solver = ResidualALS(
+            sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
             residual_tol=1e-9
         )
         
@@ -300,7 +300,7 @@ function run_task(task::TaskSpec)
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
             Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = DifferenTT.FactorizedPreconditioner(Gl)
+            precond = FactorizedPreconditioner(Gl)
         end
         
         # Warmup
@@ -375,12 +375,12 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_grid = build_grid((8, 8), 1)
-dummy_solver = DifferenTT.ResidualALS(
-    sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+dummy_solver = ResidualALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2
 )
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-chorin_step!(dummy_grid, DifferenTT.SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), true)
+chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), true)
 @info "JIT warmup complete."
 
 result = run_task(task)

@@ -18,12 +18,12 @@ nodes = (4,)
 arch = QTTArchitecture(nodes)
 grid = Grid(arch, box_size)
 
-target_tci, target_error = DifferenTT.crossinterpolate2(Float64, target, grid, arch)
+target_tci, target_error = crossinterpolate2(Float64, target, grid, arch)
 target_mps = MPS(target_tci)
 println("Target Error: ", target_error)
 
-sol_initialpivot = DifferenTT.optfirstpivot(Float64, sol, grid, arch)
-sol_tci, sol_error = DifferenTT.crossinterpolate2(Float64, sol, grid, arch; initialpivots=[sol_initialpivot])
+sol_initialpivot = optfirstpivot(Float64, sol, grid, arch)
+sol_tci, sol_error = crossinterpolate2(Float64, sol, grid, arch; initialpivots=[sol_initialpivot])
 sol_mps = MPS(sol_tci)
 println("Solution Error: ", sol_error)
 
@@ -32,8 +32,8 @@ field = ScalarField(target_mps, arch, bc)
 
 Δ = symmetrized_laplacian(field, grid)
 
-solver = DifferenTT.ResidualALS(
-    sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=5, maxdim=50, cutoff=1e-10),
+solver = ResidualALS(
+    sweep_kwargs = SweepingArgs(nsweeps=5, maxdim=50, cutoff=1e-10),
     residual_tol = 1e-5
 )
 
