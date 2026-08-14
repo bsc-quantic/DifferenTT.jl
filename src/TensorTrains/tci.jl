@@ -147,13 +147,47 @@ function TensorCrossInterpolation.crossinterpolate1(func_type::Type{<:Number}, f
 end
 
 """
+    _tci_center_pivot(local_dims) -> Vector{Int}
+
+1-based multi-index at the center of each local dimension. Preferable default
+for Dirichlet-vanishing functions (e.g. ∏ sin(π xᵢ)), which are exactly zero on
+the boundary of the hypercube — unlike `ones(...)`, which always samples x=0.
+"""
+function _tci_center_pivot(local_dims::AbstractVector{Int})::Vector{Int}
+    return map(d -> max(1, (d + 1) ÷ 2), local_dims)
+end
+
+"""
+    _tci_random_pivot(local_dims) -> Vector{Int}
+
+Random 1-based multi-index. When `d ≥ 3`, samples only the interior indices
+`2:(d-1)` so that high-dimensional functions that vanish on the boundary remain
+discoverable (uniform sampling over the full grid has success probability that
+decays as `((d-2)/d)^N`).
+"""
+function _tci_random_pivot(local_dims::AbstractVector{Int})::Vector{Int}
+    return map(local_dims) do d
+        d >= 3 ? rand(2:(d - 1)) : rand(1:d)
+    end
+end
+
+"""
     TensorCrossInterpolation.optfirstpivot(func::Function, grid::Grid{N}, arch::Architecture) where N
 
-Optimize the first pivot to initialize a cross interpolation algortihm, using the TCI engine. In contrast to the 
-implementation found in the original Julia Package, in here we use a random search, which we have found to work much 
-better for out applications.
+Optimize the first pivot to initialize a cross-interpolation algorithm.
+
+Starts at the center multi-index (not the all-ones / boundary pivot), then
+refines by random search over interior sites. This avoids the
+`maxsamplevalue is zero!` failure of TCI for high-dimensional functions that
+vanish on the domain boundary.
 """
-function TensorCrossInterpolation.optfirstpivot(func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture; iters=1000) where N
+function TensorCrossInterpolation.optfirstpivot(
+    func_type::Type{<:Number},
+    func::Function,
+    grid::Grid{N},
+    arch::Architecture;
+    iters::Int=1000,
+) where N
 
     local_dims = collect(Int, site_dims(arch))
 
@@ -163,19 +197,25 @@ function TensorCrossInterpolation.optfirstpivot(func_type::Type{<:Number}, func:
         return func_type(func(point))
     end
 
-    firstpivot = ones(Int, length(local_dims))
-
-    valf = abs(eval_func(firstpivot))
-    pivot = copy(firstpivot)
+    pivot = _tci_center_pivot(local_dims)
+    valf = abs(eval_func(pivot))
 
     for _ in 1:iters
-		random_pivot = map(x -> rand(1:x), local_dims)
-		newval = abs(eval_func(random_pivot))
-		if newval > valf
-			valf = newval
-			pivot = random_pivot
-		end
-	end
+        random_pivot = _tci_random_pivot(local_dims)
+        newval = abs(eval_func(random_pivot))
+        if newval > valf
+            valf = newval
+            pivot = random_pivot
+        end
+    end
+
+    if !(valf > 0)
+        error(
+            "optfirstpivot: all sampled values were zero (center + $iters interior trials). " *
+            "The function may be identically zero on this grid, or vanish on every " *
+            "sampled multi-index; provide an explicit nonzero initial pivot."
+        )
+    end
 
     return pivot
 end

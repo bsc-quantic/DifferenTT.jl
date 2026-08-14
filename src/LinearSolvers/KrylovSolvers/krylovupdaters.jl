@@ -18,28 +18,29 @@ spectral κ for CG/PCG, 2-norm κ from singular values for GMRES.
 struct KrylovUpdater <: AbstractUpdater end
 
 # ---------------------------------------------------------------------------
-# Condition metrics: CG/PCG (spectral) vs GMRES (singular values)
+# Condition number metrics for Krylov linear solvers:
 #
-# KrylovKit `linselector`: CG iff `ishermitian && isposdef`, else GMRES.
+# KrylovKit uses:
+# - Conjugate Gradient (CG) for Hermitian, positive-definite operators
+#   (`ishermitian` && `isposdef`);
+# - Generalized Minimum Residual (GMRES) otherwise.
 #
-# CG / PCG (SPD hypothesis on A and, if used, P⁻¹):
-#   κ_PCG = λ_max(P^{-1/2} A P^{-1/2}) / λ_min(P^{-1/2} A P^{-1/2})
-#   with spec(P^{-1/2} A P^{-1/2}) = spec(P^{-1} A).
-# Extremes via eigmin/eigmax (dense) or Lanczos/eigsolve (large).
-# For κ_PCG: Cholesky P⁻¹ = U'U, S = U A U', spec(S) = spec(P⁻¹ A) by XY↔YX.
-# U is the Cholesky factor, not necessarily P^{-1/2}.
+# For CG/PCG (SPD case):
+#   Spectral condition number: κ(A) = λ_max(A) / λ_min(A)
+#   For preconditioning (SPD P): κ_PCG = λ_max(P⁻¹A) / λ_min(P⁻¹A)
+#   Although P⁻¹A isn't symmetric, its eigenvalues are real/positive if A, P⁻¹ are SPD.
+#   Extremal eigenvalues can be found using:
+#     - Cholesky factorization (P⁻¹ = U'U), define S = UAU', then spec(S) = spec(P⁻¹A).
+#     - Small matrices: LAPACK's `eigmin`/`eigmax`; Large: Krylov (`eigsolve`).
 #
-# GMRES (general / non-SPD):
-#   κ₂(A) = σ_max(A) / σ_min(A), and κ₂(P⁻¹ A) for left preconditioning.
-# Extremes without a full SVD:
-#   1. Dense moderate n: LAPACK `svdvals` (all σ; accurate, O(n³) — fine for
-#      local TT blocks; no stable LAPACK "svdmin/svdmax only" analogue).
-#   2. Large n: Golub–Kahan–Lanczos bidiagonalization via KrylovKit
-#      `svdsolve` (`:LR` / `:SR`) — literature-standard partial SVD.
-# Do NOT hermitianize on this path: A may be genuinely non-symmetric.
+# For GMRES (general/non-SPD case):
+#   2-norm condition: κ₂(A) = σ_max(A) / σ_min(A) (σ = singular values)
+#   For preconditioning, use κ₂(P⁻¹A). No symmetry/SPD assumption.
+#   Extremal singular values:
+#     - Small/moderate: Full SVD via LAPACK's `svdvals` (costly but accurate)
+#     - Large: Partial SVD via KrylovKit's `svdsolve` (`:LR`/`:SR`)
 #
-# Size cutoff between dense and Krylov paths is an empirical engineering
-# threshold, not a literature constant.
+# The switch between dense and Krylov methods is empirical and implementation-dependent.
 # ---------------------------------------------------------------------------
 
 """
@@ -103,15 +104,6 @@ function _classify_spd(λ_min::Real, λ_max::Real; rtol::Float64 = _SPD_EIG_RTOL
     else
         return SPD_AMBIGUOUS
     end
-end
-
-"""
-    _is_significantly_not_spd(λ_min, λ_max; rtol) -> Bool
-
-True iff `_classify_spd` returns `SPD_INDEFINITE`.
-"""
-function _is_significantly_not_spd(λ_min::Real, λ_max::Real; rtol::Float64 = _SPD_EIG_RTOL)::Bool
-    return _classify_spd(λ_min, λ_max; rtol=rtol) === SPD_INDEFINITE
 end
 
 """

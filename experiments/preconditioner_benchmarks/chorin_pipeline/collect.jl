@@ -5,7 +5,7 @@ use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
 tasks_folder = joinpath(base_folder, "tasks")
 
-const COND_NODES = [(8, 8), (10, 10)]
+const COND_NODES = [(8, 8), (10, 10), (12, 12)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in COND_NODES

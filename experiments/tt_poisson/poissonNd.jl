@@ -107,7 +107,7 @@ println("Setting up solver...")
 init_mps = DifferenTT.zeros_mps(sites)
 
 sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=20, cutoff=0.0)
-updater_kwargs = LocalUpdaterArgs(compute_cond=false, verbosity=2)
+updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, compute_cond=false, verbosity=2)
 
 solver1 = ResidualALS(
     sweep_kwargs=sweep_kwargs, 
