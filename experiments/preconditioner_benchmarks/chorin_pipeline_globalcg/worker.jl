@@ -13,7 +13,7 @@ base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/re
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = "experiments/preconditioner_benchmarks/masks.jld2"
+const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/masks.jld2"
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
@@ -44,10 +44,10 @@ cutoff_map = Dict(
     (12, 12) => 1e-13
 )
 
-nsweeps_map = Dict(
-    (8, 8) => 30,
-    (10, 10) => 40,
-    (12, 12) => 50
+maxiter_map = Dict(
+    (8, 8) => 50,
+    (10, 10) => 70,
+    (12, 12) => 1000
 )
 
 ITensors.disable_warn_order()
@@ -75,7 +75,7 @@ end
 
 function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     sites = siteinds(2, sum(nodes))
-    arch = QTTArchitecture(nodes; interleaved=true)
+    arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
     
     if isfile(MASK_FILE)
@@ -181,9 +181,9 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     
     push!(experiment.u_fields, timestepped_u)
     
-    iters_per_site = zeros(Float64, length(siteinds(rhs)))
+    global_iters = global_updater_kwargs.numiter_store[]
     
-    res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
+    res_dict = (; t, rel_res, sol_maxdim, global_iters)
     
     return res_dict
 end
@@ -192,7 +192,7 @@ function run_task(task::TaskSpec)
     N_STEPS = n_steps_map[task.nodes]
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
-    maxiter_val = nsweeps_map[task.nodes]
+    maxiter_val = maxiter_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
     
     global_updater_kwargs = GlobalUpdaterArgs(
@@ -204,6 +204,7 @@ function run_task(task::TaskSpec)
         cutoff = cutoff_val,
         orth_maxdim = maxdim_val,
         orth_cutoff = cutoff_val,
+        numiter_store = Ref{Int}(0)
     )
 
     if task.is_baseline
@@ -213,10 +214,9 @@ function run_task(task::TaskSpec)
         chorin_step!(grid, global_updater_kwargs)
         
         solve_times = Float64[]
-        iters = Vector{Float64}[]
+        global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
-        iters_per_site = Float64[]
         
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -225,13 +225,7 @@ function run_task(task::TaskSpec)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
-            push!(iters, step_res.iters_per_site)
-            
-            if isempty(iters_per_site)
-                iters_per_site = copy(step_res.iters_per_site)
-            else
-                iters_per_site .+= step_res.iters_per_site
-            end
+            push!(global_iters, step_res.global_iters)
         end
         
         result_dict = Dict{String, Any}(
@@ -239,8 +233,8 @@ function run_task(task::TaskSpec)
             "nodes" => task.nodes,
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
-            "iters" => iters,
-            "iters_per_site" => iters_per_site,
+            "global_iters" => global_iters,
+            "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "precond_build_time" => 0.0
@@ -277,10 +271,9 @@ function run_task(task::TaskSpec)
         chorin_step!(grid, global_updater_kwargs, precond)
         
         solve_times = Float64[]
-        iters = Vector{Float64}[]
+        global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
-        iters_per_site = Float64[]
         
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -289,13 +282,7 @@ function run_task(task::TaskSpec)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
-            push!(iters, step_res.iters_per_site)
-            
-            if isempty(iters_per_site)
-                iters_per_site = copy(step_res.iters_per_site)
-            else
-                iters_per_site .+= step_res.iters_per_site
-            end
+            push!(global_iters, step_res.global_iters)
         end
         
         result_dict = Dict{String, Any}(
@@ -306,8 +293,8 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
-            "iters" => iters,
-            "iters_per_site" => iters_per_site,
+            "global_iters" => global_iters,
+            "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims
         )
@@ -333,7 +320,8 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
     rtol = 1e-2,
     maxiter = 2,
     maxdim = 10,
-    cutoff = 1e-8
+    cutoff = 1e-8,
+    numiter_store = Ref{Int}(0)
 )
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)

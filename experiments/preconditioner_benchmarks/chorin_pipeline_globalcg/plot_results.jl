@@ -86,25 +86,28 @@ for nodes in system_sizes
     ylims!(pf_plot, 0, max(maximum(df_fai.total_solve_time), base_t) * 1.05)
     
     savefig(pf_plot, joinpath(plots_folder, "pareto_$(nodes[1]).png"))
-    
-    # 3. Iteration Profile
-    p_iter = plot(title="Site-by-Site Iteration Profile - $(nodes[1])x$(nodes[2])",
-        xlabel="MPS Site", ylabel="Total Krylov Iterations", legend=:outertopright)
+    # 3. Global CG Iterations Profile
+    p_iter = plot(title="Global CG Iterations - $(nodes[1])x$(nodes[2])",
+        xlabel="Timestep", ylabel="CG Iterations", legend=:outertopright, framestyle=:box)
         
-    if nrow(df_base) > 0 && hasproperty(df_base, :iters_per_site) && !ismissing(df_base.iters_per_site[1])
-        iters_b = df_base.iters_per_site[1]
-        plot!(p_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, lw=3, marker=:circle)
+    if nrow(df_base) > 0 && hasproperty(df_base, :global_iters) && !ismissing(df_base.global_iters[1])
+        iters_b = df_base.global_iters[1]
+        plot!(p_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, lw=2)
     end
     
-    if hasproperty(df_fai, :iters_per_site)
+    if hasproperty(df_fai, :global_iters)
         best_fai = df_fai[argmin(df_fai.total_solve_time), :]
-        iters_f = best_fai.iters_per_site
+        iters_f = best_fai.global_iters
         if !ismissing(iters_f)
-            plot!(p_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=3, marker=:square)
-            if nrow(df_base) > 0 && !ismissing(df_base.iters_per_site[1])
-                plot!(p_iter, 1:length(iters_f), df_base.iters_per_site[1], fillrange=iters_f, fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
+            plot!(p_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=2)
+            
+            if nrow(df_base) > 0 && !ismissing(df_base.global_iters[1])
+                iters_b = df_base.global_iters[1]
+                min_len = min(length(iters_b), length(iters_f))
+                plot!(p_iter, 1:min_len, iters_b[1:min_len], fillrange=iters_f[1:min_len], fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
             end
         end
     end
     savefig(p_iter, joinpath(plots_folder, "iters_profile_$(nodes[1]).png"))
+    
 end
