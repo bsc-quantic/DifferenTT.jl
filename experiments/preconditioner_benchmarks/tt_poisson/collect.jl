@@ -12,6 +12,9 @@ for file in readdir(tasks_folder)
         filepath = joinpath(tasks_folder, file)
         try
             result = load(filepath, "result")
+            if !haskey(result, "compute_cond")
+                result["compute_cond"] = !use_nocond
+            end
             result_sym = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in result)
             push!(df, result_sym, cols=:union)
         catch e

@@ -170,7 +170,6 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
         ishermitian = true,
         isposdef = true,
         rtol = 1e-4,
-        compute_cond = compute_cond,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
