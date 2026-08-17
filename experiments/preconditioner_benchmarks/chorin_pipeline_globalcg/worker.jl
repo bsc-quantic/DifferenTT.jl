@@ -162,24 +162,25 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
         t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, 1e-12 * random_mps(siteinds(rhs); linkdims=1))
     end
     
-    # Compute relative residual
-    A_pdt = apply(grid.A, pdt; alg="naive", cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    res_vec = +(A_pdt, -1.0 * rhs; cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    rel_res = norm(res_vec) / norm(rhs)
+    # Compute relative residual using inner product to save memory
+    term1 = ITensorMPS.inner(grid.A, pdt, grid.A, pdt)
+    term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
+    term3 = ITensorMPS.inner(rhs, rhs)
+    rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
     
     sol_maxdim = maxlinkdim(pdt)
     
     dt = experiment.time_evol_settings.dt
     divfree_p = pdt * (1/dt)
     
-    push!(experiment.p_field, divfree_p)
+    experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
     stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     
-    push!(experiment.u_fields, timestepped_u)
+    experiment.u_fields[length(experiment.u_fields)] = timestepped_u
     
     global_iters = global_updater_kwargs.numiter_store[]
     
@@ -226,6 +227,8 @@ function run_task(task::TaskSpec)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(global_iters, step_res.global_iters)
+            
+            GC.gc(true)
         end
         
         result_dict = Dict{String, Any}(
@@ -283,6 +286,8 @@ function run_task(task::TaskSpec)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(global_iters, step_res.global_iters)
+            
+            GC.gc(true)
         end
         
         result_dict = Dict{String, Any}(
