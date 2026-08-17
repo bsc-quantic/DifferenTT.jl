@@ -113,7 +113,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
     time_evol = TimeEvol(0.0, DT, max_steps, :euler)
-    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=cutoff_map[nodes])
+    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -310,14 +310,19 @@ function run_task(task::TaskSpec)
             residual_tol = 1e-9
         )
 
+        als_solver = ALS(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+        )
+
         amen_solver =  AMEn(
             sweep_kwargs = sweep_kwargs,
             updater_kwargs = updater_kwargs,
-            enrichment_maxdim::Int = 1,
+            enrichment_maxdim = 1,
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = resals_solver
+        fai_builder_solver = als_solver
         
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
