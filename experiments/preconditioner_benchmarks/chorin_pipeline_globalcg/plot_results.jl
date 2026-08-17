@@ -1,113 +1,226 @@
+"""
+    FAI Preconditioner Benchmark: Evolution Plotting Script
+
+    Reads the evolution distributed JLD2 results and generates comprehensive
+    visualizations using Plots.jl, including:
+    1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
+    2. Pareto fronts of Build Time vs Total Solve Time
+    3. Step-by-step Iteration profiles
+    4. Step-by-step Speedup profiles
+    5. Scaling behavior across system sizes
+"""
+
 using JLD2
 using DataFrames
 using Plots
 using Statistics
+using Printf
+using LaTeXStrings
 
+# Use GR backend
 gr()
 default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
+
+# Configuration
+ENV["GKSwstype"] = "100"
 base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
-input_file = joinpath(base_folder, "collected_results.jld2")
+plots_dir = joinpath(base_folder, "plots")
+mkpath(plots_dir)
 
-df = load(input_file, "df")
+results_file = joinpath(base_folder, "collected_results.jld2")
+@info "Loading dataframe from $results_file"
+df = load(results_file, "df")
 
-if ncol(df) == 0 || nrow(df) == 0
-    println("Warning: Dataframe is empty or has no columns in $(input_file). Exiting gracefully.")
-    exit(0)
+results = Dict()
+for row in eachrow(df)
+    nodes = row.nodes
+    if !haskey(results, nodes)
+        results[nodes] = Dict()
+    end
+    k = row.key
+    d = Dict(
+        "mu" => ismissing(row.mu) ? NaN : row.mu,
+        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "precond_build_time" => row.precond_build_time,
+        "total_solve_time" => row.total_solve_time,
+        "solve_times" => row.solve_times,
+        "iters" => row.global_iters,
+        "n_steps" => length(row.solve_times)
+    )
+    results[nodes][k] = d
 end
 
-plots_folder = joinpath(base_folder, "plots")
-mkpath(plots_folder)
+system_sizes = sort(collect(keys(results)))
 
-system_sizes = unique(df.nodes)
+max_total_speedups = Float64[]
+max_solve_speedups = Float64[]
+grid_labels = String[]
 
 for nodes in system_sizes
-    df_nodes = df[df.nodes .== Ref(nodes), :]
-    
-    df_base = df_nodes[df_nodes.key .== "baseline", :]
-    base_t = nrow(df_base) > 0 ? df_base.total_solve_time[1] : 0.0
-    
-    df_fai = df_nodes[df_nodes.key .!= "baseline", :]
-    if nrow(df_fai) == 0
+    @info "Generating plots for system size $nodes"
+
+    grid_data = results[nodes]
+
+    if !haskey(grid_data, "baseline")
+        @warn "Skipping $nodes: Missing baseline data"
         continue
     end
-    
-    mu_values = sort(unique(filter(!ismissing, df_fai.mu)))
-    gdim_values = sort(unique(filter(!ismissing, df_fai.G_maxdim)))
-    
-    # 1. Heatmap (Solve Speedup)
-    speedup_mat = fill(NaN, length(gdim_values), length(mu_values))
-    for (i, mu) in enumerate(mu_values)
-        for (j, gdim) in enumerate(gdim_values)
-            row = df_fai[(df_fai.mu .== mu) .& (df_fai.G_maxdim .== gdim), :]
-            if nrow(row) > 0
-                speedup_mat[j, i] = base_t / row.total_solve_time[1]
-            end
+
+    base = grid_data["baseline"]
+    base_time = base["total_solve_time"]
+    base_iters = base["iters"]
+    base_solve_times = base["solve_times"]
+    n_steps = base["n_steps"]
+
+    mus = Float64[]
+    gdims = Int[]
+    solve_speedups = Float64[]
+    total_speedups = Float64[]
+    build_times = Float64[]
+    total_solve_times = Float64[]
+    keys_list = String[]
+
+    for (k, v) in grid_data
+        if k == "baseline"
+            continue
         end
+        push!(keys_list, k)
+        push!(mus, v["mu"])
+        push!(gdims, v["G_maxdim"])
+        push!(build_times, v["precond_build_time"])
+        push!(total_solve_times, v["total_solve_time"])
+        
+        sp_solve = base_time / v["total_solve_time"]
+        sp_total = base_time / (v["total_solve_time"] + v["precond_build_time"])
+        
+        push!(solve_speedups, sp_solve)
+        push!(total_speedups, sp_total)
     end
-    
-    valid_speedups = filter(!isnan, speedup_mat)
-    if !isempty(valid_speedups)
-        hm = heatmap(string.(mu_values), string.(gdim_values), speedup_mat,
-            title = "Solve Speedup - $(nodes[1])x$(nodes[2])",
-            xlabel = "mu (μ)",
-            ylabel = "G_maxdim (χ)",
-            color = :viridis,
-            clim = (minimum(valid_speedups), maximum(valid_speedups)),
-            right_margin = 5Plots.mm)
-        savefig(hm, joinpath(plots_folder, "heatmap_speedup_$(nodes[1]).png"))
+
+    if isempty(mus)
+        @warn "No preconditioned runs found for $nodes"
+        continue
     end
-    
-    # 2. Pareto Front (Build vs Solve)
-    pf_plot = plot(title="Pareto Front - $(nodes[1])x$(nodes[2])",
+
+    # Track for scaling plot
+    push!(max_total_speedups, maximum(total_speedups))
+    push!(max_solve_speedups, maximum(solve_speedups))
+    push!(grid_labels, "$(nodes[1])x$(nodes[2])")
+
+    unique_mus = sort(unique(mus))
+    unique_gdims = sort(unique(gdims))
+
+    Z_solve = fill(NaN, length(unique_gdims), length(unique_mus))
+    Z_total = fill(NaN, length(unique_gdims), length(unique_mus))
+
+    for i in 1:length(mus)
+        μ_idx = findfirst(==(mus[i]), unique_mus)
+        g_idx = findfirst(==(gdims[i]), unique_gdims)
+        Z_solve[g_idx, μ_idx] = solve_speedups[i]
+        Z_total[g_idx, μ_idx] = total_speedups[i]
+    end
+
+    # Heatmap: Aggregate Solve Speedup
+    hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+        title="Aggregate Solve Speedup ($nodes, N=$n_steps)",
+        xlabel="Regularization parameter (μ)",
+        ylabel=L"Bond Dimension ($\chi_{max}$)",
+        color=:viridis,
+        clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
+        right_margin=5Plots.mm)
+
+    savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_$(nodes[1])x$(nodes[2]).png"))
+
+    # Heatmap: Aggregate Total Speedup
+    hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+        title="Aggregate Total Speedup ($nodes, N=$n_steps)",
+        xlabel="Regularization parameter (μ)",
+        ylabel=L"Bond Dimension ($\chi_{max}$)",
+        color=:viridis,
+        clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
+        right_margin=5Plots.mm)
+
+    savefig(hm_total, joinpath(plots_dir, "heatmap_total_$(nodes[1])x$(nodes[2]).png"))
+
+    # Pareto Front
+    pf_plot = plot(title="Trade-off: Build vs Total Solve Time ($nodes, N=$n_steps)",
         xlabel="Preconditioner Build Time (s)",
-        ylabel="Solve Time (s)",
+        ylabel="Aggregate Linear Solve Time (s)",
         legend=:outertopright,
+        legendtitle=L"$\chi_{max}$",
         framestyle=:box)
-        
-    hline!(pf_plot, [base_t], label="Baseline Solve Time", color=:red, lw=2, ls=:dash)
-    
-    # Shade the "profit" region (total time < baseline time)
-    if base_t > 0
-        plot!(pf_plot, [0, base_t], [base_t, 0],
-            fillrange=0, fillalpha=0.1, fillcolor=:green,
-            linealpha=0, label="Net Speedup Region")
-    end
-    
     pf_colors = palette(:tab20)
-    for (i, gdim) in enumerate(gdim_values)
-        df_g = df_fai[coalesce.(df_fai.G_maxdim .== gdim, false), :]
-        if nrow(df_g) > 0
-            scatter!(pf_plot, df_g.precond_build_time, df_g.total_solve_time, label="χ=$gdim", color=pf_colors[mod1(i, length(pf_colors))], markersize=6)
-        end
+    for (i, gdim) in enumerate(unique_gdims)
+        idx = findall(x -> x == gdim, gdims)
+        scatter!(pf_plot, build_times[idx], total_solve_times[idx], label=string(gdim), color=pf_colors[mod1(i, length(pf_colors))])
     end
+
+    hline!(pf_plot, [base_time], label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
+    plot!(pf_plot, [0, base_time], [base_time, 0],
+        fillrange=0, fillalpha=0.1, fillcolor=:green,
+        linealpha=0, label="Net Speedup Region")
+
+    xlims!(pf_plot, 0, maximum(build_times) * 1.05)
+    ylims!(pf_plot, 0, max(maximum(total_solve_times), base_time) * 1.05)
+
+    savefig(pf_plot, joinpath(plots_dir, "pareto_$(nodes[1])x$(nodes[2]).png"))
+
+    # Step-by-step profile
+    best_idx = argmax(solve_speedups)
+    best_key = keys_list[best_idx]
+    best_v = grid_data[best_key]
+
+    steps_range = 1:n_steps
+
+    # Iterations over time
+    p_iters = plot(steps_range, base_iters,
+        label="Baseline", color=:red, lw=2, marker=:circle,
+        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest config: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
+        xlabel="Chorin Time Step",
+        ylabel="Avg Krylov Iterations per Site",
+        legend=:outertopright)
+
+    plot!(p_iters, steps_range, best_v["iters"],
+        label="Preconditioned", color=:blue, lw=2, marker=:square)
+
+    plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
+        fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
+
+    savefig(p_iters, joinpath(plots_dir, "step_iterations_$(nodes[1])x$(nodes[2]).png"))
+
+    # Speedup over time
+    per_step_speedup = base_solve_times ./ best_v["solve_times"]
+    p_sp = plot(steps_range, per_step_speedup,
+        label="Per-Step Solve Speedup", color=:purple, lw=2, marker=:diamond,
+        title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest config: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
+        xlabel="Chorin Time Step",
+        ylabel="Speedup Ratio",
+        legend=:outertopright)
+
+    hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
     
-    xlims!(pf_plot, 0, maximum(df_fai.precond_build_time) * 1.05)
-    ylims!(pf_plot, 0, max(maximum(df_fai.total_solve_time), base_t) * 1.05)
-    
-    savefig(pf_plot, joinpath(plots_folder, "pareto_$(nodes[1]).png"))
-    # 3. Global CG Iterations Profile
-    p_iter = plot(title="Global CG Iterations - $(nodes[1])x$(nodes[2])",
-        xlabel="Timestep", ylabel="CG Iterations", legend=:outertopright, framestyle=:box)
-        
-    if nrow(df_base) > 0 && hasproperty(df_base, :global_iters) && !ismissing(df_base.global_iters[1])
-        iters_b = df_base.global_iters[1]
-        plot!(p_iter, 1:length(iters_b), iters_b, label="Baseline", color=:black, lw=2)
-    end
-    
-    if hasproperty(df_fai, :global_iters)
-        best_fai = df_fai[argmin(df_fai.total_solve_time), :]
-        iters_f = best_fai.global_iters
-        if !ismissing(iters_f)
-            plot!(p_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=2)
-            
-            if nrow(df_base) > 0 && !ismissing(df_base.global_iters[1])
-                iters_b = df_base.global_iters[1]
-                min_len = min(length(iters_b), length(iters_f))
-                plot!(p_iter, 1:min_len, iters_b[1:min_len], fillrange=iters_f[1:min_len], fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
-            end
-        end
-    end
-    savefig(p_iter, joinpath(plots_folder, "iters_profile_$(nodes[1]).png"))
-    
+    savefig(p_sp, joinpath(plots_dir, "step_speedup_$(nodes[1])x$(nodes[2]).png"))
+
 end
+
+# Scaling View
+if !isempty(max_total_speedups) && length(max_total_speedups) > 1
+    p_scale = plot(1:length(grid_labels), max_solve_speedups,
+        label="Max Agg. Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,
+        title="Scaling of Maximum Achievable Speedups (Evolution)",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:topleft,
+        framestyle=:box)
+
+    plot!(p_scale, 1:length(grid_labels), max_total_speedups,
+        label="Max Agg. Total Speedup", color=:green, lw=3, marker=:square, markersize=8)
+
+    hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+
+    savefig(p_scale, joinpath(plots_dir, "scaling_summary_evolution.png"))
+end
+
+@info "All evolution plots successfully generated in $plots_dir"
