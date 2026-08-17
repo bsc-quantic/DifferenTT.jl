@@ -8,6 +8,7 @@ using LinearAlgebra
 using JLD2
 using TensorCrossInterpolation
 using DifferenTT
+using Random
 
 use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
@@ -63,27 +64,28 @@ function get_1d_A(i::Int, grid, arch)
     return mat
 end
 
-# TODO Make sure this problem is well suited to be atacked with an MPS of bond dimension neither too large nor too small
-# The solution is defined as:
-#     u(x) = v(x) ⋅ g(x)²
-
-# where:
-#     • v(x) = ∏ᵢ₌₁ᴺ sin(π xᵢ)
-#     • g(x) = ∑ᵢ₌₁ᴺ sin(π xᵢ)
-
-function sol_func(x)
-    N = length(x)
-    val = 1.0
-    for i in 1:N
-        val *= sin(pi * x[i])
-    end
+function get_gaussian_sol(N::Int, R::Int)
+    Random.seed!(42)
+    centers = rand(R, N) .* 0.6 .+ 0.2
+    alphas = rand(R, N) .* 4.0 .+ 1.0
     
-    g = 0.0
-    for i in 1:N
-        g += sin(pi * x[i])
+    function sol(x)
+        val = 0.0
+        for k in 1:R
+            term = 1.0
+            for j in 1:N
+                term *= exp(-alphas[k,j] * (x[j] - centers[k,j])^2)
+            end
+            val += term
+        end
+        # Apply Dirichlet boundary condition envelope
+        env = 1.0
+        for j in 1:N
+            env *= sin(pi * x[j])
+        end
+        return val * env
     end
-    
-    return val * (g^2)
+    return sol
 end
 
 function build_problem(N::Int)
@@ -98,6 +100,8 @@ function build_problem(N::Int)
     bc = BoundaryConditions(bcs...)
     
     sites = siteinds(arch)
+    
+    sol_func = get_gaussian_sol(N, 30)
     
     # Cross interpolate the manufactured solution.
     # optfirstpivot starts at the grid center so Dirichlet-vanishing functions
@@ -234,12 +238,31 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_builder_solver = ResidualALS(
-            sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
-            residual_tol=1e-5
+        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        
+        updater_kwargs = LocalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            compute_cond = false,
+            rtol = 1e-9,
+            krylovdim = 1,
+            maxiter = 3000
+        )
+        
+        resals_solver = ResidualALS(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            residual_tol = 1e-9
+        )
+
+        amen_solver =  AMEn(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            enrichment_maxdim::Int = 1,
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+        fai_builder_solver = resals_solver
         
         t_build = @elapsed begin
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)

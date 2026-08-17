@@ -293,12 +293,31 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         
-        fai_builder_solver = ResidualALS(
-            sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
-            residual_tol=1e-9
+        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        
+        updater_kwargs = LocalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            compute_cond = false,
+            rtol = 1e-9,
+            krylovdim = 1,
+            maxiter = 3000
         )
         
+        resals_solver = ResidualALS(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            residual_tol = 1e-9
+        )
+
+        amen_solver =  AMEn(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            enrichment_maxdim::Int = 1,
+        )
+
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+        fai_builder_solver = resals_solver
         
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
