@@ -1,8 +1,7 @@
 using JLD2
 using DataFrames
 
-use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
+base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()

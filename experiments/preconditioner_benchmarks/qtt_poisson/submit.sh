@@ -4,18 +4,12 @@
 #
 # Submits a SLURM job array and a dependent collector job.
 #
-# Usage: bash experiments/preconditioner_benchmarks/qtt_poisson/submit.sh [nocond]
+# Usage: bash experiments/preconditioner_benchmarks/qtt_poisson/submit.sh
 #
 
 SCRIPT_DIR="experiments/preconditioner_benchmarks/qtt_poisson"
 
-NOCOND_ARG=""
 RESULTS_DIR="${SCRIPT_DIR}/results"
-
-if [ "$1" == "nocond" ]; then
-    NOCOND_ARG="nocond"
-    RESULTS_DIR="${SCRIPT_DIR}/results_nocond"
-fi
 
 TASKS_DIR="${RESULTS_DIR}/tasks"
 LOGS_DIR="${RESULTS_DIR}/logs"
@@ -41,7 +35,7 @@ module load julia/1.12.0
 
 echo "Task \${SLURM_ARRAY_TASK_ID} / 105 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
-julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID}
 ARRAY_EOF
 )
 
@@ -64,7 +58,7 @@ module load julia/1.12.0 2>/dev/null || true
 
 echo "Collecting results from array job..."
 
-julia --project=. ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
+julia --project=. ${SCRIPT_DIR}/collect.jl
 COLLECT_EOF
 )
 

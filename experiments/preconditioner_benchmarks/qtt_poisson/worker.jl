@@ -8,13 +8,12 @@ using LinearAlgebra
 using JLD2
 using DifferenTT
 
-use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
+base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
 # We extrapolate system sizes from FAI. QTT uses 1D. (16,), (20,), (24,) correspond to 2^16, 2^20, 2^24.
-system_sizes = [(8,), (20,), (24,)]
+system_sizes = [(16,), (20,), (24,)]
 mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
 
 G_maxdims_map = Dict(
