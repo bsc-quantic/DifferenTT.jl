@@ -95,8 +95,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     amen_solver =  AMEn(
         sweep_kwargs = sweep_kwargs,
         updater_kwargs = updater_kwargs,
-        enrichment_maxdim::Int = 1,
-        enrichment_cutoff::Float64 = 1e-10
+        enrichment_maxdim = 1     
     )
 
     fai_builder_solver = resals_solver

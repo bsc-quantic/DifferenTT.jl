@@ -258,7 +258,7 @@ function run_task(task::TaskSpec)
         amen_solver =  AMEn(
             sweep_kwargs = sweep_kwargs,
             updater_kwargs = updater_kwargs,
-            enrichment_maxdim::Int = 1,
+            enrichment_maxdim = 1,
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
