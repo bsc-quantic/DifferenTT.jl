@@ -35,7 +35,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --chdir=.
 #SBATCH --array=1-111
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=16
 #SBATCH --time=08:00:00
 #SBATCH --qos=gp_bsccase
 
@@ -64,7 +64,7 @@ COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --time=00:10:00
 #SBATCH --qos=gp_bsccase
 
