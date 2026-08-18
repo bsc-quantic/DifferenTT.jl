@@ -306,7 +306,7 @@ function run_task(task::TaskSpec)
         
         resals_solver = ResidualALS(
             sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+            updater_kwargs = fai_updater_kwargs,
             residual_tol = 1e-9
         )
 
