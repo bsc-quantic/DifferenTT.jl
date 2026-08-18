@@ -312,7 +312,7 @@ function run_task(task::TaskSpec)
 
         als_solver = ALS(
             sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+            updater_kwargs = fai_updater_kwargs,
         )
 
         amen_solver =  AMEn(
