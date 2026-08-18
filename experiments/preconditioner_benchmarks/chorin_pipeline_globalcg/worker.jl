@@ -254,7 +254,7 @@ function run_task(task::TaskSpec)
                 ishermitian = true,
                 isposdef = true,
                 rtol = 1e-9,
-                maxiter = 30,
+                maxiter = 3000,
                 maxdim = gdim,
                 cutoff = 1e-12,
                 orth_maxdim = gdim,
