@@ -317,7 +317,7 @@ function run_task(task::TaskSpec)
 
         amen_solver =  AMEn(
             sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+            updater_kwargs = fai_updater_kwargs,
             enrichment_maxdim = 1,
         )
 
