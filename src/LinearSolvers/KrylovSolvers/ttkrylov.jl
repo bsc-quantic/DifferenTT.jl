@@ -93,7 +93,7 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPrecondit
 )
                      
     x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
-    if !isnothing(merged_kwargs.numiter_store)
+   
         merged_kwargs.numiter_store[] = info.numiter
     end
     return x
