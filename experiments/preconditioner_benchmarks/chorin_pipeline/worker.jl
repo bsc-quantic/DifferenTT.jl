@@ -295,7 +295,7 @@ function run_task(task::TaskSpec)
         
         sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
         
-        updater_kwargs = LocalUpdaterArgs(
+        fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
