@@ -88,6 +88,16 @@ function get_gaussian_sol(N::Int, R::Int)
     return sol
 end
 
+function get_coulomb_sol(N::Int, ε::Float64=0.05)
+    c = fill(0.5, N)
+    function sol(x)
+        r2 = sum((x[j] - c[j])^2 for j in 1:N)
+        env = prod(sin(pi * x[j]) for j in 1:N)
+        return (1.0 / sqrt(r2 + ε^2)) * env
+    end
+    return sol
+end
+
 function build_problem(N::Int)
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
@@ -102,6 +112,9 @@ function build_problem(N::Int)
     sites = siteinds(arch)
     
     sol_func = get_gaussian_sol(N, 30)
+    
+    #TODO Test the coulomb 1/x-like function
+    # sol_func = get_coulomb_sol(N, 0.05)
     
     # Cross interpolate the manufactured solution.
     # optfirstpivot starts at the grid center so Dirichlet-vanishing functions
