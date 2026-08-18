@@ -20,55 +20,66 @@ default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin
 
 # Configuration
 ENV["GKSwstype"] = "100"
-use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
+base_folder = "experiments/preconditioner_benchmarks/tt_poisson"
+nocond_folder = joinpath(base_folder, "results_nocond")
+cond_folder = joinpath(base_folder, "results")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
-results_file = joinpath(base_folder, "collected_results.jld2")
-@info "Loading dataframe from $results_file"
-df = load(results_file, "df")
+results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
+@info "Loading nocond dataframe from $results_file_nocond"
+df_nocond = load(results_file_nocond, "df")
+
+results_file_cond = joinpath(cond_folder, "collected_results.jld2")
+if isfile(results_file_cond)
+    @info "Loading cond dataframe from $results_file_cond"
+    df_cond = load(results_file_cond, "df")
+else
+    @warn "No cond dataframe found at $results_file_cond. Condition numbers will not be plotted."
+    df_cond = DataFrame()
+end
 
 results_nocond = Dict()
-results_cond = Dict()
-
-for row in eachrow(df)
-    # Ignore sinc for heatmaps, or let it fail gracefully
+for row in eachrow(df_nocond)
     if row.method == "sinc"
         continue
     end
-    
-    nodes = row.N # Using N for tt_poisson
-    
+    nodes = row.N
     if !haskey(results_nocond, nodes)
         results_nocond[nodes] = Dict()
-        results_cond[nodes] = Dict()
     end
-    
     k = row.key
     d_nocond = Dict(
-        "time" => row.solve_time, # baseline
+        "time" => row.solve_time,
         "solve_time" => row.solve_time,
         "total_time" => row.total_time,
         "precond_build_time" => row.precond_build_time,
         "mu" => ismissing(row.mu) ? NaN : row.mu,
-        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim
-    )
-    
-    # tt_poisson uses iters_per_site
-    iters = hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
-    
-    d_cond = Dict(
-        "mu" => ismissing(row.mu) ? NaN : row.mu,
         "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
-        "iters_per_site" => iters,
-        "avg_cond" => 1.0, # fake value to bypass cond errors
-        "conds_per_site" => ones(iters !== nothing ? length(iters) : 1),
-        "cond_improv_per_site" => ones(iters !== nothing ? length(iters) : 1)
+        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
     )
-    
     results_nocond[nodes][k] = d_nocond
-    if iters !== nothing
+end
+
+results_cond = Dict()
+if !isempty(df_cond)
+    for row in eachrow(df_cond)
+        if row.method == "sinc"
+            continue
+        end
+        nodes = row.N
+        if !haskey(results_cond, nodes)
+            results_cond[nodes] = Dict()
+        end
+        k = row.key
+        d_cond = Dict(
+            "mu" => ismissing(row.mu) ? NaN : row.mu,
+            "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+            "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
+            "avg_cond_improv" => hasproperty(row, :avg_cond_improv) ? row.avg_cond_improv : NaN,
+            "conds_per_site" => hasproperty(row, :conds_per_site) ? row.conds_per_site : Float64[],
+            "cond_improv_per_site" => hasproperty(row, :cond_improv_per_site) ? row.cond_improv_per_site : Float64[]
+        )
         results_cond[nodes][k] = d_cond
     end
 end
@@ -89,9 +100,12 @@ for nodes in system_sizes
     base_time = grid_data_nocond["baseline"]["time"]
 
     base_iters = nothing
+    if haskey(grid_data_nocond, "baseline")
+        base_iters = get(grid_data_nocond["baseline"], "iters_per_site", nothing)
+    end
+
     base_conds = nothing
     if haskey(grid_data_cond, "baseline")
-        base_iters = get(grid_data_cond["baseline"], "iters_per_site", nothing)
         base_conds = get(grid_data_cond["baseline"], "conds_per_site", nothing)
     end
 
@@ -145,7 +159,7 @@ for nodes in system_sizes
     colors = palette(:tab20) # Distinct colors for each bond dimension
 
     for (i, gdim) in enumerate(unique_gdims)
-        # Find the configuration with the best Solve Speedup for this gdim that ALSO has cond data available
+        # Find the configuration with the best Solve Speedup for this gdim
         best_idx = -1
         best_speedup = -1.0
 
@@ -154,25 +168,14 @@ for nodes in system_sizes
                 continue
             end
 
-            # Find the matching cond_v by numerical values
-            cond_v = nothing
-            for (ck, cv) in grid_data_cond
-                if ck != "baseline" && cv["mu"] == mus[i] && cv["G_maxdim"] == gdims[i]
-                    cond_v = cv
-                    break
-                end
-            end
-
-            if !isnothing(cond_v) && haskey(cond_v, "iters_per_site") && (haskey(cond_v, "cond_improv_per_site") || haskey(cond_v, "conds_per_site"))
-                if solve_speedups[i] > best_speedup
-                    best_speedup = solve_speedups[i]
-                    best_idx = i
-                end
+            if solve_speedups[i] > best_speedup
+                best_speedup = solve_speedups[i]
+                best_idx = i
             end
         end
 
         if best_idx == -1 || isnothing(base_iters)
-            @warn "Skipping site-by-site plots for $nodes and gdim=$gdim: No suitable preconditioned data found in cond results"
+            @warn "Skipping site-by-site plots for $nodes and gdim=$gdim: No suitable preconditioned data found in nocond results"
             continue
         end
 
@@ -202,22 +205,22 @@ for nodes in system_sizes
             ylabel="Krylov Iterations",
             legend=:outertopright)
 
-        plot!(p_iters, sites_range, best_v_cond["iters_per_site"],
+        plot!(p_iters, sites_range, best_v_nocond["iters_per_site"],
             label="Preconditioned", color=:blue, lw=2, marker=:square)
 
-        plot!(p_iters, sites_range, base_iters, fillrange=best_v_cond["iters_per_site"],
+        plot!(p_iters, sites_range, base_iters, fillrange=best_v_nocond["iters_per_site"],
             fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
 
         savefig(p_iters, joinpath(out_dir, "site_iterations.png"))
 
         # Add to combined plot
         c_color = colors[mod1(i, length(colors))]
-        plot!(p_iters_combined, sites_range, best_v_cond["iters_per_site"],
+        plot!(p_iters_combined, sites_range, best_v_nocond["iters_per_site"],
             label=latexstring("\$\\chi_{max}=$(gdim)\$ (μ=$(best_v_nocond["mu"]))"), color=c_color, lw=2, marker=:square)
 
-        if !isnothing(base_conds)
+        if !isnothing(base_conds) && !isnothing(best_v_cond)
             base_conds_clean = [c > 0 ? c : NaN for c in base_conds]
-            best_cond_key = haskey(best_v_cond, "cond_improv_per_site") ? "cond_improv_per_site" : "conds_per_site"
+            best_cond_key = haskey(best_v_cond, "cond_improv_per_site") && !isempty(best_v_cond["cond_improv_per_site"]) ? "cond_improv_per_site" : "conds_per_site"
             best_conds_clean = [c > 0 ? c : NaN for c in best_v_cond[best_cond_key]]
 
             precond_absolute = base_conds_clean ./ best_conds_clean
