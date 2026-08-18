@@ -205,12 +205,12 @@ experiment = INSExperiment(grid, time_evol_settings, v_field, p_field, Re, objec
 log_data(logger, destination_file, "experiment", experiment)
 
 TimerOutputs.enable_debug_timings(DifferenTT)
-reset_timer!(DifferenTT.timeit_to)
+reset_timer!(timeit_to)
 
 save_step = 1
 plot_step = 1 #How many save steps to skip from plot to plot
 chorin_evolve!(experiment, solver, save_step, logger, destination_file)
-display(DifferenTT.timeit_to)
+display(timeit_to)
 TimerOutputs.disable_debug_timings(DifferenTT)
 
 nplots = length(experiment.u_fields)

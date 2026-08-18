@@ -1,121 +1,364 @@
+"""
+    FAI Preconditioner Benchmark: Plotting Script
+
+    Reads the extended grid search JLD2 results and generates comprehensive
+    visualizations using Plots.jl, including:
+    1. Heatmaps of Speedup (μ vs G_maxdim)
+    2. Pareto fronts of Build Time vs Solve Time
+    3. Heatmap of Avg Condition Numbers (μ vs G_maxdim)
+    4. Site-by-site Iteration and Condition Number profiles
+    5. Scaling behavior across system sizes
+    Uses nocond results for accurate timings, and cond results for iteration
+    and condition number profiles.
+"""
+
 using JLD2
 using DataFrames
 using Plots
 using Statistics
+using Printf
+using LaTeXStrings
 
+# Use GR backend
 gr()
 default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
-use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
-input_file = joinpath(base_folder, "collected_results.jld2")
 
-df = load(input_file, "df")
+# Configuration
+ENV["GKSwstype"] = "100"
+base_folder = "experiments/preconditioner_benchmarks/tt_poisson"
+nocond_folder = joinpath(base_folder, "results_nocond")
+cond_folder = joinpath(base_folder, "results")
+plots_dir = joinpath(base_folder, "plots")
+mkpath(plots_dir)
 
-if ncol(df) == 0 || nrow(df) == 0
-    println("Warning: Dataframe is empty or has no columns in $(input_file). Exiting gracefully.")
-    exit(0)
+results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
+@info "Loading nocond dataframe from $results_file_nocond"
+df_nocond = load(results_file_nocond, "df")
+
+results_file_cond = joinpath(cond_folder, "collected_results.jld2")
+if isfile(results_file_cond)
+    @info "Loading cond dataframe from $results_file_cond"
+    df_cond = load(results_file_cond, "df")
+else
+    @warn "No cond dataframe found at $results_file_cond. Condition numbers will not be plotted."
+    df_cond = DataFrame()
 end
 
-plots_folder = joinpath(base_folder, "plots")
-mkpath(plots_folder)
-
-# 1. Scaling Plot (Total Time vs N)
-p_scale = plot(
-    xlabel = "Dimensions (N)",
-    ylabel = "Total Solve Time (s)",
-    title = "N-Dimensional TT Poisson Scaling",
-    yaxis = :log10,
-    legend = :outertopright,
-    framestyle = :box
-)
-
-df_base = df[df.method .== "baseline", :]
-sort!(df_base, :N)
-if nrow(df_base) > 0
-    plot!(p_scale, Float64.(df_base.N), df_base.total_time, label="Baseline", lw=3, color=:black, marker=:circle)
-end
-
-df_sinc = df[df.method .== "sinc", :]
-for M in sort(unique(df_sinc.M))
-    df_M = df_sinc[df_sinc.M .== M, :]
-    sort!(df_M, :N)
-    plot!(p_scale, Float64.(df_M.N), df_M.total_time, label="Sinc (M=$M)", lw=2, marker=:circle)
-end
-
-df_fai = df[df.method .== "fai", :]
-for μ in sort(unique(df_fai.mu))
-    for gdim in sort(unique(df_fai.G_maxdim))
-        df_mg = df_fai[(df_fai.mu .== μ) .& (df_fai.G_maxdim .== gdim), :]
-        if nrow(df_mg) > 0
-            sort!(df_mg, :N)
-            plot!(p_scale, Float64.(df_mg.N), df_mg.total_time, label="FAI (μ=$μ, χ=$gdim)", lw=2, ls=:dash, marker=:square)
-        end
+results_nocond = Dict()
+for row in eachrow(df_nocond)
+    if row.method == "sinc"
+        continue
     end
-end
-savefig(p_scale, joinpath(plots_folder, "scaling_vs_N.png"))
-
-
-# 2. Pareto Front (Build Time vs Solve Time) for a fixed N (e.g. N=8)
-target_N = 8
-df_N = df[df.N .== target_N, :]
-if nrow(df_N) > 0
-    p_pareto = plot(
-        xlabel = "Preconditioner Build Time (s)",
-        ylabel = "Solve Time (s)",
-        title = "Pareto Front (N=$target_N)",
-        legend = :outertopright,
-        framestyle = :box
+    nodes = row.N
+    if !haskey(results_nocond, nodes)
+        results_nocond[nodes] = Dict()
+    end
+    k = row.key
+    d_nocond = Dict(
+        "time" => row.solve_time,
+        "solve_time" => row.solve_time,
+        "total_time" => row.total_time,
+        "precond_build_time" => row.precond_build_time,
+        "mu" => ismissing(row.mu) ? NaN : row.mu,
+        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
     )
-    
-    base_solve = df_N[df_N.method .== "baseline", :solve_time]
-    base_t = length(base_solve) > 0 ? base_solve[1] : 0.0
-    hline!(p_pareto, [base_t], color=:red, ls=:dash, label="Baseline Solve Time")
-    
-    df_f = df_N[df_N.method .== "fai", :]
-    if nrow(df_f) > 0
-        gdims = sort(unique(df_f.G_maxdim))
-        colors = palette(:tab20)
-        for (i, gdim) in enumerate(gdims)
-            df_g = df_f[df_f.G_maxdim .== gdim, :]
-            scatter!(p_pareto, df_g.precond_build_time, df_g.solve_time, color=colors[mod1(i, length(colors))], markersize=8, label="FAI χ=$gdim")
-        end
-    end
-    
-    df_s = df_N[df_N.method .== "sinc", :]
-    if nrow(df_s) > 0
-        scatter!(p_pareto, df_s.precond_build_time, df_s.solve_time, color=:green, marker=:diamond, markersize=8, label="Sinc Preconditioners")
-    end
-    
-    savefig(p_pareto, joinpath(plots_folder, "pareto_N$(target_N).png"))
+    results_nocond[nodes][k] = d_nocond
 end
 
-# 3. Site-by-site Iteration Profile (N=8)
-if nrow(df_N) > 0 && !use_nocond
-    p_iter = plot(
-        xlabel = "MPS Site",
-        ylabel = "Total Krylov Iterations",
-        title = "Site-by-Site Iteration Profile (N=$target_N)",
-        legend = :outertopright,
-        framestyle = :box
-    )
-    
-    df_b = df_N[df_N.method .== "baseline", :]
-    if nrow(df_b) > 0 && hasproperty(df_b, :iters_per_site)
-        iters_b = df_b.iters_per_site[1]
-        x_sites = 1:length(iters_b)
-        plot!(p_iter, x_sites, iters_b, label="Baseline", color=:black, lw=3)
+results_cond = Dict()
+if !isempty(df_cond)
+    for row in eachrow(df_cond)
+        if row.method == "sinc"
+            continue
+        end
+        nodes = row.N
+        if !haskey(results_cond, nodes)
+            results_cond[nodes] = Dict()
+        end
+        k = row.key
+        d_cond = Dict(
+            "mu" => ismissing(row.mu) ? NaN : row.mu,
+            "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+            "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
+            "avg_cond_improv" => hasproperty(row, :avg_cond_improv) ? row.avg_cond_improv : NaN,
+            "conds_per_site" => hasproperty(row, :conds_per_site) ? row.conds_per_site : Float64[],
+            "cond_improv_per_site" => hasproperty(row, :cond_improv_per_site) ? row.cond_improv_per_site : Float64[]
+        )
+        results_cond[nodes][k] = d_cond
     end
-    
-    # Best FAI based on solve time
-    if nrow(df_f) > 0 && hasproperty(df_f, :iters_per_site)
-        best_fai = df_f[argmin(df_f.solve_time), :]
-        iters_f = best_fai.iters_per_site
-        plot!(p_iter, 1:length(iters_f), iters_f, label="Best FAI (μ=$(best_fai.mu), χ=$(best_fai.G_maxdim))", color=:blue, lw=3)
-        if nrow(df_b) > 0
-            plot!(p_iter, 1:length(iters_f), df_b.iters_per_site[1], fillrange=iters_f, fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
+end
+
+system_sizes = sort(collect(keys(results_nocond)))
+
+# To track max speedups for the scaling plot
+max_total_speedups = Float64[]
+max_solve_speedups = Float64[]
+grid_labels = String[]
+
+for nodes in system_sizes
+    @info "Generating plots for system size $nodes"
+
+    grid_data_nocond = results_nocond[nodes]
+    grid_data_cond = get(results_cond, nodes, Dict())
+
+    if !haskey(grid_data_nocond, "baseline")
+        @warn "Skipping $nodes: Missing baseline data in nocond results"
+        continue
+    end
+
+    base_time = grid_data_nocond["baseline"]["time"]
+
+    base_iters = nothing
+    if haskey(grid_data_nocond, "baseline")
+        base_iters = get(grid_data_nocond["baseline"], "iters_per_site", nothing)
+    end
+
+    base_conds = nothing
+    if haskey(grid_data_cond, "baseline")
+        base_conds = get(grid_data_cond["baseline"], "conds_per_site", nothing)
+    end
+
+    # Extract configuration data
+    mus = Float64[]
+    gdims = Int[]
+    solve_speedups = Float64[]
+    total_speedups = Float64[]
+    avg_cond_improvements = Float64[]
+    build_times = Float64[]
+    solve_times = Float64[]
+    keys_list = String[]
+
+    for (k, v) in grid_data_nocond
+        if k == "baseline"
+            continue
+        end
+        push!(keys_list, k)
+        push!(mus, v["mu"])
+        push!(gdims, v["G_maxdim"])
+        push!(build_times, v["precond_build_time"])
+        push!(solve_times, v["solve_time"])
+        push!(solve_speedups, base_time / v["solve_time"])
+        push!(total_speedups, base_time / v["total_time"])
+
+        # Also extract average condition numbers from the cond run, if available
+        # Match by numerical values rather than string key to avoid formatting mismatches
+        cond_v = nothing
+        for (ck, cv) in grid_data_cond
+            if ck != "baseline" && cv["mu"] == v["mu"] && cv["G_maxdim"] == v["G_maxdim"]
+                cond_v = cv
+                break
+            end
+        end
+
+        if !isnothing(cond_v) && haskey(cond_v, "avg_cond_improv")
+            push!(avg_cond_improvements, cond_v["avg_cond_improv"])
+        elseif !isnothing(cond_v) && haskey(cond_v, "avg_cond")
+            push!(avg_cond_improvements, cond_v["avg_cond"])
+        else
+            push!(avg_cond_improvements, NaN)
         end
     end
-    
-    savefig(p_iter, joinpath(plots_folder, "iters_profile_N$(target_N).png"))
+
+    if isempty(mus)
+        @warn "No preconditioned runs found for $nodes in nocond results"
+        continue
+    end
+
+    # Track for scaling plot
+    push!(max_total_speedups, maximum(total_speedups))
+    push!(max_solve_speedups, maximum(solve_speedups))
+    push!(grid_labels, "N_$(nodes)")
+
+    # ---------------------------------------------------------
+    # 1. Heatmaps (μ vs G_maxdim)
+    # ---------------------------------------------------------
+    unique_mus = sort(unique(mus))
+    unique_gdims = sort(unique(gdims))
+
+    # Create matrices for heatmaps (NaN for missing points)
+    Z_solve = fill(NaN, length(unique_gdims), length(unique_mus))
+    Z_total = fill(NaN, length(unique_gdims), length(unique_mus))
+    Z_cond = fill(NaN, length(unique_gdims), length(unique_mus))
+
+    for i in 1:length(mus)
+        μ_idx = findfirst(==(mus[i]), unique_mus)
+        g_idx = findfirst(==(gdims[i]), unique_gdims)
+        Z_solve[g_idx, μ_idx] = solve_speedups[i]
+        Z_total[g_idx, μ_idx] = total_speedups[i]
+        Z_cond[g_idx, μ_idx] = avg_cond_improvements[i]
+    end
+
+    # Heatmap: Solve Speedup
+    hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+        title="Solve Speedup ($nodes)",
+        xlabel="Regularization parameter (μ)",
+        ylabel=L"Bond Dimension ($\chi_{max}$)",
+        color=:viridis,
+        clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
+        right_margin=5Plots.mm)
+
+    savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_N_$(nodes).png"))
+
+    # Heatmap: Total Speedup
+    hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+        title="Total Speedup ($nodes)",
+        xlabel="Regularization parameter (μ)",
+        ylabel=L"Bond Dimension ($\chi_{max}$)",
+        color=:viridis,
+        clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
+        right_margin=5Plots.mm)
+
+    savefig(hm_total, joinpath(plots_dir, "heatmap_total_N_$(nodes).png"))
+
+    # Heatmap: Avg Condition Number Improvement
+    valid_conds = filter(!isnan, Z_cond)
+    if !isempty(valid_conds)
+        hm_cond = heatmap(string.(unique_mus), string.(unique_gdims), Z_cond,
+            title="Avg Cond Improvement ($nodes)",
+            xlabel="Regularization parameter (μ)",
+            ylabel=L"Bond Dimension ($\chi_{max}$)",
+            color=:viridis,
+            clim=(minimum(valid_conds), maximum(valid_conds)),
+            right_margin=5Plots.mm)
+
+        savefig(hm_cond, joinpath(plots_dir, "heatmap_cond_improvement_N_$(nodes).png"))
+    else
+        @info "Skipping condition heatmap for $nodes (no cond data found)"
+    end
+
+    # ---------------------------------------------------------
+    # 2. Pareto Front (Build Time vs Solve Time)
+    # ---------------------------------------------------------
+    pf_plot = plot(title="Trade-off: Build vs Solve Time ($nodes)",
+        xlabel="Preconditioner Build Time (s)",
+        ylabel="Linear Solve Time (s)",
+        legend=:outertopright,
+        legendtitle=L"$\chi_{max}$",
+        framestyle=:box)
+    pf_colors = palette(:tab20)
+    for (i, gdim) in enumerate(unique_gdims)
+        idx = findall(x -> x == gdim, gdims)
+        scatter!(pf_plot, build_times[idx], solve_times[idx], label=string(gdim), color=pf_colors[mod1(i, length(pf_colors))])
+    end
+
+    # Add baseline
+    hline!(pf_plot, [base_time], label="Baseline Solve Time", color=:red, lw=2, ls=:dash)
+
+    # Shade the "profit" region (total time < baseline time)
+    # y < base_time - x  => solve_time < base_time - build_time
+    plot!(pf_plot, [0, base_time], [base_time, 0],
+        fillrange=0, fillalpha=0.1, fillcolor=:green,
+        linealpha=0, label="Net Speedup Region")
+
+    # Limit axes to reasonable values
+    xlims!(pf_plot, 0, maximum(build_times) * 1.05)
+    ylims!(pf_plot, 0, max(maximum(solve_times), base_time) * 1.05)
+
+    savefig(pf_plot, joinpath(plots_dir, "pareto_N_$(nodes).png"))
+
+    # ---------------------------------------------------------
+    # 3. Site-by-site Profiles
+    # ---------------------------------------------------------
+    # Find the configuration with the best Solve Speedup
+    best_idx = argmax(solve_speedups)
+
+    if best_idx == -1 || isnothing(base_iters)
+        @warn "Skipping site-by-site plots for $nodes: No suitable preconditioned data found in nocond results"
+        continue
+    end
+
+    best_key = keys_list[best_idx]
+    best_v_nocond = grid_data_nocond[best_key]
+
+    # Find the corresponding cond_v
+    best_v_cond = nothing
+    for (ck, cv) in grid_data_cond
+        if ck != "baseline" && cv["mu"] == best_v_nocond["mu"] && cv["G_maxdim"] == best_v_nocond["G_maxdim"]
+            best_v_cond = cv
+            break
+        end
+    end
+
+    sites_range = 1:length(base_iters)
+
+    # Iterations Profile
+    p_iters = plot(sites_range, base_iters,
+        label="Baseline", color=:red, lw=2, marker=:circle,
+        title=latexstring("Local Iterations Profile ($nodes)\nBest config: μ=$(best_v_nocond["mu"]), \$\\chi_{max}=$(best_v_nocond["G_maxdim"])\$"),
+        xlabel="MPS Site Index",
+        ylabel="Krylov Iterations",
+        legend=:outertopright)
+
+    plot!(p_iters, sites_range, best_v_nocond["iters_per_site"],
+        label="Preconditioned", color=:blue, lw=2, marker=:square)
+
+    # Fill between lines to highlight reduction
+    plot!(p_iters, sites_range, base_iters, fillrange=best_v_nocond["iters_per_site"],
+        fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
+
+    savefig(p_iters, joinpath(plots_dir, "site_iterations_N_$(nodes).png"))
+
+    if !isnothing(base_conds) && !isnothing(best_v_cond)
+        # Condition Number Profile
+        # Remember: Baseline condition numbers are stored directly. 
+        # For preconditioned, we stored the *improvement ratio* (unprecond / precond)
+        base_conds_clean = [c > 0 ? c : NaN for c in base_conds]
+        best_cond_key = haskey(best_v_cond, "cond_improv_per_site") && !isempty(best_v_cond["cond_improv_per_site"]) ? "cond_improv_per_site" : "conds_per_site"
+        best_conds_clean = [c > 0 ? c : NaN for c in best_v_cond[best_cond_key]]
+
+        # Reconstruct the preconditioned absolute condition number to compare side-by-side
+        # Since best_v_cond["conds_per_site"] = base_conds_clean / precond_absolute
+        precond_absolute = base_conds_clean ./ best_conds_clean
+
+        p_conds = plot(sites_range, base_conds_clean,
+            label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
+            title="Local Condition Number Profile ($nodes)",
+            xlabel="MPS Site Index",
+            ylabel="Condition Number (Log Scale)",
+            legend=:outertopright)
+
+        plot!(p_conds, sites_range, precond_absolute,
+            label="Preconditioned", color=:blue, lw=2, marker=:square)
+
+        savefig(p_conds, joinpath(plots_dir, "site_condition_N_$(nodes).png"))
+
+        # Alternative Condition Plot: Plot just the improvement ratio
+        p_cond_imp = bar(sites_range, best_conds_clean,
+            title="Condition Number Improvement ($nodes)\nRatio: Unpreconditioned / Preconditioned",
+            xlabel="MPS Site Index",
+            ylabel="Improvement Factor",
+            legend=false,
+            color=:purple, alpha=0.7)
+
+        hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
+        savefig(p_cond_imp, joinpath(plots_dir, "site_cond_improvement_N_$(nodes).png"))
+    else
+        @info "Skipping condition number plots for $nodes (no data found in baseline)"
+    end
+
 end
+
+# ---------------------------------------------------------
+# 4. Scaling View
+# ---------------------------------------------------------
+if !isempty(max_total_speedups)
+    p_scale = plot(1:length(grid_labels), max_solve_speedups,
+        label="Max Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,
+        title="Scaling of Maximum Achievable Speedups",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:topright,
+        framestyle=:box)
+
+    plot!(p_scale, 1:length(grid_labels), max_total_speedups,
+        label="Max Total Speedup", color=:green, lw=3, marker=:square, markersize=8)
+
+    hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+
+    savefig(p_scale, joinpath(plots_dir, "scaling_summary.png"))
+end
+
+@info "All plots successfully generated in $plots_dir"

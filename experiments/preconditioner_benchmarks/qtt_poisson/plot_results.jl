@@ -5,9 +5,8 @@ using Plots
 gr()
 default(fmt=:png, dpi=300, size=(800, 600), fontfamily="Computer Modern", margin=5Plots.mm)
 
-use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
-input_file = joinpath(base_folder, "collected_results.jld2")
+base_folder = "experiments/preconditioner_benchmarks/qtt_poisson"
+input_file = joinpath(base_folder, "results", "collected_results.jld2")
 
 df = load(input_file, "df")
 

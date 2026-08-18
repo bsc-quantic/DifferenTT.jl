@@ -8,13 +8,12 @@ using LinearAlgebra
 using JLD2
 using DifferenTT
 
-use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
+base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
 # We extrapolate system sizes from FAI. QTT uses 1D. (16,), (20,), (24,) correspond to 2^16, 2^20, 2^24.
-system_sizes = [(8,), (20,), (24,)]
+system_sizes = [(16,), (20,), (24,)]
 mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
 
 G_maxdims_map = Dict(
@@ -76,14 +75,34 @@ function run_task(task::TaskSpec, A, exact_inv)
     
     @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
 
-    solver = ResidualALS(
-        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
+    sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+    
+    updater_kwargs = LocalUpdaterArgs(
+        ishermitian = true,
+        isposdef = true,
+        compute_cond = false,
+        rtol = 1e-9,
+        krylovdim = 1,
+        maxiter = 3000
+    )
+
+    resals_solver = ResidualALS(
+        sweep_kwargs = sweep_kwargs,
+        updater_kwargs = updater_kwargs,
         residual_tol = 1e-9
     )
+
+    amen_solver =  AMEn(
+        sweep_kwargs = sweep_kwargs,
+        updater_kwargs = updater_kwargs,
+        enrichment_maxdim = 1     
+    )
+
+    fai_builder_solver = resals_solver
     
     t_build = @elapsed begin
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        precond = DifferenTT.fai_preconditioner(A, μ, solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+        precond = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
         Gl = precond.operator
     end
     
@@ -132,7 +151,7 @@ dummy_solver = ResidualALS(
     residual_tol=1e-9
 )
 dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
-dummy_precond = DifferenTT.fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
+dummy_precond = fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
 dummy_Gl = dummy_precond.operator
 dummy_Gl_T = dag(transpose(dummy_Gl))
 dummy_Gl_T_Gl = apply(dummy_Gl_T, dummy_Gl; alg="naive")

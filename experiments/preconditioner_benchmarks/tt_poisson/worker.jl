@@ -8,6 +8,7 @@ using LinearAlgebra
 using JLD2
 using TensorCrossInterpolation
 using DifferenTT
+using Random
 
 use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
@@ -63,27 +64,38 @@ function get_1d_A(i::Int, grid, arch)
     return mat
 end
 
-# TODO Make sure this problem is well suited to be atacked with an MPS of bond dimension neither too large nor too small
-# The solution is defined as:
-#     u(x) = v(x) ⋅ g(x)²
-
-# where:
-#     • v(x) = ∏ᵢ₌₁ᴺ sin(π xᵢ)
-#     • g(x) = ∑ᵢ₌₁ᴺ sin(π xᵢ)
-
-function sol_func(x)
-    N = length(x)
-    val = 1.0
-    for i in 1:N
-        val *= sin(pi * x[i])
-    end
+function get_gaussian_sol(N::Int, R::Int)
+    Random.seed!(42)
+    centers = rand(R, N) .* 0.6 .+ 0.2
+    alphas = rand(R, N) .* 4.0 .+ 1.0
     
-    g = 0.0
-    for i in 1:N
-        g += sin(pi * x[i])
+    function sol(x)
+        val = 0.0
+        for k in 1:R
+            term = 1.0
+            for j in 1:N
+                term *= exp(-alphas[k,j] * (x[j] - centers[k,j])^2)
+            end
+            val += term
+        end
+        # Apply Dirichlet boundary condition envelope
+        env = 1.0
+        for j in 1:N
+            env *= sin(pi * x[j])
+        end
+        return val * env
     end
-    
-    return val * (g^2)
+    return sol
+end
+
+function get_coulomb_sol(N::Int, ε::Float64=0.05)
+    c = fill(0.5, N)
+    function sol(x)
+        r2 = sum((x[j] - c[j])^2 for j in 1:N)
+        env = prod(sin(pi * x[j]) for j in 1:N)
+        return (1.0 / sqrt(r2 + ε^2)) * env
+    end
+    return sol
 end
 
 function build_problem(N::Int)
@@ -98,6 +110,11 @@ function build_problem(N::Int)
     bc = BoundaryConditions(bcs...)
     
     sites = siteinds(arch)
+    
+    sol_func = get_gaussian_sol(N, 30)
+    
+    #TODO Test the coulomb 1/x-like function
+    # sol_func = get_coulomb_sol(N, 0.05)
     
     # Cross interpolate the manufactured solution.
     # optfirstpivot starts at the grid center so Dirichlet-vanishing functions
@@ -115,12 +132,12 @@ function build_problem(N::Int)
     rhs_mps = apply(A, sol_mps; alg="naive", cutoff=1e-12)
     
     # Incorporate Dirichlet boundary corrections through library functions (even if they do not do anything)
-    Δ_correction_mpo = DifferenTT.scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
+    Δ_correction_mpo = scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
     Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive", cutoff=1e-12)
     rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; cutoff=1e-12)
     
     # Symmetrize the RHS
-    rhs_mps = DifferenTT.symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
+    rhs_mps = symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
     
@@ -234,15 +251,35 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_builder_solver = ResidualALS(
-            sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12),
-            residual_tol=1e-5
+        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        
+        updater_kwargs = LocalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            compute_cond = false,
+            rtol = 1e-9,
+            krylovdim = 1,
+            maxiter = 3000
+        )
+        
+        resals_solver = ResidualALS(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            residual_tol = 1e-9
+        )
+
+        amen_solver =  AMEn(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+            enrichment_maxdim = 1,
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+        fai_builder_solver = resals_solver
         
         t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
+            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+
         end
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps; observer! = residual_observer)

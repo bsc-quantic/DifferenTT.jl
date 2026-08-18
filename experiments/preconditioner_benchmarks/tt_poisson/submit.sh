@@ -27,7 +27,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=16
-#SBATCH --time=24:00:00
+#SBATCH --time=12:00:00
 #SBATCH --qos=gp_bsccase
 
 module load julia/1.12.0 
@@ -49,7 +49,7 @@ COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=1
+#SBATCH --cpus-per-task=4
 #SBATCH --time=00:10:00
 #SBATCH --qos=gp_bsccase
 
