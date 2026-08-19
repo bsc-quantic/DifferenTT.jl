@@ -1,3 +1,10 @@
+"""
+    QTT Poisson FAI accuracy vs the exact 1D inverse.
+
+    This benchmark does not record Krylov condition-number stats
+    (`conds_per_site` / `pc_conds_per_site`).
+"""
+
 using JLD2
 using DataFrames
 using Plots

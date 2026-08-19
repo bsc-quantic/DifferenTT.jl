@@ -8,6 +8,8 @@
     3. Step-by-step Iteration profiles
     4. Step-by-step Speedup profiles
     5. Scaling behavior across system sizes
+
+    Global CG does not record local Krylov condition numbers.
 """
 
 using JLD2
@@ -153,7 +155,9 @@ for nodes in system_sizes
     pf_colors = palette(:tab20)
     for (i, gdim) in enumerate(unique_gdims)
         idx = findall(x -> x == gdim, gdims)
-        scatter!(pf_plot, build_times[idx], total_solve_times[idx], label=string(gdim), color=pf_colors[mod1(i, length(pf_colors))])
+        scatter!(pf_plot, build_times[idx], total_solve_times[idx],
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$"),
+            color=pf_colors[mod1(i, length(pf_colors))], marker=:circle)
     end
 
     hline!(pf_plot, [base_time], label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
@@ -176,13 +180,13 @@ for nodes in system_sizes
     # Iterations over time
     p_iters = plot(steps_range, base_iters,
         label="Baseline", color=:red, lw=2, marker=:circle,
-        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest config: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
+        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest FAI: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
         xlabel="Chorin Time Step",
         ylabel="Avg Krylov Iterations per Site",
         legend=:outertopright)
 
     plot!(p_iters, steps_range, best_v["iters"],
-        label="Preconditioned", color=:blue, lw=2, marker=:square)
+        label="FAI", color=:blue, lw=2, marker=:square)
 
     plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
         fillalpha=0.2, fillcolor=:green, label="Iterations Saved", linealpha=0)
@@ -193,7 +197,7 @@ for nodes in system_sizes
     per_step_speedup = base_solve_times ./ best_v["solve_times"]
     p_sp = plot(steps_range, per_step_speedup,
         label="Per-Step Solve Speedup", color=:purple, lw=2, marker=:diamond,
-        title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest config: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
+        title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
         xlabel="Chorin Time Step",
         ylabel="Speedup Ratio",
         legend=:outertopright)

@@ -238,10 +238,10 @@ function run_task(task::TaskSpec)
             result_dict["conds_per_site"] = conds_per_site
             result_dict["avg_cond"] = avg_cond
             
-            cond_improv_per_site = positions_mean_cond(pc_cond_store)
-            avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
-            result_dict["cond_improv_per_site"] = cond_improv_per_site
-            result_dict["avg_cond_improv"] = avg_cond_improv
+            pc_conds_per_site = positions_mean_cond(pc_cond_store)
+            avg_pc_cond = length(pc_conds_per_site) > 0 ? sum(pc_conds_per_site) / length(pc_conds_per_site) : NaN
+            result_dict["pc_conds_per_site"] = pc_conds_per_site
+            result_dict["avg_pc_cond"] = avg_pc_cond
         end
         
         return result_dict
@@ -310,10 +310,10 @@ function run_task(task::TaskSpec)
             result_dict["conds_per_site"] = conds_per_site
             result_dict["avg_cond"] = avg_cond
             
-            cond_improv_per_site = positions_mean_cond(pc_cond_store)
-            avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
-            result_dict["cond_improv_per_site"] = cond_improv_per_site
-            result_dict["avg_cond_improv"] = avg_cond_improv
+            pc_conds_per_site = positions_mean_cond(pc_cond_store)
+            avg_pc_cond = length(pc_conds_per_site) > 0 ? sum(pc_conds_per_site) / length(pc_conds_per_site) : NaN
+            result_dict["pc_conds_per_site"] = pc_conds_per_site
+            result_dict["avg_pc_cond"] = avg_pc_cond
         end
         
         return result_dict
