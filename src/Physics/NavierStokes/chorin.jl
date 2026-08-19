@@ -210,7 +210,7 @@ Supports Euler and RK4 time integration. Updates the fields in `experiment` in-p
 - `save_every::Int`: MPS saving frequency. Defaults to 1 (save every step).
 - `logger`: Optional logger for data persistence.
 - `log_filename::String`: Filename prefix for logged data.
-- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation.
+- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation (`ALS`, `ResidualALS`, `GlobalCG`, ...). Truncation and stopping criteria come from its `sweep_kwargs` / `updater_kwargs`.
 """
 function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, save_every::Int=1, logger=nothing, log_filename::String="chorin_euler_log") where N
     any(x -> length(x) == 0, [component.u for component in experiment.u_fields.components]) && throw(ArgumentError("Velocity fields in experiment must be initialized."))
