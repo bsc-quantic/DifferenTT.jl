@@ -55,6 +55,8 @@ function poisson_pressure(
     # end
 
     previous_p = last(experiment.p_field)
+    # p_field stores physical p = pdt / dt; the linear system is for pdt.
+    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
     epsilon = 1e-10
     rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 
@@ -80,7 +82,7 @@ function poisson_pressure(
     end
 
     @timeit_debug timeit_to "poisson solver" begin 
-        pdt = linearsolve(solver, -1.0 * Δ, rhs, previous_p)
+        pdt = linearsolve(solver, -1.0 * Δ, rhs, pdt_guess)
     end
 
     # l2 error of the linear solver = ||Ax - b||² = <psi|A†A|psi> - 2Re<psi|A†|b> + <b|b>

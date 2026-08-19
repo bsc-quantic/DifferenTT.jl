@@ -175,12 +175,17 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
         pc_cond_store = pc_cond_store
     )
     
+    dt = experiment.time_evol_settings.dt
+    previous_p = last(experiment.p_field)
+    # p_field stores physical p = pdt / dt; the linear system is for pdt.
+    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
+
     if isnothing(precond)
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
     else
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
     end
     
     # Compute relative residual using inner product to save memory
@@ -191,9 +196,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     
     sol_maxdim = maxlinkdim(pdt)
     
-    dt = experiment.time_evol_settings.dt
     divfree_p = pdt * (1/dt)
     
+    # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
