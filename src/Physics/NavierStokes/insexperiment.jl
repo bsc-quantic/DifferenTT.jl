@@ -40,8 +40,8 @@ struct INSExperiment{N} <: INSExperimentBase
     - `Re::Number`: Reynolds number.
     - `object_mask`: Optional obstacle mask.
     - `stencil_order`: Finite difference stencil order.
-    - `maxdim::Int`: Maximum bond dimension allowed throughout the simulation.
-    - `cutoff::Float64`: SVD cutoff performed throughout the simulation.
+    - `maxdim::Int`: Maximum bond dimension for TT arithmetic in the evolution (operators, Poisson RHS, projection, time step). Not the solver bond dimension.
+    - `cutoff::Float64`: SVD cutoff for that same TT arithmetic. Not the solver truncation or stopping tolerance; those live on the `solver`
     """
     function INSExperiment(
         grid::Grid{N},

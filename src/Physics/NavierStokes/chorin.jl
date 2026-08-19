@@ -55,6 +55,8 @@ function poisson_pressure(
     # end
 
     previous_p = last(experiment.p_field)
+    # p_field stores physical p = pdt / dt; the linear system is for pdt.
+    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
     epsilon = 1e-10
     rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 
@@ -80,7 +82,7 @@ function poisson_pressure(
     end
 
     @timeit_debug timeit_to "poisson solver" begin 
-        pdt = linearsolve(solver, -1.0 * Δ, rhs, previous_p)
+        pdt = linearsolve(solver, -1.0 * Δ, rhs, pdt_guess)
     end
 
     # l2 error of the linear solver = ||Ax - b||² = <psi|A†A|psi> - 2Re<psi|A†|b> + <b|b>
@@ -210,7 +212,7 @@ Supports Euler and RK4 time integration. Updates the fields in `experiment` in-p
 - `save_every::Int`: MPS saving frequency. Defaults to 1 (save every step).
 - `logger`: Optional logger for data persistence.
 - `log_filename::String`: Filename prefix for logged data.
-- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation.
+- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation (`ALS`, `ResidualALS`, `GlobalCG`, ...). Truncation and stopping criteria come from its `sweep_kwargs` / `updater_kwargs`.
 """
 function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, save_every::Int=1, logger=nothing, log_filename::String="chorin_euler_log") where N
     any(x -> length(x) == 0, [component.u for component in experiment.u_fields.components]) && throw(ArgumentError("Velocity fields in experiment must be initialized."))

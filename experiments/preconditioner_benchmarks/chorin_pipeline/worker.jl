@@ -175,12 +175,17 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
         pc_cond_store = pc_cond_store
     )
     
+    dt = experiment.time_evol_settings.dt
+    previous_p = last(experiment.p_field)
+    # p_field stores physical p = pdt / dt; the linear system is for pdt.
+    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
+
     if isnothing(precond)
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
     else
         solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, 1e-12 * random_mps(siteinds(rhs); linkdims=1); observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
     end
     
     # Compute relative residual using inner product to save memory
@@ -191,9 +196,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     
     sol_maxdim = maxlinkdim(pdt)
     
-    dt = experiment.time_evol_settings.dt
     divfree_p = pdt * (1/dt)
     
+    # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
@@ -208,9 +213,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
     
     if compute_cond
-        cond_improv_vals = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
-        cond_improv_mean = isempty(cond_improv_vals) ? NaN : mean(cond_improv_vals)
-        res_dict = merge(res_dict, (; cond_improv_vals, cond_improv_mean))
+        local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
+        local_cond_mean = isempty(local_conds) ? NaN : mean(local_conds)
+        res_dict = merge(res_dict, (; local_conds, local_cond_mean))
     end
     
     return res_dict
@@ -256,13 +261,13 @@ function run_task(task::TaskSpec)
             end
             
             if compute_cond
-                # For baseline, cond_improv_vals contains the standard condition numbers
+                # For baseline, local_conds contains the standard condition numbers
                 if isempty(conds_per_site)
-                    conds_per_site = step_res.cond_improv_vals
+                    conds_per_site = step_res.local_conds
                 else
-                    conds_per_site .+= step_res.cond_improv_vals
+                    conds_per_site .+= step_res.local_conds
                 end
-                push!(avg_conds, step_res.cond_improv_mean)
+                push!(avg_conds, step_res.local_cond_mean)
             end
             
             GC.gc(true)
@@ -338,8 +343,8 @@ function run_task(task::TaskSpec)
         residuals = Float64[]
         solution_maxdims = Int[]
         iters_per_site = Float64[]
-        cond_improv_per_site = Float64[]
-        avg_cond_improvs = Float64[]
+        pc_conds_per_site = Float64[]
+        avg_pc_conds = Float64[]
         
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -357,12 +362,12 @@ function run_task(task::TaskSpec)
             end
             
             if compute_cond
-                if isempty(cond_improv_per_site)
-                    cond_improv_per_site = step_res.cond_improv_vals
+                if isempty(pc_conds_per_site)
+                    pc_conds_per_site = step_res.local_conds
                 else
-                    cond_improv_per_site .+= step_res.cond_improv_vals
+                    pc_conds_per_site .+= step_res.local_conds
                 end
-                push!(avg_cond_improvs, step_res.cond_improv_mean)
+                push!(avg_pc_conds, step_res.local_cond_mean)
             end
             
             GC.gc(true)
@@ -384,9 +389,9 @@ function run_task(task::TaskSpec)
         )
         
         if compute_cond
-            cond_improv_per_site ./= N_STEPS
-            result_dict["cond_improv_per_site"] = cond_improv_per_site
-            result_dict["avg_cond_improv"] = mean(avg_cond_improvs)
+            pc_conds_per_site ./= N_STEPS
+            result_dict["pc_conds_per_site"] = pc_conds_per_site
+            result_dict["avg_pc_cond"] = mean(avg_pc_conds)
         end
         
         return result_dict
