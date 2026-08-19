@@ -145,7 +145,6 @@ function run_task(task::TaskSpec)
         ishermitian = true,
         isposdef = true,
         rtol = 1e-3,
-        compute_cond = !use_nocond,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
@@ -177,6 +176,7 @@ function run_task(task::TaskSpec)
             "solution_maxdim" => maxlinkdim(out_mps)
         )
         
+        result_dict["compute_cond"] = !use_nocond
         if !use_nocond
             conds_per_site = positions_mean_cond(cond_store)
             avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
@@ -214,7 +214,13 @@ function run_task(task::TaskSpec)
             "solution_maxdim" => maxlinkdim(out_mps)
         )
         
+        result_dict["compute_cond"] = !use_nocond
         if !use_nocond
+            conds_per_site = positions_mean_cond(cond_store)
+            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
+            result_dict["conds_per_site"] = conds_per_site
+            result_dict["avg_cond"] = avg_cond
+            
             cond_improv_per_site = positions_mean_cond(pc_cond_store)
             avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
             result_dict["cond_improv_per_site"] = cond_improv_per_site
@@ -260,7 +266,13 @@ function run_task(task::TaskSpec)
             "solution_maxdim" => maxlinkdim(out_mps)
         )
         
+        result_dict["compute_cond"] = !use_nocond
         if !use_nocond
+            conds_per_site = positions_mean_cond(cond_store)
+            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
+            result_dict["conds_per_site"] = conds_per_site
+            result_dict["avg_cond"] = avg_cond
+            
             cond_improv_per_site = positions_mean_cond(pc_cond_store)
             avg_cond_improv = length(cond_improv_per_site) > 0 ? sum(cond_improv_per_site) / length(cond_improv_per_site) : NaN
             result_dict["cond_improv_per_site"] = cond_improv_per_site

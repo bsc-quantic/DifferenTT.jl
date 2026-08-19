@@ -8,7 +8,8 @@ using LinearAlgebra
 using JLD2
 using DifferenTT
 
-base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
+use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
+base_folder = use_nocond ? "experiments/preconditioner_benchmarks/qtt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
@@ -106,7 +107,8 @@ function run_task(task::TaskSpec, A, exact_inv)
         "precond_build_time" => t_build,
         "relative_error" => rel_error,
         "norm_exact" => norm_exact,
-        "norm_diff" => norm_diff
+        "norm_diff" => norm_diff,
+        "compute_cond" => false
     )
     
     @info "  build=$(round(t_build; digits=2))s, rel_error=$(round(rel_error; sigdigits=3))"
