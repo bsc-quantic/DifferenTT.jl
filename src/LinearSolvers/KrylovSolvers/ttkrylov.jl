@@ -1,5 +1,29 @@
 import ITensorMPS: apply
 
+function _assign_ref_store!(store::Any, value, field::Symbol)::Nothing
+    if isnothing(store)
+        return nothing
+    end
+    try
+        store[] = value
+    catch e
+        e isa ArgumentError && rethrow()
+        throw(ArgumentError(
+            "GlobalUpdaterArgs.$(field) must be `nothing` or support `store[] = value` (e.g. a `Ref`). Got $(typeof(store))."
+        ))
+    end
+    return nothing
+end
+
+function record_global_krylov_info!(numiter_store::Any, converged_store::Any, info)::Nothing
+    _assign_ref_store!(numiter_store, Int(info.numiter), :numiter_store)
+    converged = info.converged != 0
+    _assign_ref_store!(converged_store, converged, :converged_store)
+    if !converged
+        @warn "Global linear solver stopped without converging after $(info.numiter) iterations (normres = $(info.normres))"
+    end
+    return nothing
+end
 """
     TTCG <: KrylovKit.KrylovAlgorithm
 
@@ -47,7 +71,10 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS, Nothing}; 
                  orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
     )
                      
-    x, _ = KrylovKit.linsolve(A, b, init, alg)
+    x, info = KrylovKit.linsolve(A, b, init, alg)
+    if !isnothing(merged_kwargs.numiter_store)
+        merged_kwargs.numiter_store[] = info.numiter
+    end
     return x
 end
 
@@ -65,7 +92,10 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPrecondit
                  orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
 )
                      
-    x, _ = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    if !isnothing(merged_kwargs.numiter_store)
+        merged_kwargs.numiter_store[] = info.numiter
+    end
     return x
 end
 
@@ -111,7 +141,10 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS, Nothing
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                     
-    x, _ = KrylovKit.linsolve(A, b, init, alg)
+    x, info = KrylovKit.linsolve(A, b, init, alg)
+    if !isnothing(merged_kwargs.numiter_store)
+        merged_kwargs.numiter_store[] = info.numiter
+    end
     return x
 end
 
@@ -129,7 +162,10 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPrecon
                     orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
                     orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
                         
-    x, _ = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
+    if !isnothing(merged_kwargs.numiter_store)
+        merged_kwargs.numiter_store[] = info.numiter
+    end
     return x
 end
 

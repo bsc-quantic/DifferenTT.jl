@@ -5,6 +5,8 @@
 *.jld2
 
 !collected_results.jld2
+!masks.jld2
 
 experiments/**/logs/
 experiments/**/tasks/
+!experiments/**/maskplots/*.png

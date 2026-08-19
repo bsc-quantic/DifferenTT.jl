@@ -58,6 +58,7 @@ Base.@kwdef struct GlobalUpdaterArgs
     cutoff::Float64 = 1e-8
     orth_maxdim::Int = typemax(Int)
     orth_cutoff::Float64 = 1e-12
+    numiter_store::Any = nothing
 end
 
 # Bridge beween DifferenTT and ITensorMPS to avoid crashes in the observer pipeline
@@ -126,6 +127,7 @@ function Base.NamedTuple(args::GlobalUpdaterArgs)
         cutoff = args.cutoff,
         orth_maxdim = args.orth_maxdim,
         orth_cutoff = args.orth_cutoff,
+        numiter_store = args.numiter_store
     )
 end
 
