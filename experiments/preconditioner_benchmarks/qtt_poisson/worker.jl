@@ -86,10 +86,9 @@ function run_task(task::TaskSpec, A, exact_inv)
         maxiter = 3000
     )
 
-    resals_solver = ResidualALS(
+    als_solver = ALS(
         sweep_kwargs = sweep_kwargs,
-        updater_kwargs = updater_kwargs,
-        residual_tol = 1e-9
+        updater_kwargs = updater_kwargs
     )
 
     amen_solver =  AMEn(
@@ -98,7 +97,7 @@ function run_task(task::TaskSpec, A, exact_inv)
         enrichment_maxdim = 1     
     )
 
-    fai_builder_solver = resals_solver
+    fai_builder_solver = als_solver
     
     t_build = @elapsed begin
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
@@ -146,9 +145,8 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_A, dummy_exact = setup_problem((4,))
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-12),
-    residual_tol=1e-9
+dummy_solver = ALS(
+    sweep_kwargs = SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-12)
 )
 dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
 dummy_precond = fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)

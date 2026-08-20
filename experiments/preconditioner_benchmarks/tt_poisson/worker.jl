@@ -262,10 +262,9 @@ function run_task(task::TaskSpec)
             maxiter = 3000
         )
         
-        resals_solver = ResidualALS(
+        als_solver = ALS(
             sweep_kwargs = sweep_kwargs,
-            updater_kwargs = updater_kwargs,
-            residual_tol = 1e-9
+            updater_kwargs = updater_kwargs
         )
 
         amen_solver =  AMEn(
@@ -275,7 +274,7 @@ function run_task(task::TaskSpec)
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = resals_solver
+        fai_builder_solver = als_solver
         
         t_build = @elapsed begin
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
@@ -338,8 +337,11 @@ dummy_solver = ResidualALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2
 )
+dummy_fai_solver = ALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8)
+)
 sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2; maxdim=10, cutoff=1e-12)
-fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+fai_preconditioner(dummy_A, 1.0, dummy_fai_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
 @info "JIT warmup complete."
 

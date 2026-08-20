@@ -309,12 +309,6 @@ function run_task(task::TaskSpec)
             maxiter = 3000
         )
         
-        resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
-        )
-
         als_solver = ALS(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
@@ -409,11 +403,10 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_grid = build_grid((8, 8), 1)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
+dummy_fai_solver = ALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8)
 )
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_fai_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), true)
 @info "JIT warmup complete."
 
