@@ -53,7 +53,9 @@ function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditione
     )
 end
 
-function _clear_cache!(P)
+_clear_cache!(P::Any) = nothing
+
+function _clear_cache!(P::ITensorMPS.AbstractProjMPO)
     if hasproperty(P, :lpos)
         P.lpos = 0
     end
@@ -66,17 +68,22 @@ function _clear_cache!(P)
             P.rpos = 10000
         end
     end
-    if hasproperty(P, :reduced_operator)
-        _clear_cache!(P.reduced_operator)
+end
+
+function _clear_cache!(P::ITensorMPS.ReducedLinearProblem)
+    _clear_cache!(P.reduced_operator)
+    for ct in P.reduced_constant_terms
+        _clear_cache!(ct)
     end
-    if hasproperty(P, :reduced_constant_terms)
-        for ct in P.reduced_constant_terms
-            _clear_cache!(ct)
-        end
-    end
-    if hasproperty(P, :M)
-        _clear_cache!(P.M)
-    end
+end
+
+function _clear_cache!(P::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem})
+    _clear_cache!(P.linear_problem)
+    _clear_cache!(P.preconditioner)
+end
+
+function _clear_cache!(P::AbstractReducedPreconditioner)
+    _clear_cache!(P.reduced_op)
 end
 
 function amen_alternating_update(
@@ -270,7 +277,8 @@ function amen_sub_sweep_update(
                 
                 phi2 = state[b] * state[b+1]
                 rhs = _local_rhs(reduced_operator)
-                Aphi = noprime(ITensors.contract(reduced_operator, phi2))
+                local_op = hasproperty(reduced_operator, :linear_problem) ? reduced_operator.linear_problem : reduced_operator
+                Aphi = noprime(ITensors.contract(local_op, phi2))
                 Z = rhs - Aphi
                 
                 # Truncate Z to extract expansion basis
@@ -302,7 +310,8 @@ function amen_sub_sweep_update(
 
                 phi2 = state[b-1] * state[b]
                 rhs = _local_rhs(reduced_operator)
-                Aphi = noprime(ITensors.contract(reduced_operator, phi2))
+                local_op = hasproperty(reduced_operator, :linear_problem) ? reduced_operator.linear_problem : reduced_operator
+                Aphi = noprime(ITensors.contract(local_op, phi2))
                 Z = rhs - Aphi
 
                 # Truncate Z to extract expansion basis
