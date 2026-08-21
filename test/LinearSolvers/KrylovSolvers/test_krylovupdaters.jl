@@ -9,10 +9,11 @@ import Logging
 # We are testing unexported internal utilities
 using DifferenTT: _uses_cg_metric,
                   SPD_DEFINITE, SPD_AMBIGUOUS, SPD_INDEFINITE,
-                  _classify_spd, _is_significantly_not_spd,
+                  _classify_spd,
                   _spectral_condition, _svd_condition,
-                  _extremal_hermitian_eigvals, _extremal_singular_values,
-                  _report_spectral_κ, _EXTREMAL_KRYLOV_THRESHOLD
+                  _extremal_singular_values,
+                  _dense_extremal_eigvals,
+                  _report_spectral_κ
 
 @testset "KrylovUpdater instantiation" begin
     updater = DifferenTT.KrylovUpdater()
@@ -30,17 +31,14 @@ end
     @testset "SPD Classification" begin
         # SPD_DEFINITE
         @test _classify_spd(1.0, 10.0) == SPD_DEFINITE
-        @test _is_significantly_not_spd(1.0, 10.0) == false
         @test _spectral_condition(1.0, 10.0) == 10.0
 
         # SPD_AMBIGUOUS
         @test _classify_spd(1e-15, 10.0) == SPD_AMBIGUOUS
-        @test _is_significantly_not_spd(1e-15, 10.0) == false
         @test isnan(_spectral_condition(1e-15, 10.0))
 
         # SPD_INDEFINITE
         @test _classify_spd(-1.0, 10.0) == SPD_INDEFINITE
-        @test _is_significantly_not_spd(-1.0, 10.0) == true
         @test isnan(_spectral_condition(-1.0, 10.0))
     end
 
@@ -51,31 +49,38 @@ end
         @test isnan(_svd_condition(NaN, 10.0))
     end
 
-    @testset "Extremal Eigenvalues (dense path)" begin
-        # Dense Hermitian
-        A = Hermitian([2.0 0.5; 0.5 2.0])
-        λmin, λmax = _extremal_hermitian_eigvals(A)
-        @test λmin ≈ 1.5
-        @test λmax ≈ 2.5
-
-        # Dense SVD
+    @testset "Extremal singular values (dense path)" begin
         B = [3.0 0.0; 0.0 -4.0]
         σmin, σmax = _extremal_singular_values(B)
         @test σmin ≈ 3.0
         @test σmax ≈ 4.0
     end
 
-    @testset "Extremal Eigenvalues (sparse/KrylovKit path)" begin
-        # We can force the Krylov path by passing krylov_threshold = 1
-        A = Hermitian(Diagonal(1.0:5.0))
-        λmin, λmax = _extremal_hermitian_eigvals(A; krylov_threshold=1)
-        @test isapprox(λmin, 1.0; atol=1e-5)
-        @test isapprox(λmax, 5.0; atol=1e-5)
-
+    @testset "Extremal singular values (KrylovKit path)" begin
         B = Diagonal(1.0:5.0)
         σmin, σmax = _extremal_singular_values(B; krylov_threshold=1)
         @test isapprox(σmin, 1.0; atol=1e-5)
         @test isapprox(σmax, 5.0; atol=1e-5)
+    end
+
+    @testset "_dense_extremal_eigvals (CG path)" begin
+        A = [2.0 0.5; 0.5 2.0]
+        λmin, λmax = _dense_extremal_eigvals(A)
+        @test λmin ≈ 1.5
+        @test λmax ≈ 2.5
+
+        D = Diagonal(1.0:5.0)
+        λmin, λmax = _dense_extremal_eigvals(Matrix(D))
+        @test λmin ≈ 1.0
+        @test λmax ≈ 5.0
+
+        # Non-normal: spectral κ from eigenvalues, not singular values (GMRES uses the latter)
+        N = [1.0 100.0; 0.0 2.0]
+        λmin, λmax = _dense_extremal_eigvals(N)
+        @test λmin ≈ 1.0
+        @test λmax ≈ 2.0
+        σmin, σmax = _extremal_singular_values(N)
+        @test _svd_condition(σmin, σmax) > _spectral_condition(λmin, λmax)
     end
 
     @testset "_report_spectral_κ logging" begin
