@@ -109,16 +109,22 @@ function residual_replacebond!(
     s_dim = dim(s_inds[1])
     svals = [S_full[s_inds[1] => k, s_inds[2] => k] for k in 1:s_dim]
 
+    low = max(1, mindim)
+    high = full_rank - 1
     chosen_rank = full_rank
-    for r in (full_rank - 1):-1:max(1, mindim)
+
+    while low <= high
+        mid = (low + high) ÷ 2
         # Reconstruct truncated phi
-        phi_trunc = _truncated_phi(U_full, S_full, V_full, r)
+        phi_trunc = _truncated_phi(U_full, S_full, V_full, mid)
         res_trunc = _local_residual_norm(reduced_operator, phi_trunc, rhs) / norm_rhs
-        if res_trunc > threshold
-            chosen_rank = r + 1  # previous rank was still OK
-            break
+        
+        if res_trunc <= threshold
+            chosen_rank = mid
+            high = mid - 1
+        else
+            low = mid + 1
         end
-        chosen_rank = r
     end
 
     # Clamp
