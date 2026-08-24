@@ -202,11 +202,11 @@ function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSol
 end
 
 """
-    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array) where N
+    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array) where N
 
 Build a Sinc-quadrature (sum of exponentials) preconditioner for a specific problem where operators are given by `A_list`.
 """
-function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; maxdim::Int=typemax(Int), cutoff::Float64=1e-15, array_type::Type{<:AbstractArray}=Array) where N
+function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array) where N
     d = length(A_list)
     @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
     @assert N == d "Number of local operators does not match architecture dimensions"
@@ -214,25 +214,38 @@ function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:
     h = pi / sqrt(M)
     
     precond_mpo = nothing
+    total_sites = length(sites)
     
     for k in -M:M
         t_k = exp(k * h)
         c_k = h * t_k
         
-        term_mpo = nothing
-        for l in 1:d
-            expA = exp(-t_k * A_list[l])
-            op_mpo = ndim_operator_mpo(expA, l, sites, arch)
-            
-            if term_mpo === nothing
-                term_mpo = op_mpo
-            else
-                term_mpo = apply(term_mpo, op_mpo; cutoff=cutoff, maxdim=maxdim)
-            end
-        end
-        term_mpo = c_k * term_mpo
+        links = [Index(1, "Link,l=$i") for i in 1:total_sites-1]
+        mpo_tensors = Vector{ITensor}(undef, total_sites)
         
-        precond_mpo = _nothing_sum_handler(precond_mpo, term_mpo; cutoff=cutoff, maxdim=maxdim)
+        for i in 1:total_sites
+            l = arch.site_map[i]
+            expA = exp(-t_k * A_list[l])
+            s = sites[i]
+            
+            T = ITensor(array_type(expA), s', s)
+            
+            if total_sites > 1
+                if i == 1
+                    T *= adapt(array_type, onehot(links[1] => 1))
+                elseif i == total_sites
+                    T *= adapt(array_type, onehot(links[end] => 1))
+                else
+                    T *= adapt(array_type, onehot(links[i-1] => 1))
+                    T *= adapt(array_type, onehot(links[i] => 1))
+                end
+            end
+            mpo_tensors[i] = adapt(array_type, T)
+        end
+        
+        term_mpo = c_k * MPO(mpo_tensors)
+        
+        precond_mpo = _nothing_sum_handler(precond_mpo, term_mpo; cutoff=0.0)
     end
     
     return Preconditioner(precond_mpo)
