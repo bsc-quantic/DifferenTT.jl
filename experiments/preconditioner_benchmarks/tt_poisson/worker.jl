@@ -17,7 +17,29 @@ mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
 system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_NODES_PER_DIM = 5
+const N_NODES_PER_DIM = 10
+
+maxdims_map = Dict(
+    5 => 20,
+    10 => 30,
+    15 => 30,
+    20 => 30,
+    25 => 50,
+    30 => 50,
+    40 => 50,
+    50 => 50
+)
+
+nsweeps_map = Dict(
+    5 => 50,
+    10 => 50,
+    15 => 50,
+    20 => 60,
+    25 => 60,
+    30 => 80,
+    40 => 100,
+    50 => 120
+)
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
@@ -111,14 +133,9 @@ function build_problem(N::Int)
     
     sites = siteinds(arch)
     
-    sol_func = get_gaussian_sol(N, 30)
+    # sol_func = get_gaussian_sol(N, 30)
+    sol_func = get_coulomb_sol(N, 0.05)
     
-    #TODO Test the coulomb 1/x-like function
-    # sol_func = get_coulomb_sol(N, 0.05)
-    
-    # Cross interpolate the manufactured solution.
-    # optfirstpivot starts at the grid center so Dirichlet-vanishing functions
-    # (∏ sin(π xᵢ)) do not yield maxsamplevalue=0 in high dimension.
     sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
     sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot])
     sol_mps = MPS(sol_tci)
@@ -153,22 +170,40 @@ function run_task(task::TaskSpec)
     init_mps = random_mps(sites)
     
     # Tight maxdim truncation may mess up the residual truncation...
-    sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=50, cutoff=0.0)
+    sweep_kwargs = SweepingArgs(nsweeps=nsweeps_map[N], maxdim=maxdims_map[N], cutoff=1e-13)
     
     numiter_store = KrylovSweepStats()
     cond_store = use_nocond ? nothing : KrylovCondStats()
     pc_cond_store = use_nocond ? nothing : KrylovCondStats()
+    
     updater_kwargs = LocalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-3,
+        rtol = 1e-5,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
     )
 
-    residual_observer = ResidualObserver(A, rhs, 1e-2)
-    solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+    global_updater_kwargs = GlobalUpdaterArgs(
+        ishermitian = true,
+        isposdef = true,
+        rtol = 1e-5,
+        maxiter = 500,
+        maxdim = maxdims_map[N],
+        cutoff = 1e-13,
+        orth_maxdim = maxdims_map[N],
+        orth_cutoff =  1e-13,
+        numiter_store = Ref{Int}(0)
+    )
+
+    residual_observer = ResidualObserver(A, rhs, 1e-4)
+    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+    amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
+    als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
+    global_solver = GlobalCG(updater_kwargs=global_updater_kwargs)
+
+    solver = global_solver
     
     if task.method == "baseline"
         @info "Running Baseline N=$N"
@@ -176,8 +211,11 @@ function run_task(task::TaskSpec)
         t_build = 0.0
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps; observer! = residual_observer)
         
-        diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
-        rel_error = norm(diff) / norm(sol_mps)
+        # Compute relative residual using inner product to save memory
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
         iters_per_site = DifferenTT.positions_sum(numiter_store)
         
@@ -208,7 +246,7 @@ function run_task(task::TaskSpec)
         @info "Running Sinc (M=$M) N=$N"
         
         t_build = @elapsed begin
-            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
+            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M)
         end
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps; observer! = residual_observer)
@@ -268,14 +306,32 @@ function run_task(task::TaskSpec)
             residual_tol = 1e-9
         )
 
+        als_solver = ALS(
+            sweep_kwargs = sweep_kwargs,
+            updater_kwargs = updater_kwargs,
+        )
+
         amen_solver =  AMEn(
             sweep_kwargs = sweep_kwargs,
             updater_kwargs = updater_kwargs,
             enrichment_maxdim = 1,
         )
 
+        global_solver = GlobalCG(
+            updater_kwargs = GlobalUpdaterArgs(
+                ishermitian = true,
+                isposdef = true,
+                rtol = 1e-2,
+                maxiter = 300,
+                maxdim = gdim,
+                cutoff = 1e-12,
+                orth_maxdim = gdim,
+                orth_cutoff = 1e-12
+            )
+        )
+
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = resals_solver
+        fai_builder_solver = global_solver
         
         t_build = @elapsed begin
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)

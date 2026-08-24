@@ -20,7 +20,12 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.j
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const DT = 0.00005
+
+dt_map = Dict(
+    (8, 8) => 0.001,
+    (10, 10) => 0.0005,
+    (12, 12) => 0.00001
+)
 
 n_steps_map = Dict(
     (8, 8) => 50,
@@ -51,9 +56,9 @@ cutoff_map = Dict(
 )
 
 nsweeps_map = Dict(
-    (8, 8) => 30,
-    (10, 10) => 40,
-    (12, 12) => 50
+    (8, 8) => 100,
+    (10, 10) => 100,
+    (12, 12) => 100
 )
 
 ITensors.disable_warn_order()
@@ -112,7 +117,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, DT, max_steps, :euler)
+    time_evol = TimeEvol(0.0, dt_map[nodes], max_steps, :euler)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -169,11 +174,17 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     updater_kwargs = LocalUpdaterArgs(;
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-4,
+        rtol = 1e-3,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
     )
+
+    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-3)
+    amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
+    als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
+
+    solver = resals_solver
     
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
@@ -181,11 +192,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
 
     if isnothing(precond)
-        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-2))
     else
-        solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-3))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-2))
     end
     
     # Compute relative residual using inner product to save memory
@@ -202,7 +211,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
-    stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     

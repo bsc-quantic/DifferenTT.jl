@@ -45,8 +45,8 @@ for row in eachrow(df_nocond)
     k = row.key
     d = Dict(
         "key" => k,
-        "mu" => ismissing(row.mu) ? NaN : row.mu,
-        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+        "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "precond_build_time" => row.precond_build_time,
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
@@ -67,8 +67,8 @@ if !isempty(df_cond)
         k = row.key
         d_cond = Dict(
             "key" => k,
-            "mu" => ismissing(row.mu) ? NaN : row.mu,
-            "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+            "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+            "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
             "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
             "avg_pc_cond" => hasproperty(row, :avg_pc_cond) ? row.avg_pc_cond : NaN,
             "conds_per_site" => row_vec(row, :conds_per_site),

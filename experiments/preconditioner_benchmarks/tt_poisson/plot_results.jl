@@ -63,8 +63,8 @@ for row in eachrow(df_nocond)
         "solve_time" => row.solve_time,
         "total_time" => row.total_time,
         "precond_build_time" => row.precond_build_time,
-        "mu" => ismissing(row.mu) ? NaN : row.mu,
-        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+        "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "M" => hasproperty(row, :M) && !ismissing(row.M) ? Int(row.M) : 0,
         "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
     )
@@ -82,8 +82,8 @@ if !isempty(df_cond)
         d_cond = Dict(
             "key" => k,
             "method" => row.method,
-            "mu" => ismissing(row.mu) ? NaN : row.mu,
-            "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+            "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+            "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
             "M" => hasproperty(row, :M) && !ismissing(row.M) ? Int(row.M) : 0,
             "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
             "avg_pc_cond" => hasproperty(row, :avg_pc_cond) ? row.avg_pc_cond : NaN,

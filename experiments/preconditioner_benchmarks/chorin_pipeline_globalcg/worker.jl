@@ -19,7 +19,12 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline_globalc
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const DT = 0.00005
+
+dt_map = Dict(
+    (8, 8) => 0.001,
+    (10, 10) => 0.0005,
+    (12, 12) => 0.00001
+)
 
 n_steps_map = Dict(
     (8, 8) => 50,
@@ -45,9 +50,9 @@ cutoff_map = Dict(
 )
 
 maxiter_map = Dict(
-    (8, 8) => 50,
-    (10, 10) => 70,
-    (12, 12) => 1000
+    (8, 8) => 200,
+    (10, 10) => 300,
+    (12, 12) => 500
 )
 
 ITensors.disable_warn_order()
@@ -103,7 +108,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, DT, max_steps, :euler)
+    time_evol = TimeEvol(0.0, dt_map[nodes], max_steps, :euler)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -181,7 +186,7 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
-    stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     
@@ -204,7 +209,7 @@ function run_task(task::TaskSpec)
     global_updater_kwargs = GlobalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        rtol = 5e-4,
+        rtol = 1e-3,
         maxiter = maxiter_val,
         maxdim = maxdim_val,
         cutoff = cutoff_val,
@@ -254,7 +259,7 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         
-        fai_builder_solver = GlobalCG(
+        global_fai_solver = GlobalCG(
             updater_kwargs = GlobalUpdaterArgs(
                 ishermitian = true,
                 isposdef = true,
@@ -266,7 +271,31 @@ function run_task(task::TaskSpec)
                 orth_cutoff = 1e-12
             )
         )
+
+        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
         
+        fai_updater_kwargs = LocalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            compute_cond = false,
+            rtol = 1e-9,
+            krylovdim = 1,
+            maxiter = 3000
+        )
+        
+        resals_solver = ResidualALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
+            residual_tol = 1e-9
+        )
+
+        als_solver = ALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
+        )
+
+        fai_builder_solver = als_solver
+
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin

@@ -42,8 +42,8 @@ for row in eachrow(df)
     end
     k = row.key
     d = Dict(
-        "mu" => ismissing(row.mu) ? NaN : row.mu,
-        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+        "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "precond_build_time" => row.precond_build_time,
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
