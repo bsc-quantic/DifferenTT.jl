@@ -113,10 +113,11 @@ using LinearAlgebra
         A_list = [A1, A2]
         M = 2
         
-        prec = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=10, cutoff=1e-12)
+        prec = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M)
         
         @test prec isa DifferenTT.Preconditioner
         @test prec.operator isa MPO
+        @test maxlinkdim(prec.operator) == 2*M + 1
         @test length(prec.operator) == 2
 
         wrong_arch1 = DifferenTT.TTArchitecture((4, 4, 4))
