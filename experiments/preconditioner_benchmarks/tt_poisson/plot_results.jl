@@ -180,6 +180,7 @@ for nodes in system_sizes
 
     unique_mus = sort(unique(mus))
     unique_gdims = sort(unique(gdims))
+    unique_Ms = sort(unique(sinc_Ms))
 
     # ---------------------------------------------------------
     # 1. Heatmaps (μ vs G_maxdim) — FAI only
@@ -274,101 +275,176 @@ for nodes in system_sizes
     savefig(pf_plot, joinpath(plots_dir, "pareto_N_$(nodes).png"))
 
     # ---------------------------------------------------------
-    # 3. Site-by-site Profiles
+    # 3. Per-Bond Profiles and Combined Overlays
     # ---------------------------------------------------------
-    if isnothing(base_iters)
-        @warn "Skipping site-by-site plots for $nodes: no baseline iters_per_site"
-        continue
+    sites_range_combined = !isnothing(base_iters) ? (1:length(base_iters)) : []
+    p_iters_combined = plot(
+        title=latexstring("Local Iterations Profile ($nodes)\nBest μ per \$\\chi_{max}\$, plus sinc"),
+        xlabel="MPS Site Index", ylabel="Krylov Iterations", legend=:outertopright
+    )
+    p_conds_combined = plot(
+        yaxis=:log, title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$, plus sinc"),
+        xlabel="MPS Site Index", ylabel="Condition Number (Log Scale)", legend=:outertopright
+    )
+    p_cond_imp_combined = plot(
+        title=latexstring("Condition Number Improvement ($nodes)\nBest μ per \$\\chi_{max}\$, plus sinc"),
+        xlabel="MPS Site Index", ylabel="Improvement Factor", legend=:outertopright
+    )
+
+    if !isnothing(base_iters)
+        plot!(p_iters_combined, sites_range_combined, base_iters, label="Baseline", color=:black, lw=3, marker=:circle)
     end
 
-    best_fai = nothing
-    if !isempty(fai_solve_speedups)
-        best_fai = grid_data_nocond[fai_keys[argmax(fai_solve_speedups)]]
-    end
-    best_sinc = nothing
-    if !isempty(sinc_solve_speedups)
-        best_sinc = grid_data_nocond[sinc_keys[argmax(sinc_solve_speedups)]]
+    base_conds_clean = (isnothing(base_conds) || !nonempty_numeric_vec(base_conds)) ? nothing : clean_kappa(base_conds)
+    if !isnothing(base_conds_clean)
+        plot!(p_conds_combined, sites_range_combined, base_conds_clean, label="Baseline", color=:black, lw=3, marker=:circle)
+        hline!(p_cond_imp_combined, [1.0], color=:black, lw=3, ls=:dash, label="No improvement")
     end
 
-    title_bits = String[]
-    if !isnothing(best_fai)
-        push!(title_bits, "FAI μ=$(best_fai["mu"]), \$\\chi_{max}=$(best_fai["G_maxdim"])\$")
+    colors = palette(:tab20)
+    sinc_colors = palette(:Dark2)
+
+    sinc_cfgs = Dict{Int, Dict}()
+    for (si, M) in enumerate(unique_Ms)
+        best_s_idx = -1
+        best_s_sp = -1.0
+        for idx in 1:length(sinc_solve_speedups)
+            if sinc_Ms[idx] == M && sinc_solve_speedups[idx] > best_s_sp
+                best_s_sp = sinc_solve_speedups[idx]
+                best_s_idx = idx
+            end
+        end
+        best_s_idx == -1 && continue
+        sinc_v = grid_data_nocond[sinc_keys[best_s_idx]]
+        sinc_cfgs[M] = sinc_v
+        sinc_cond = match_cond(grid_data_cond, sinc_v)
+        sinc_kpc = isnothing(sinc_cond) ? nothing : kappa_pc(sinc_cond)
+        c_s = sinc_colors[mod1(si, length(sinc_colors))]
+
+        if !isnothing(base_iters) && !isnothing(sinc_v["iters_per_site"])
+            plot!(p_iters_combined, sites_range_combined, sinc_v["iters_per_site"],
+                label="Sinc M=$(M)", color=c_s, lw=2, marker=:diamond, ls=:dash)
+        end
+        if !isnothing(base_conds_clean) && !isnothing(sinc_kpc)
+            plot!(p_conds_combined, sites_range_combined, sinc_kpc,
+                label="Sinc M=$(M)", color=c_s, lw=2, marker=:diamond, ls=:dash)
+            plot!(p_cond_imp_combined, sites_range_combined, base_conds_clean ./ sinc_kpc,
+                label="Sinc M=$(M)", color=c_s, lw=2, marker=:diamond, ls=:dash)
+        end
     end
-    if !isnothing(best_sinc)
-        push!(title_bits, "Sinc M=$(best_sinc["M"])")
-    end
-    iters_title = isempty(title_bits) ? "Local Iterations Profile ($nodes)" :
-        latexstring("Local Iterations Profile ($nodes)\nBest: $(join(title_bits, "; "))")
 
-    sites_range = 1:length(base_iters)
+    for (i, gdim) in enumerate(unique_gdims)
+        best_idx = -1
+        best_speedup = -1.0
 
-    p_iters = plot(sites_range, base_iters,
-        label="Baseline", color=:red, lw=2, marker=:circle,
-        title=iters_title,
-        xlabel="MPS Site Index",
-        ylabel="Krylov Iterations",
-        legend=:outertopright)
+        for idx in 1:length(fai_solve_speedups)
+            gdims[idx] != gdim && continue
+            if fai_solve_speedups[idx] > best_speedup
+                best_speedup = fai_solve_speedups[idx]
+                best_idx = idx
+            end
+        end
 
-    if !isnothing(best_fai) && !isnothing(best_fai["iters_per_site"])
-        plot!(p_iters, sites_range, best_fai["iters_per_site"],
+        if best_idx == -1 || isnothing(base_iters)
+            @warn "Skipping site-by-site plots for $nodes and gdim=$gdim: No suitable FAI data found"
+            continue
+        end
+
+        best_v_nocond = grid_data_nocond[fai_keys[best_idx]]
+        best_v_cond = match_cond(grid_data_cond, best_v_nocond)
+        fai_kpc = isnothing(best_v_cond) ? nothing : kappa_pc(best_v_cond)
+
+        sites_range = 1:length(base_iters)
+        out_dir = joinpath(plots_dir, "N_$(nodes)", "chi_$gdim")
+        mkpath(out_dir)
+
+        p_iters = plot(sites_range, base_iters,
+            label="Baseline", color=:red, lw=2, marker=:circle,
+            title=latexstring("Local Iterations Profile ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v_nocond["mu"])"),
+            xlabel="MPS Site Index",
+            ylabel="Krylov Iterations",
+            legend=:outertopright)
+
+        plot!(p_iters, sites_range, best_v_nocond["iters_per_site"],
             label="FAI", color=:blue, lw=2, marker=:square)
-        plot!(p_iters, sites_range, base_iters, fillrange=best_fai["iters_per_site"],
+
+        plot!(p_iters, sites_range, base_iters, fillrange=best_v_nocond["iters_per_site"],
             fillalpha=0.12, fillcolor=:blue, label="", linealpha=0)
+
+        for (si, M) in enumerate(unique_Ms)
+            haskey(sinc_cfgs, M) || continue
+            sinc_v = sinc_cfgs[M]
+            isnothing(sinc_v["iters_per_site"]) && continue
+            plot!(p_iters, sites_range, sinc_v["iters_per_site"],
+                label="Sinc M=$(M)", color=sinc_colors[mod1(si, length(sinc_colors))], lw=2, marker=:diamond, ls=:dash)
+        end
+
+        savefig(p_iters, joinpath(out_dir, "site_iterations.png"))
+
+        c_color = colors[mod1(i, length(colors))]
+        plot!(p_iters_combined, sites_range, best_v_nocond["iters_per_site"],
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v_nocond["mu"]))"), color=c_color, lw=2, marker=:square)
+
+        p_conds = plot(sites_range, something(base_conds_clean, Float64[]),
+            label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
+            title="Local Condition Number Profile ($nodes)",
+            xlabel="MPS Site Index",
+            ylabel="Condition Number (Log Scale)",
+            legend=:outertopright)
+
+        plotted_any_pc = false
+        if !isnothing(base_conds_clean) && !isnothing(fai_kpc)
+            plot!(p_conds, sites_range, fai_kpc, label="FAI", color=:blue, lw=2, marker=:square)
+            plotted_any_pc = true
+            plot!(p_conds_combined, sites_range, fai_kpc,
+                label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v_nocond["mu"]))"), color=c_color, lw=2, marker=:square)
+            plot!(p_cond_imp_combined, sites_range, base_conds_clean ./ fai_kpc,
+                label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v_nocond["mu"]))"), color=c_color, lw=2, marker=:square)
+        end
+
+        p_cond_imp = plot(
+            title="Condition Number Improvement ($nodes)\nRatio: unpreconditioned / preconditioned",
+            xlabel="MPS Site Index",
+            ylabel="Improvement Factor",
+            legend=:outertopright)
+        hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
+
+        if !isnothing(base_conds_clean) && !isnothing(fai_kpc)
+            plot!(p_cond_imp, sites_range, base_conds_clean ./ fai_kpc,
+                label="FAI", color=:blue, lw=2, marker=:square)
+        end
+
+        for (si, M) in enumerate(unique_Ms)
+            haskey(sinc_cfgs, M) || continue
+            sinc_cond = match_cond(grid_data_cond, sinc_cfgs[M])
+            sinc_kpc = isnothing(sinc_cond) ? nothing : kappa_pc(sinc_cond)
+            isnothing(sinc_kpc) && continue
+            c_s = sinc_colors[mod1(si, length(sinc_colors))]
+            if !isnothing(base_conds_clean)
+                plot!(p_conds, sites_range, sinc_kpc,
+                    label="Sinc M=$(M)", color=c_s, lw=2, marker=:diamond, ls=:dash)
+                plot!(p_cond_imp, sites_range, base_conds_clean ./ sinc_kpc,
+                    label="Sinc M=$(M)", color=c_s, lw=2, marker=:diamond, ls=:dash)
+                plotted_any_pc = true
+            end
+        end
+
+        if !isnothing(base_conds_clean)
+            savefig(p_conds, joinpath(out_dir, "site_condition.png"))
+            savefig(p_cond_imp, joinpath(out_dir, "site_cond_improvement.png"))
+        end
     end
-    if !isnothing(best_sinc) && !isnothing(best_sinc["iters_per_site"])
-        plot!(p_iters, sites_range, best_sinc["iters_per_site"],
-            label="Sinc", color=:darkorange, lw=2, marker=:diamond)
+
+    out_dir_combined = joinpath(plots_dir, "N_$(nodes)")
+    mkpath(out_dir_combined)
+
+    if !isnothing(base_iters)
+        savefig(p_iters_combined, joinpath(out_dir_combined, "combined_site_iterations.png"))
     end
-
-    savefig(p_iters, joinpath(plots_dir, "site_iterations_N_$(nodes).png"))
-
-    if isnothing(base_conds) || !nonempty_numeric_vec(base_conds)
-        @info "Skipping condition number plots for $nodes (no baseline cond data)"
-        continue
+    if !isnothing(base_conds_clean)
+        savefig(p_conds_combined, joinpath(out_dir_combined, "combined_site_condition.png"))
+        savefig(p_cond_imp_combined, joinpath(out_dir_combined, "combined_site_cond_improvement.png"))
     end
-
-    base_conds_clean = clean_kappa(base_conds)
-    best_fai_cond = isnothing(best_fai) ? nothing : match_cond(grid_data_cond, best_fai)
-    best_sinc_cond = isnothing(best_sinc) ? nothing : match_cond(grid_data_cond, best_sinc)
-    fai_kpc = isnothing(best_fai_cond) ? nothing : kappa_pc(best_fai_cond)
-    sinc_kpc = isnothing(best_sinc_cond) ? nothing : kappa_pc(best_sinc_cond)
-
-    p_conds = plot(sites_range, base_conds_clean,
-        label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
-        title="Local Condition Number Profile ($nodes)",
-        xlabel="MPS Site Index",
-        ylabel="Condition Number (Log Scale)",
-        legend=:outertopright)
-
-    if !isnothing(fai_kpc)
-        plot!(p_conds, sites_range, fai_kpc, label="FAI", color=:blue, lw=2, marker=:square)
-    else
-        @info "No FAI κ(P⁻¹A) for $nodes; omitting FAI from condition profile"
-    end
-    if !isnothing(sinc_kpc)
-        plot!(p_conds, sites_range, sinc_kpc, label="Sinc", color=:darkorange, lw=2, marker=:diamond)
-    else
-        @info "No sinc κ(P⁻¹A) for $nodes; omitting sinc from condition profile"
-    end
-
-    savefig(p_conds, joinpath(plots_dir, "site_condition_N_$(nodes).png"))
-
-    p_cond_imp = plot(
-        title="Condition Number Improvement ($nodes)\nRatio: unpreconditioned / preconditioned",
-        xlabel="MPS Site Index",
-        ylabel="Improvement Factor",
-        legend=:outertopright)
-
-    hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
-    if !isnothing(fai_kpc)
-        plot!(p_cond_imp, sites_range, base_conds_clean ./ fai_kpc,
-            label="FAI", color=:blue, lw=2, marker=:square)
-    end
-    if !isnothing(sinc_kpc)
-        plot!(p_cond_imp, sites_range, base_conds_clean ./ sinc_kpc,
-            label="Sinc", color=:darkorange, lw=2, marker=:diamond)
-    end
-    savefig(p_cond_imp, joinpath(plots_dir, "site_cond_improvement_N_$(nodes).png"))
 end
 
 # ---------------------------------------------------------
