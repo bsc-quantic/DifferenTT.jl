@@ -26,7 +26,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --chdir=.
 #SBATCH --array=1-111
 #SBATCH --nodes=1
-#SBATCH --cpus-per-task=8
+#SBATCH --cpus-per-task=32
 #SBATCH --time=20:00:00
 #SBATCH --qos=gp_bsccase
 
@@ -34,7 +34,7 @@ module load julia/1.12.0
 
 echo "Task \${SLURM_ARRAY_TASK_ID} / 111 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
-julia --project=. -t 1 ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID}
+julia --project=. -t 1 --heap-size-hint=58G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID}
 ARRAY_EOF
 )
 
