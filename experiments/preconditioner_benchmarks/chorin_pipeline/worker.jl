@@ -18,7 +18,7 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.j
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
-const RE_NUM = 3000
+const RE_NUM = 1000
 const STENCIL_ORDER = 8
 
 dt_map = Dict(
@@ -28,7 +28,7 @@ dt_map = Dict(
 )
 
 n_steps_map = Dict(
-    (8, 8) => 50,
+    (8, 8) => 100,
     (10, 10) => 25,
     (12, 12) => 10
 )
@@ -44,21 +44,22 @@ mu_values = [5e6, 1e7, 5e7, 1e8]
 g_maxdims = 2:10
 
 maxdims_map = Dict(
-    (8, 8) => 150,
-    (10, 10) => 200,
-    (12, 12) => 250
+    (8, 8) => 120,
+    (10, 10) => 150,
+    (12, 12) => 200
 )
 
+# WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
 cutoff_map = Dict(
-    (8, 8) => 0.0,
-    (10, 10) => 0.0,
-    (12, 12) => 0.0
+    (8, 8) => 1e-15,
+    (10, 10) => 1e-15,
+    (12, 12) => 1e-15
 )
 
 nsweeps_map = Dict(
     (8, 8) => 100,
-    (10, 10) => 100,
-    (12, 12) => 100
+    (10, 10) => 200,
+    (12, 12) => 300
 )
 
 ITensors.disable_warn_order()
@@ -98,6 +99,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
         object_mask = zeros_mps(sites)
+        @warn "mask not found"
     end
     
     mps_vy = tt_mul(object_mask, ones_mps(sites))
@@ -174,27 +176,31 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     updater_kwargs = LocalUpdaterArgs(;
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-3,
+        rtol = 1e-4,
+        krylovdim=1,
+        maxiter=2000,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
     )
 
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-3)
+    res_observer = ResidualObserver(grid.A, rhs, 1e-3)
+    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
     amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
     als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = resals_solver
     
     dt = experiment.time_evol_settings.dt
-    previous_p = last(experiment.p_field)
+    # previous_p = last(experiment.p_field)
+    previous_p = nothing
     # p_field stores physical p = pdt / dt; the linear system is for pdt.
     pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
 
     if isnothing(precond)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-2))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = res_observer)
     else
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = ResidualObserver(grid.A, rhs, 1e-2))
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = res_observer)
     end
     
     # Compute relative residual using inner product to save memory
@@ -202,6 +208,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
     term3 = ITensorMPS.inner(rhs, rhs)
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+    @info "Residual $rel_res"
     
     sol_maxdim = maxlinkdim(pdt)
     
@@ -423,7 +431,10 @@ dummy_solver = ResidualALS(
     residual_tol=1e-2
 )
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), true)
+
+# When running with condition numbers, compute time does not really count, so it is better to avoid
+# crashing at pecompilation dues to dummy preconditioners than to have more accurate timings due to precompilation
+chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false)
 @info "JIT warmup complete."
 
 result = run_task(task)

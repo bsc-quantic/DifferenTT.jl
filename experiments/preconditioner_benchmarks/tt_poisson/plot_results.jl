@@ -103,7 +103,12 @@ max_total_speedups_sinc = Float64[]
 max_solve_speedups_sinc = Float64[]
 grid_labels = String[]
 
-for nodes in system_sizes
+detailed_fai_solve = Dict{Tuple{Int, Float64}, Vector{Float64}}()
+detailed_fai_total = Dict{Tuple{Int, Float64}, Vector{Float64}}()
+detailed_sinc_solve = Dict{Int, Vector{Float64}}()
+detailed_sinc_total = Dict{Int, Vector{Float64}}()
+
+for (node_idx, nodes) in enumerate(system_sizes)
     @info "Generating plots for system size $nodes"
 
     grid_data_nocond = results_nocond[nodes]
@@ -146,20 +151,42 @@ for nodes in system_sizes
     for (k, v) in grid_data_nocond
         v["method"] == "baseline" && continue
         if v["method"] == "sinc"
+            m_val = v["M"]
             push!(sinc_keys, k)
-            push!(sinc_Ms, v["M"])
+            push!(sinc_Ms, m_val)
             push!(sinc_build_times, v["precond_build_time"])
             push!(sinc_solve_times, v["solve_time"])
-            push!(sinc_solve_speedups, base_time / v["solve_time"])
-            push!(sinc_total_speedups, base_time / v["total_time"])
+            s_sp = base_time / v["solve_time"]
+            t_sp = base_time / v["total_time"]
+            push!(sinc_solve_speedups, s_sp)
+            push!(sinc_total_speedups, t_sp)
+            
+            if !haskey(detailed_sinc_solve, m_val)
+                detailed_sinc_solve[m_val] = fill(NaN, length(system_sizes))
+                detailed_sinc_total[m_val] = fill(NaN, length(system_sizes))
+            end
+            detailed_sinc_solve[m_val][node_idx] = s_sp
+            detailed_sinc_total[m_val][node_idx] = t_sp
         elseif v["method"] == "fai"
+            mu_val = v["mu"]
+            gdim_val = v["G_maxdim"]
             push!(fai_keys, k)
-            push!(mus, v["mu"])
-            push!(gdims, v["G_maxdim"])
+            push!(mus, mu_val)
+            push!(gdims, gdim_val)
             push!(fai_build_times, v["precond_build_time"])
             push!(fai_solve_times, v["solve_time"])
-            push!(fai_solve_speedups, base_time / v["solve_time"])
-            push!(fai_total_speedups, base_time / v["total_time"])
+            s_sp = base_time / v["solve_time"]
+            t_sp = base_time / v["total_time"]
+            push!(fai_solve_speedups, s_sp)
+            push!(fai_total_speedups, t_sp)
+
+            cfg = (gdim_val, mu_val)
+            if !haskey(detailed_fai_solve, cfg)
+                detailed_fai_solve[cfg] = fill(NaN, length(system_sizes))
+                detailed_fai_total[cfg] = fill(NaN, length(system_sizes))
+            end
+            detailed_fai_solve[cfg][node_idx] = s_sp
+            detailed_fai_total[cfg][node_idx] = t_sp
 
             cond_v = match_cond(grid_data_cond, v)
             push!(cond_improvement_factors, isnothing(cond_v) ? NaN : cond_improvement_factor(cond_v))
@@ -183,40 +210,54 @@ for nodes in system_sizes
     unique_Ms = sort(unique(sinc_Ms))
 
     # ---------------------------------------------------------
-    # 1. Heatmaps (μ vs G_maxdim) — FAI only
+    # 1. Performance Plots and Heatmaps — FAI only
     # ---------------------------------------------------------
     if !isempty(mus)
-        Z_solve = fill(NaN, length(unique_gdims), length(unique_mus))
-        Z_total = fill(NaN, length(unique_gdims), length(unique_mus))
         Z_cond = fill(NaN, length(unique_gdims), length(unique_mus))
 
         for i in 1:length(mus)
             μ_idx = findfirst(==(mus[i]), unique_mus)
             g_idx = findfirst(==(gdims[i]), unique_gdims)
-            Z_solve[g_idx, μ_idx] = fai_solve_speedups[i]
-            Z_total[g_idx, μ_idx] = fai_total_speedups[i]
             Z_cond[g_idx, μ_idx] = cond_improvement_factors[i]
         end
 
-        hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+        p_solve = plot(
             title="Solve Speedup ($nodes)",
-            xlabel="Regularization parameter (μ)",
-            ylabel=L"Bond Dimension ($\chi_{max}$)",
-            color=:viridis,
-            clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
-            right_margin=5Plots.mm)
-
-        savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_N_$(nodes).png"))
-
-        hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+            xlabel=L"Bond Dimension ($\chi_{max}$)",
+            ylabel="Speedup Factor",
+            legend=:outertopright,
+            framestyle=:box
+        )
+        p_total = plot(
             title="Total Speedup ($nodes)",
-            xlabel="Regularization parameter (μ)",
-            ylabel=L"Bond Dimension ($\chi_{max}$)",
-            color=:viridis,
-            clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
-            right_margin=5Plots.mm)
+            xlabel=L"Bond Dimension ($\chi_{max}$)",
+            ylabel="Speedup Factor",
+            legend=:outertopright,
+            framestyle=:box
+        )
 
-        savefig(hm_total, joinpath(plots_dir, "heatmap_total_N_$(nodes).png"))
+        for μ in unique_mus
+            idx = findall(==(μ), mus)
+            p_idx = sortperm(gdims[idx])
+            sorted_idx = idx[p_idx]
+            
+            plot!(p_solve, gdims[sorted_idx], fai_solve_speedups[sorted_idx], label="μ = $μ", marker=:circle, lw=2)
+            plot!(p_total, gdims[sorted_idx], fai_total_speedups[sorted_idx], label="μ = $μ", marker=:circle, lw=2)
+        end
+
+        for M in unique_Ms
+            idx = findfirst(==(M), sinc_Ms)
+            if !isnothing(idx)
+                hline!(p_solve, [sinc_solve_speedups[idx]], label="Sinc M = $M", lw=2, ls=:dashdot)
+                hline!(p_total, [sinc_total_speedups[idx]], label="Sinc M = $M", lw=2, ls=:dashdot)
+            end
+        end
+
+        hline!(p_solve, [1.0], label="Break-even (1.0x)", color=:black, lw=2, ls=:dash)
+        hline!(p_total, [1.0], label="Break-even (1.0x)", color=:black, lw=2, ls=:dash)
+
+        savefig(p_solve, joinpath(plots_dir, "plot_solve_N_$(nodes).png"))
+        savefig(p_total, joinpath(plots_dir, "plot_total_N_$(nodes).png"))
 
         valid_conds = filter(!isnan, Z_cond)
         if !isempty(valid_conds)
@@ -233,7 +274,7 @@ for nodes in system_sizes
             @info "Skipping condition heatmap for $nodes (no FAI κ(P⁻¹A) data found)"
         end
     else
-        @info "Skipping FAI heatmaps for $nodes (no FAI runs)"
+        @info "Skipping FAI plots for $nodes (no FAI runs)"
     end
 
     # ---------------------------------------------------------
@@ -470,6 +511,51 @@ if !isempty(grid_labels)
     hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
 
     savefig(p_scale, joinpath(plots_dir, "scaling_summary.png"))
+
+    p_scale_det_solve = plot(
+        title="Detailed Scaling of Solve Speedups",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:outertopright,
+        framestyle=:box)
+
+    p_scale_det_total = plot(
+        title="Detailed Scaling of Total Speedups",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:outertopright,
+        framestyle=:box)
+
+    fai_cfgs = sort(collect(keys(detailed_fai_solve)))
+    sinc_cfgs = sort(collect(keys(detailed_sinc_solve)))
+    
+    fai_colors = [cgrad(:Blues)[z] for z in range(0.45, 1.0, length=max(2, length(fai_cfgs)))]
+    sinc_colors = [cgrad(:Oranges)[z] for z in range(0.45, 1.0, length=max(2, length(sinc_cfgs)))]
+
+    for (i, cfg) in enumerate(fai_cfgs)
+        g, m = cfg
+        c = fai_colors[mod1(i, length(fai_colors))]
+        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_fai_solve[cfg], 
+              label="FAI χ=$(g), μ=$(m)", lw=2.5, marker=:circle, color=c)
+        plot!(p_scale_det_total, 1:length(grid_labels), detailed_fai_total[cfg], 
+              label="FAI χ=$(g), μ=$(m)", lw=2.5, marker=:square, color=c)
+    end
+    
+    for (i, m_val) in enumerate(sinc_cfgs)
+        c = sinc_colors[mod1(i, length(sinc_colors))]
+        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_sinc_solve[m_val], 
+              label="Sinc M=$(m_val)", lw=2.5, marker=:diamond, color=c)
+        plot!(p_scale_det_total, 1:length(grid_labels), detailed_sinc_total[m_val], 
+              label="Sinc M=$(m_val)", lw=2.5, marker=:utriangle, color=c)
+    end
+
+    hline!(p_scale_det_solve, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    hline!(p_scale_det_total, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+
+    savefig(p_scale_det_solve, joinpath(plots_dir, "scaling_summary_detailed_solve.png"))
+    savefig(p_scale_det_total, joinpath(plots_dir, "scaling_summary_detailed_total.png"))
 end
 
 @info "All plots successfully generated in $plots_dir"

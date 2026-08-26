@@ -168,18 +168,6 @@ function run_task(task::TaskSpec)
     sites = siteinds(rhs)
     init_mps = random_mps(sites)
     
-    # Tight maxdim truncation may mess up the residual truncation...
-    sweep_kwargs = SweepingArgs(nsweeps=nsweeps_map[N], maxdim=maxdims_map[N], cutoff=1e-13)
-    
-    numiter_store = KrylovSweepStats()
-    updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = 1e-5,
-        krylovdim = 1,
-        maxiter = 1000
-    )
-
     global_updater_kwargs = GlobalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
@@ -192,10 +180,6 @@ function run_task(task::TaskSpec)
         numiter_store = Ref{Int}(0)
     )
 
-    residual_observer = ResidualObserver(A, rhs, 1e-4)
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-5)
-    amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
     global_solver = GlobalCG(updater_kwargs=global_updater_kwargs)
 
     solver = global_solver
@@ -204,7 +188,7 @@ function run_task(task::TaskSpec)
         @info "Running Baseline N=$N"
         
         t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
         
         # Compute relative residual using inner product to save memory
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
@@ -234,7 +218,7 @@ function run_task(task::TaskSpec)
             sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M)
         end
         
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps)
         
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)
@@ -307,7 +291,7 @@ function run_task(task::TaskSpec)
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
         end
         
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
         
         diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
         rel_error = norm(diff) / norm(sol_mps)

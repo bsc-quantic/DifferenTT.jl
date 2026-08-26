@@ -27,9 +27,9 @@ dt_map = Dict(
 )
 
 n_steps_map = Dict(
-    (8, 8) => 50,
-    (10, 10) => 25,
-    (12, 12) => 10
+    (8, 8) => 30,
+    (10, 10) => 10,
+    (12, 12) => 5
 )
 
 system_sizes = [(8, 8), (10, 10), (12, 12)]
@@ -50,9 +50,9 @@ cutoff_map = Dict(
 )
 
 maxiter_map = Dict(
-    (8, 8) => 200,
-    (10, 10) => 300,
-    (12, 12) => 500
+    (8, 8) => 1000,
+    (10, 10) => 1500,
+    (12, 12) => 2000
 )
 
 ITensors.disable_warn_order()
@@ -177,6 +177,8 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
     term3 = ITensorMPS.inner(rhs, rhs)
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+    @info "Residual $rel_res"
     
     sol_maxdim = maxlinkdim(pdt)
     
@@ -214,7 +216,7 @@ function run_task(task::TaskSpec)
         maxdim = maxdim_val,
         cutoff = cutoff_val,
         orth_maxdim = maxdim_val,
-        orth_cutoff = cutoff_val,
+        orth_cutoff = 0.1 * cutoff_val,
         numiter_store = Ref{Int}(0)
     )
 
@@ -272,13 +274,13 @@ function run_task(task::TaskSpec)
             )
         )
 
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
         
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
-            rtol = 1e-9,
+            rtol = 1e-5,
             krylovdim = 1,
             maxiter = 3000
         )

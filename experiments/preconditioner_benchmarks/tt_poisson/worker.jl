@@ -17,7 +17,7 @@ mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
 system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_NODES_PER_DIM = 10
+const N_NODES_PER_DIM = 8
 
 maxdims_map = Dict(
     5 => 20,
@@ -43,8 +43,8 @@ nsweeps_map = Dict(
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
-sinc_M_values = [10, 20, 30]
-fai_configs = [(1e5, 5), (1e5, 10), (1e6, 5), (1e6, 10)]
+sinc_M_values = [1, 2, 3, 5, 7, 10]
+fai_configs = [(1e6, 4), (1e6, 6), (1e6, 8), (1e6, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -134,7 +134,7 @@ function build_problem(N::Int)
     sites = siteinds(arch)
     
     # sol_func = get_gaussian_sol(N, 30)
-    sol_func = get_coulomb_sol(N, 0.05)
+    sol_func = get_coulomb_sol(N, 0.02)
     
     sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
     sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot])
@@ -180,30 +180,19 @@ function run_task(task::TaskSpec)
         ishermitian = true,
         isposdef = true,
         rtol = 1e-5,
+        krylovdim = 1,
+        maxiter = 1000,
         numiter_store = numiter_store,
         cond_store = cond_store,
         pc_cond_store = pc_cond_store
     )
 
-    global_updater_kwargs = GlobalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = 1e-5,
-        maxiter = 500,
-        maxdim = maxdims_map[N],
-        cutoff = 1e-13,
-        orth_maxdim = maxdims_map[N],
-        orth_cutoff =  1e-13,
-        numiter_store = Ref{Int}(0)
-    )
-
     residual_observer = ResidualObserver(A, rhs, 1e-4)
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-6)
+    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-5)
     amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
     als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
-    global_solver = GlobalCG(updater_kwargs=global_updater_kwargs)
 
-    solver = global_solver
+    solver = amen_solver
     
     if task.method == "baseline"
         @info "Running Baseline N=$N"
@@ -216,6 +205,9 @@ function run_task(task::TaskSpec)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
         rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+        @info "Residual $rel_error"
+
         
         iters_per_site = DifferenTT.positions_sum(numiter_store)
         
@@ -251,9 +243,14 @@ function run_task(task::TaskSpec)
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps; observer! = residual_observer)
         
-        diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
-        rel_error = norm(diff) / norm(sol_mps)
+        # Compute relative residual using inner product to save memory
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
+        @info "Residual $rel_error"
+
         iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
@@ -295,9 +292,9 @@ function run_task(task::TaskSpec)
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
-            rtol = 1e-9,
+            rtol = 1e-5,
             krylovdim = 1,
-            maxiter = 3000
+            maxiter = 1000
         )
         
         resals_solver = ResidualALS(
@@ -331,18 +328,22 @@ function run_task(task::TaskSpec)
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = global_solver
+        fai_builder_solver = amen_solver
         
         t_build = @elapsed begin
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
-
         end
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps; observer! = residual_observer)
         
-        diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
-        rel_error = norm(diff) / norm(sol_mps)
+        # Compute relative residual using inner product to save memory
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
+        @info "Residual $rel_error"
+
         iters_per_site = DifferenTT.positions_sum(numiter_store)
         
         result_dict = Dict{String, Any}(
@@ -394,7 +395,7 @@ dummy_solver = ResidualALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2
 )
-sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2; maxdim=10, cutoff=1e-12)
+sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
 fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
 @info "JIT warmup complete."
