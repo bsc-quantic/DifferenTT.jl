@@ -179,14 +179,14 @@ Base.@kwdef struct ResidualObserver <: AbstractObserver
 end
 
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
-    normb2 = norm(o.b)^2
-    normAx2 = inner(o.A, state, o.A, state)
-    Ax_b = conj(inner(o.b', o.A, state))
-    
-    res2 = normAx2 - 2 * real(Ax_b) + normb2
-    res = res2 > 0 ? sqrt(res2) : 0.0
-    
-    if res < o.tol
+    term1 = inner(o.A, state, o.A, state)
+    term2 = real(inner(o.b', o.A, state))
+    term3 = inner(o.b, o.b)
+
+    res = sqrt(max(0.0, term1 + term2 + term3))
+    rel_res = term3 > 0.0 ? res / sqrt(term3) : res
+
+    if rel_res < o.tol
         @info "Residual early truncation condition met: norm(residual) = $(res) < $(o.tol)"
         return true
     end
