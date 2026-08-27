@@ -68,7 +68,7 @@ Build a preconditioner M⁻¹ by solving the Sylvester-like equation `A*X + X*A 
 # Returns
 - `Preconditioner`: The approximate inverse of the operator.
 """
-function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, symmetrize::Bool=true; linsolve_x0=nothing, preconditioning::Bool=false)
+function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, symmetrize::Bool=true; linsolve_x0=nothing, preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
     op1 = deepcopy(operator) # To construct AX
     sites = only.(siteinds(operator; plev=0))
 
@@ -119,11 +119,17 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
     end
 
     @info "Linsolve preconditioner with preconditioning set to $preconditioning"
+    
+    ls_kwargs = Dict{Symbol, Any}(kwargs)
+    if !isnothing(residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(A=linsolve_A, b=linsolve_b, tol=residual_tol)
+    end
+    
     if preconditioning
         preconditioner = rank1_preconditioner(linsolve_A)
-        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, preconditioner, _linsolve_x0)
+        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, preconditioner, _linsolve_x0; ls_kwargs...)
     else
-        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, _linsolve_x0)
+        preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, _linsolve_x0; ls_kwargs...)
     end
     for i in 1:N
         preconditioner_mps[i] = preconditioner_mps[i] * dag(combiners[i]) # Unfold the legs 
@@ -133,7 +139,7 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
 end
 
 # TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
-function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning::Bool=false)
+function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
     A = transpose(operator) # To construct XA
     array_type = backend_type(operator)
 
@@ -163,12 +169,17 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     projected_b = MPS([linsolve_b...])
     projected_x0 = 1e-12 * adapt(array_type, random_mps(combiner_inds; linkdims=1))
 
+    ls_kwargs = Dict{Symbol, Any}(kwargs)
+    if !isnothing(residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(A=projected_A, b=projected_b, tol=residual_tol)
+    end
+
     if preconditioning
         preconditioner = rank1_preconditioner(projected_A)
         projected_preconditioner = Preconditioner(+(apply(projector, apply(preconditioner.operator, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum"))
-        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_preconditioner, projected_x0)
+        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_preconditioner, projected_x0; ls_kwargs...)
     else
-        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0)
+        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0; ls_kwargs...)
     end
 
     # We need to go back to MPO form from the vectorized solution by reverting the combiners!
@@ -195,8 +206,8 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     return unscaledG, MPO([D_mps...])
 end
 
-function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; totalmaxdim::Int=5, preconditioning::Bool=false)
-    unscaledG, D = fai_dg(operator, μ, g_solver, D_kwargs; preconditioning=preconditioning)
+function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; totalmaxdim::Int=5, preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
+    unscaledG, D = fai_dg(operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, kwargs...)
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
 end

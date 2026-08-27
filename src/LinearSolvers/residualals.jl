@@ -113,6 +113,7 @@ function residual_replacebond!(
     high = full_rank - 1
     chosen_rank = full_rank
 
+    # Binary search of required χ
     while low <= high
         mid = (low + high) ÷ 2
         # Reconstruct truncated phi
