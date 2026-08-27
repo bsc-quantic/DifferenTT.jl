@@ -433,7 +433,7 @@ dummy_solver = ResidualALS(
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 
 # When running with condition numbers, compute time does not really count, so it is better to avoid
-# crashing at pecompilation dues to dummy preconditioners than to have more accurate timings due to precompilation
+# crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
 chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false)
 @info "JIT warmup complete."
 
