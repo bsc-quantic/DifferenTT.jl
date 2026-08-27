@@ -9,7 +9,7 @@ using Statistics
 using JLD2
 using DifferenTT
 
-use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
+const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -21,42 +21,42 @@ const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 1000
 const STENCIL_ORDER = 8
 
-dt_map = Dict(
+const dt_map = Dict(
     (8, 8) => 0.001,
     (10, 10) => 0.0005,
     (12, 12) => 0.00001
 )
 
-n_steps_map = Dict(
+const n_steps_map = Dict(
     (8, 8) => 100,
     (10, 10) => 25,
     (12, 12) => 10
 )
 
-system_sizes = [(8, 8), (10, 10), (12, 12)]
-cond_nodes  = [(8, 8), (10, 10), (12, 12)]
+const system_sizes = [(8, 8), (10, 10), (12, 12)]
+const cond_nodes  = [(8, 8), (10, 10), (12, 12)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
-mu_values = [5e6, 1e7, 5e7, 1e8]
-g_maxdims = 2:10
+const mu_values = [5e6, 1e7, 5e7, 1e8]
+const g_maxdims = 2:10
 
-maxdims_map = Dict(
+const maxdims_map = Dict(
     (8, 8) => 120,
     (10, 10) => 150,
     (12, 12) => 200
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
-cutoff_map = Dict(
+const cutoff_map = Dict(
     (8, 8) => 1e-15,
     (10, 10) => 1e-15,
     (12, 12) => 1e-15
 )
 
-nsweeps_map = Dict(
+const nsweeps_map = Dict(
     (8, 8) => 100,
     (10, 10) => 200,
     (12, 12) => 300

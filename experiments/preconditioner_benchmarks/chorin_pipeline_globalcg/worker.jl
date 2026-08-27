@@ -20,36 +20,36 @@ const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
 
-dt_map = Dict(
+const dt_map = Dict(
     (8, 8) => 0.001,
     (10, 10) => 0.0005,
     (12, 12) => 0.00001
 )
 
-n_steps_map = Dict(
+const n_steps_map = Dict(
     (8, 8) => 30,
     (10, 10) => 10,
     (12, 12) => 5
 )
 
-system_sizes = [(8, 8), (10, 10), (12, 12)]
+const system_sizes = [(8, 8), (10, 10), (12, 12)]
 
-mu_values = [5e6, 1e7, 5e7, 1e8]
-g_maxdims = 2:10
+const mu_values = [5e6, 1e7, 5e7, 1e8]
+const g_maxdims = 2:10
 
-maxdims_map = Dict(
+const maxdims_map = Dict(
     (8, 8) => 150,
     (10, 10) => 200,
     (12, 12) => 250
 )
 
-cutoff_map = Dict(
+const cutoff_map = Dict(
     (8, 8) => 1e-13,
     (10, 10) => 1e-13,
     (12, 12) => 1e-13
 )
 
-maxiter_map = Dict(
+const maxiter_map = Dict(
     (8, 8) => 1000,
     (10, 10) => 1500,
     (12, 12) => 2000

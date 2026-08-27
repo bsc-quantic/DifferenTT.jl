@@ -13,18 +13,18 @@ tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
 # We extrapolate system sizes from FAI. QTT uses 1D. (16,), (20,), (24,) correspond to 2^16, 2^20, 2^24.
-system_sizes = [(16,), (20,), (24,)]
-mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
+const system_sizes = [(16,), (20,), (24,)]
+const mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
 
-G_maxdims_map = Dict(
+const G_maxdims_map = Dict(
     (8,) => [2, 3, 4, 5, 6, 7, 8],
     (16,) => [2, 3, 4, 5, 6, 7, 8],
     (20,) => [2, 3, 4, 5, 6, 7, 8],
     (24,) => [2, 3, 4, 5, 6, 7, 8]
 )
 
-cutoff = 1e-13
-box_size = (1.0,)
+const cutoff = 1e-13
+const box_size = (1.0,)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""

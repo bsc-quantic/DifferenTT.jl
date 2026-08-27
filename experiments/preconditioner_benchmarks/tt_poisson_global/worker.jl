@@ -15,10 +15,10 @@ const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
-system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
+const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
 const N_NODES_PER_DIM = 8
 
-maxdims_map = Dict(
+const maxdims_map = Dict(
     5 => 20,
     10 => 30,
     15 => 30,
@@ -29,7 +29,7 @@ maxdims_map = Dict(
     50 => 50
 )
 
-nsweeps_map = Dict(
+const nsweeps_map = Dict(
     5 => 50,
     10 => 50,
     15 => 50,
@@ -42,8 +42,8 @@ nsweeps_map = Dict(
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
-sinc_M_values = [1, 2, 3, 5, 7, 10]
-fai_configs = [(1e6, 4), (1e6, 6), (1e6, 8), (1e6, 10)]
+const sinc_M_values = [1, 2, 3, 5, 7, 10]
+const fai_configs = [(1e6, 4), (1e6, 6), (1e6, 8), (1e6, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
