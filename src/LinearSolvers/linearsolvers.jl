@@ -180,7 +180,7 @@ end
 
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     term1 = inner(o.A, state, o.A, state)
-    term2 = real(inner(o.b', o.A, state))
+    term2 = -2.0 * real(inner(o.b', o.A, state))
     term3 = inner(o.b, o.b)
 
     res = sqrt(max(0.0, term1 + term2 + term3))
