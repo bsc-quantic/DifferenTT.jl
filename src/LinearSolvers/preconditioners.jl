@@ -122,7 +122,7 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
     
     ls_kwargs = Dict{Symbol, Any}(kwargs)
     if !isnothing(residual_tol)
-        ls_kwargs[:sweep_observer!] = ResidualObserver(A=linsolve_A, b=linsolve_b, tol=residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(A=linsolve_A, b=linsolve_b, rtol=residual_tol)
     end
     
     if preconditioning
@@ -171,7 +171,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
 
     ls_kwargs = Dict{Symbol, Any}(kwargs)
     if !isnothing(residual_tol)
-        ls_kwargs[:sweep_observer!] = ResidualObserver(A=projected_A, b=projected_b, tol=residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(A=projected_A, b=projected_b, rtol=residual_tol)
     end
 
     if preconditioning
