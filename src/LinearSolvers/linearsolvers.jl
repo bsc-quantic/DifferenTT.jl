@@ -169,13 +169,13 @@ abstract type AbstractUpdater end
 """
     ResidualObserver <: AbstractObserver
 
-An observer that computes the global residual norm `||A * x - b||` 
+An observer that computes the relative global residual norm `||A * x - b||/||b||` 
 and terminates the DMRG/ALS sweeps early if the residual falls below a given tolerance.
 """
 Base.@kwdef struct ResidualObserver <: AbstractObserver
     A::Any
     b::MPS
-    tol::Float64 = 1e-8
+    rtol::Float64 = 1e-8
 end
 
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
@@ -187,7 +187,7 @@ function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     rel_res = term3 > 0.0 ? res / sqrt(term3) : res
 
     if rel_res < o.tol
-        @info "Residual early truncation condition met: norm(residual) = $(res) < $(o.tol)"
+        @info "Residual early truncation condition met: ||Ax-b||/||b|| = $(rel_res) < $(o.tol)"
         return true
     end
     return false
