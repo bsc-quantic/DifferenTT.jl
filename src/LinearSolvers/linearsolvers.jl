@@ -186,8 +186,8 @@ function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     res = sqrt(max(0.0, term1 + term2 + term3))
     rel_res = term3 > 0.0 ? res / sqrt(term3) : res
 
-    if rel_res < o.tol
-        @info "Residual early truncation condition met: ||Ax-b||/||b|| = $(rel_res) < $(o.tol)"
+    if rel_res < o.rtol
+        @info "Residual early truncation condition met: ||Ax-b||/||b|| = $(rel_res) < $(o.rtol)"
         return true
     end
     return false
