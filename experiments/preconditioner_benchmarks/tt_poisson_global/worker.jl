@@ -16,7 +16,7 @@ mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
 const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_NODES_PER_DIM = 8
+const N_NODES_PER_DIM = 20
 
 const maxdims_map = Dict(
     5 => 20,
@@ -38,6 +38,28 @@ const nsweeps_map = Dict(
     30 => 80,
     40 => 100,
     50 => 120
+)
+
+const rtol_map = Dict(
+    5 => 1e-5,
+    10 => 1e-5,
+    15 => 1e-5,
+    20 => 1e-5,
+    25 => 1e-5,
+    30 => 1e-5,
+    40 => 1e-5,
+    50 => 1e-5
+)
+
+const maxiter_map = Dict(
+    5 => 2000,
+    10 => 2000,
+    15 => 2000,
+    20 => 3000,
+    25 => 3000,
+    30 => 3000,
+    40 => 5000,
+    50 => 5000
 )
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
@@ -135,30 +157,37 @@ function build_problem(N::Int)
     # sol_func = get_gaussian_sol(N, 30)
     sol_func = get_coulomb_sol(N, 0.02)
     
+    maxdim_N = get(maxdims_map, N, 10)
+    
     sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
-    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot])
+    # Cap ttcross by maxdim_N to avoid OOM
+    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=maxdim_N, tolerance=1e-12)
     sol_mps = MPS(sol_tci)
     replace_siteinds!(sol_mps, sites)
     
     field = ScalarField(sol_mps, arch, bc)
     Δ = symmetrized_laplacian(field, grid; stencil_order=2)
+    @show maxlinkdim(Δ)
+
     A = -1.0 * Δ
     
     # Discrete RHS A * sol_mps so FD truncation error does not dominate the solve error.
-    rhs_mps = apply(A, sol_mps; alg="naive", cutoff=1e-12)
+    rhs_mps = apply(A, sol_mps; alg="naive")
     
     # Incorporate Dirichlet boundary corrections through library functions (even if they do not do anything)
-    Δ_correction_mpo = scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=1e-12)
-    Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive", cutoff=1e-12)
-    rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; cutoff=1e-12)
+    # Do not cap maxdim here so we don't truncate rhs_mps and mix truncation error with linsolve error
+    Δ_correction_mpo = scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=0.0)
+    Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive")
+    rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; alg="directsum")
     
     # Symmetrize the RHS
-    rhs_mps = symmetrize_rhs(field, rhs_mps; cutoff=1e-12)
+    rhs_mps = symmetrize_rhs(field, rhs_mps)
     
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
     
     return A, rhs_mps, sol_mps, A_list, grid, arch
 end
+
 
 function run_task(task::TaskSpec)
     N = task.N
@@ -166,13 +195,13 @@ function run_task(task::TaskSpec)
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    init_mps = random_mps(sites)
+    init_mps = zeros_mps(sites)
     
     global_updater_kwargs = GlobalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-5,
-        maxiter = 500,
+        rtol = rtol_map[N],
+        maxiter = maxiter_map[N],
         maxdim = maxdims_map[N],
         cutoff = 1e-13,
         orth_maxdim = maxdims_map[N],
@@ -190,11 +219,13 @@ function run_task(task::TaskSpec)
         t_build = 0.0
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
         
-        # Compute relative residual using inner product to save memory
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
         rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        
+        @info "Residual $rel_error"
+        @info "Max bond dimension = $(maxlinkdim(out_mps))"
         
         result_dict = Dict{String, Any}(
             "key" => "baseline",
@@ -220,8 +251,13 @@ function run_task(task::TaskSpec)
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps)
         
-        diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
-        rel_error = norm(diff) / norm(sol_mps)
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        
+        @info "Residual $rel_error"
+        @info "Max bond dimension = $(maxlinkdim(out_mps))"
         
         result_dict = Dict{String, Any}(
             "key" => "sinc_M_$(M)",
@@ -243,9 +279,9 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
         
-        updater_kwargs = LocalUpdaterArgs(
+        fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
@@ -254,38 +290,38 @@ function run_task(task::TaskSpec)
             maxiter = 1000
         )
         
-        resals_solver = ResidualALS(
-            sweep_kwargs = sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+        fai_resals_solver = ResidualALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
             residual_tol = 1e-9
         )
 
-        als_solver = ALS(
-            sweep_kwargs = sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+        fai_als_solver = ALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
         )
 
-        amen_solver =  AMEn(
-            sweep_kwargs = sweep_kwargs,
-            updater_kwargs = updater_kwargs,
+        fai_amen_solver =  AMEn(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
             enrichment_maxdim = 1,
         )
 
-        global_solver = GlobalCG(
+        fai_global_solver = GlobalCG(
             updater_kwargs = GlobalUpdaterArgs(
                 ishermitian = true,
                 isposdef = true,
                 rtol = 1e-2,
-                maxiter = 300,
+                maxiter = 5000,
                 maxdim = gdim,
                 cutoff = 1e-12,
                 orth_maxdim = gdim,
-                orth_cutoff = 1e-12
+                orth_cutoff = 0.1 * 1e-12
             )
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = global_solver
+        fai_builder_solver = fai_global_solver
         
         t_build = @elapsed begin
             fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
@@ -293,9 +329,14 @@ function run_task(task::TaskSpec)
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
         
-        diff = +(out_mps, -1.0 * sol_mps; cutoff=1e-10)
-        rel_error = norm(diff) / norm(sol_mps)
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
+        @info "Residual $rel_error"
+        @info "Max bond dimension = $(maxlinkdim(out_mps))"
+
         result_dict = Dict{String, Any}(
             "key" => "fai_mu_$(μ)_gdim_$(gdim)",
             "N" => N,
@@ -328,10 +369,18 @@ dummy_N = 2
 dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
 dummy_sites = siteinds(dummy_rhs)
 dummy_init = random_mps(dummy_sites)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
+dummy_updater_kwargs = GlobalUpdaterArgs(
+    ishermitian = true,
+    isposdef = true,
+    rtol = 1e-2,
+    maxiter = 2,
+    maxdim = 10,
+    cutoff = 1e-8,
+    orth_maxdim = 10,
+    orth_cutoff = 1e-8,
+    numiter_store = Ref{Int}(0)
 )
+dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
 sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
 fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)

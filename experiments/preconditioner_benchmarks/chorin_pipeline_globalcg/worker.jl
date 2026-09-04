@@ -50,9 +50,9 @@ const cutoff_map = Dict(
 )
 
 const maxiter_map = Dict(
-    (8, 8) => 1000,
-    (10, 10) => 1500,
-    (12, 12) => 2000
+    (8, 8) => 3000,
+    (10, 10) => 5000,
+    (12, 12) => 10000
 )
 
 ITensors.disable_warn_order()
@@ -155,6 +155,7 @@ function build_rhs(grid, masked_u)
 end
 
 function chorin_step!(grid, global_updater_kwargs, precond=nothing)
+    global_updater_kwargs.numiter_store[] = 0
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
@@ -365,7 +366,8 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
     numiter_store = Ref{Int}(0)
 )
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
+DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 chorin_step!(dummy_grid, dummy_updater_kwargs)
 @info "JIT warmup complete."
 

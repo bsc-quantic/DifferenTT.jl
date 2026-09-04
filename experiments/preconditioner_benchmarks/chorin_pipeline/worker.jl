@@ -29,7 +29,7 @@ const dt_map = Dict(
 
 const n_steps_map = Dict(
     (8, 8) => 100,
-    (10, 10) => 25,
+    (10, 10) => 15,
     (12, 12) => 10
 )
 
@@ -44,22 +44,28 @@ const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (8, 8) => 120,
-    (10, 10) => 150,
-    (12, 12) => 200
+    (8, 8) => 150,
+    (10, 10) => 200,
+    (12, 12) => 300
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
 const cutoff_map = Dict(
-    (8, 8) => 1e-15,
-    (10, 10) => 1e-15,
-    (12, 12) => 1e-15
+    (8, 8) => 0.0,
+    (10, 10) => 0.0,
+    (12, 12) => 0.0
 )
 
 const nsweeps_map = Dict(
     (8, 8) => 100,
     (10, 10) => 200,
     (12, 12) => 300
+)
+
+const tol_map = Dict(
+    (8, 8) => 1e-4,
+    (10, 10) => 5e-4,
+    (12, 12) => 1e-3
 )
 
 ITensors.disable_warn_order()
@@ -125,7 +131,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
     p_diff_ops = DifferentialOpsScalar(grid, experiment.p_field; stencil_order=STENCIL_ORDER)
-    Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=cutoff_map[nodes])
+    Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER)
     A = -1.0 * Δ_cache
     
     return (;
@@ -165,7 +171,7 @@ function build_rhs(grid, masked_u)
     return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
 end
 
-function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
+function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, precond=nothing)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
@@ -176,7 +182,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     updater_kwargs = LocalUpdaterArgs(;
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-4,
+        rtol = 0.1 * tol_val,
         krylovdim=1,
         maxiter=2000,
         numiter_store = numiter_store,
@@ -184,8 +190,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
         pc_cond_store = pc_cond_store
     )
 
-    res_observer = ResidualObserver(grid.A, rhs, 1e-3)
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=5e-4)
+    res_observer = ResidualObserver(grid.A, rhs, tol_val)
+    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
     amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
     als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
@@ -212,6 +218,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, precond=nothing)
     @info "Residual $rel_res"
     
     sol_maxdim = maxlinkdim(pdt)
+    @info "Sol_maxdim = $sol_maxdim"
     
     divfree_p = pdt * (1/dt)
     
@@ -245,6 +252,7 @@ function run_task(task::TaskSpec)
     maxdim_val = maxdims_map[task.nodes]
     nsweep_val = nsweeps_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
+    tol_val = tol_map[task.nodes]
     
     sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
@@ -252,7 +260,7 @@ function run_task(task::TaskSpec)
         @info "Running baseline for $(task.nodes)"
         
         # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond)
+        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val)
         
         solve_times = Float64[]
         iters = Vector{Float64}[]
@@ -265,7 +273,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, sweep_kwargs, compute_cond)
+            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -326,25 +334,25 @@ function run_task(task::TaskSpec)
             maxiter = 3000
         )
         
-        resals_solver = ResidualALS(
+        fai_resals_solver = ResidualALS(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
             residual_tol = 1e-9
         )
 
-        als_solver = ALS(
+        fai_als_solver = ALS(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
         )
 
-        amen_solver =  AMEn(
+        fai_amen_solver =  AMEn(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
             enrichment_maxdim = 1,
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = als_solver
+        fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
@@ -353,7 +361,7 @@ function run_task(task::TaskSpec)
         end
         
         # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, precond)
+        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, precond)
         
         solve_times = Float64[]
         iters = Vector{Float64}[]
@@ -366,7 +374,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, precond)
+            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, precond)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -430,11 +438,16 @@ dummy_solver = ResidualALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2
 )
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+dummy_als_solver = ALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    updater_kwargs = dummy_updater_kwargs
+)
+DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 
 # When running with condition numbers, compute time does not really count, so it is better to avoid
 # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false)
+chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3)
 @info "JIT warmup complete."
 
 result = run_task(task)

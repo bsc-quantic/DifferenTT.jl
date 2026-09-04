@@ -34,6 +34,8 @@ cond_folder = joinpath(base_folder, "results")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
+omit_unreliable_data = true # Toggle to omit N=4, N=50 and sinc M=1 data
+
 include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
 
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
@@ -96,6 +98,10 @@ end
 
 system_sizes = sort(collect(keys(results_nocond)))
 
+if omit_unreliable_data
+    system_sizes = filter(n -> n != 40 && n != 50, system_sizes)
+end
+
 # To track max speedups for the scaling plot
 max_total_speedups_fai = Float64[]
 max_solve_speedups_fai = Float64[]
@@ -152,6 +158,9 @@ for (node_idx, nodes) in enumerate(system_sizes)
         v["method"] == "baseline" && continue
         if v["method"] == "sinc"
             m_val = v["M"]
+            if omit_unreliable_data && m_val == 1
+                continue
+            end
             push!(sinc_keys, k)
             push!(sinc_Ms, m_val)
             push!(sinc_build_times, v["precond_build_time"])
@@ -321,7 +330,7 @@ for (node_idx, nodes) in enumerate(system_sizes)
     sites_range_combined = !isnothing(base_iters) ? (1:length(base_iters)) : []
     p_iters_combined = plot(
         title=latexstring("Local Iterations Profile ($nodes)\nBest μ per \$\\chi_{max}\$, plus sinc"),
-        xlabel="MPS Site Index", ylabel="Krylov Iterations", legend=:outertopright
+        xlabel="MPS Site Index", ylabel="Krylov Iterations", legend=:outertopright, yaxis=:log10
     )
     p_conds_combined = plot(
         yaxis=:log, title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$, plus sinc"),

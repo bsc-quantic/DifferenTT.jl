@@ -239,7 +239,7 @@ for nodes in system_sizes
         end
 
         p_iters = bar(labels, iters,
-            title="Global Iterations ($nodes)",
+            title="Global Iterations (N=$(nodes), d=8)",
             ylabel="Total Krylov Iterations",
             color=bar_colors,
             legend=false,
@@ -247,6 +247,46 @@ for nodes in system_sizes
             bottom_margin=15Plots.mm)
 
         savefig(p_iters, joinpath(plots_dir, "global_iterations_N_$(nodes).png"))
+    end
+
+    # ---------------------------------------------------------
+    # 3b. Solve Time Profiles
+    # ---------------------------------------------------------
+    base_solve_time = get(grid_data["baseline"], "solve_time", nothing)
+    if !isnothing(base_solve_time)
+        labels_st = ["Baseline"]
+        stimes = [base_solve_time]
+        bar_colors_st = [:red]
+
+        # Group FAI configurations
+        for k in fai_keys
+            v = grid_data[k]
+            if !isnothing(v["solve_time"])
+                push!(labels_st, "FAI μ=$(v["mu"]), χ=$(v["G_maxdim"])")
+                push!(stimes, v["solve_time"])
+                push!(bar_colors_st, :blue)
+            end
+        end
+
+        # Group Sinc configurations
+        for k in sinc_keys
+            v = grid_data[k]
+            if !isnothing(v["solve_time"])
+                push!(labels_st, "Sinc M=$(v["M"])")
+                push!(stimes, v["solve_time"])
+                push!(bar_colors_st, :darkorange)
+            end
+        end
+
+        p_times = bar(labels_st, stimes,
+            title="Solve Time (N=$(nodes), d=8)",
+            ylabel="Time (s)",
+            color=bar_colors_st,
+            legend=false,
+            xrotation=45,
+            bottom_margin=15Plots.mm)
+
+        savefig(p_times, joinpath(plots_dir, "solve_times_N_$(nodes).png"))
     end
 end
 
