@@ -76,8 +76,8 @@ Builds 1D d²/dx² operators per dimension, applies Neumann symmetrization, scal
 """
 function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=0.0) where N
 
-    # helper for loop to create d2x, d2y, d2z...
-    d2_ops = ntuple(i -> begin
+    # helper for loop to create raw 1D d2x, d2y, d2z...
+    raw_onedim_ops = ntuple(i -> begin
             onedim_op = onedim_differential_operator(2, field.arch, i, field.bcu[i], backend_type(field); stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
             neumann_symmetrization = onedim_neumann_symmetrization_correction(onedim_op, field.arch, i, field.bcu[i]; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
             
@@ -91,10 +91,8 @@ function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::
                 onedim_op = onedim_op .* (1/grid.dx[i]^2)
             end
             
-            stacked_op = ndim_operator_mpo(onedim_op, i, field.usites, field.arch)
-            stacked_op = i == 1 ? asymmetry * stacked_op : stacked_op
-            return stacked_op
+            return i == 1 ? asymmetry * onedim_op : onedim_op
         end, N)
 
-    return sum([d2_ops...]; alg="directsum")
+    return ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
 end

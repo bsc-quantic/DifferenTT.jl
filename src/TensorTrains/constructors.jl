@@ -14,6 +14,16 @@ function make_identity_site(site::Index, left_link::Index, right_link::Index, ar
     return adapt(array_type, T)
 end
 
+function make_pass_identity_site(site::Index, left_link::Index, right_link::Index, pass_dim::Int, array_type)
+    T = ITensor(Float64, site, site', left_link, right_link)
+    for s in 1:dim(site)
+        for d in 1:pass_dim
+            T[site => s, site' => s, left_link => d, right_link => d] = 1.0
+        end
+    end
+    return adapt(array_type, T)
+end
+
 function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
 

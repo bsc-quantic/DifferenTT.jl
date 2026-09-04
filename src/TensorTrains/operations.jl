@@ -343,6 +343,58 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
     return MPO(mpo_tensors)
 end
 
+"""
+    ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+
+Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting on a TT architecture.
+This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension of 2.
+
+# Arguments
+- `onedim_ops::NTuple{N, AbstractMatrix}`: The 1D operator matrices for each dimension.
+- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+- `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
+"""
+function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    
+    total_sites = length(site_inds)
+    mpo_tensors = Vector{ITensor}(undef, total_sites)
+    
+    links = [Index(2, "Link,l=$i") for i in 1:total_sites-1]
+
+    # Determine array type from the matrix type
+    array_type = Base.typename(typeof(onedim_ops[1])).wrapper
+
+    for i in 1:total_sites
+        c = arch.site_map[i]
+        Oc = onedim_ops[c]
+        s = site_inds[i]
+        
+        # Base tensors
+        T_Oc = ITensor(array_type(Oc), s', s)
+        T_I = ITensor(array_type(Matrix{eltype(Oc)}(I, dim(s), dim(s))), s', s)
+        
+        if total_sites > 1
+            if i == 1
+                T = T_I * adapt(array_type, onehot(links[1] => 1)) + 
+                    T_Oc * adapt(array_type, onehot(links[1] => 2))
+            elseif i == total_sites
+                T = T_Oc * adapt(array_type, onehot(links[end] => 1)) + 
+                    T_I * adapt(array_type, onehot(links[end] => 2))
+            else
+                T = T_I * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 1)) + 
+                    T_Oc * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 2)) +
+                    T_I * adapt(array_type, onehot(links[i-1] => 2)) * adapt(array_type, onehot(links[i] => 2))
+            end
+        else
+            T = T_Oc
+        end
+        mpo_tensors[i] = adapt(array_type, T)
+    end
+    
+    return MPO(mpo_tensors)
+end
+
 function onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:left)
     nsite = length(site_inds)
     mpo_len = length(mpo)
