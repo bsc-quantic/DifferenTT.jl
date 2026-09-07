@@ -8,6 +8,7 @@ using LinearAlgebra
 using Statistics
 using JLD2
 using DifferenTT
+using Random
 
 base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -164,8 +165,12 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
-    # p_field stores physical p = pdt / dt; the linear system is for pdt.
-    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
+    if isnothing(previous_p)
+        Random.seed!(grid.nodes[1] + grid.nodes[2])
+        pdt_guess = random_mps(siteinds(grid.A))
+    else
+        pdt_guess = previous_p * dt
+    end
 
     if isnothing(precond)
         t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess)
@@ -302,7 +307,7 @@ function run_task(task::TaskSpec)
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end

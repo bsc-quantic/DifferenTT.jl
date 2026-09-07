@@ -21,14 +21,14 @@ const N_NODES_PER_DIM = 20
 const residual_tol = 1e-5
 
 const maxdims_map = Dict(
-    5 => 10,
-    10 => 20,
-    15 => 20,
-    20 => 20,
-    25 => 25,
-    30 => 25,
-    40 => 30,
-    50 => 30
+    5 => 30,
+    10 => 30,
+    15 => 40,
+    20 => 40,
+    25 => 45,
+    30 => 50,
+    40 => 60,
+    50 => 60
 )
 
 const nsweeps_map = Dict(
@@ -173,10 +173,12 @@ function run_task(task::TaskSpec)
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    init_mps = zeros_mps(sites)
+    Random.seed!(task.N)
+    init_mps = random_mps(sites)
     
     # Tight maxdim truncation may mess up the residual truncation...
-    sweep_kwargs = SweepingArgs(nsweeps=nsweeps_map[N], maxdim=maxdims_map[N], cutoff=1e-13)
+    residual_observer = ResidualObserver(A, rhs, residual_tol)
+    sweep_kwargs = SweepingArgs(nsweeps=nsweeps_map[N], maxdim=maxdims_map[N], cutoff=1e-13, observer! = residual_observer)
     
     numiter_store = KrylovSweepStats()
     cond_store = use_nocond ? nothing : KrylovCondStats()
@@ -193,18 +195,17 @@ function run_task(task::TaskSpec)
         pc_cond_store = pc_cond_store
     )
 
-    residual_observer = ResidualObserver(A, rhs, residual_tol)
     resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5*residual_tol)
     amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
     als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
-    solver = als_solver
+    solver = resals_solver
     
     if task.method == "baseline"
         @info "Running Baseline N=$N"
         
         t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
         
         # Compute relative residual using inner product to save memory
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
@@ -248,7 +249,7 @@ function run_task(task::TaskSpec)
             sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M)
         end
         
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps)
         
         # Compute relative residual using inner product to save memory
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
@@ -294,21 +295,21 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=gdim, cutoff=1e-12)
         
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
-            rtol = 1e-9,
+            rtol = 1e-2,
             krylovdim = 1,
-            maxiter = 3000
+            maxiter = 1000
         )
         
         fai_resals_solver = ResidualALS(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
+            residual_tol = 5e-3
         )
 
         fai_als_solver = ALS(
@@ -336,13 +337,13 @@ function run_task(task::TaskSpec)
         )
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = fai_global_solver
+        fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=1e-3)
+            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=5e-2)
         end
         
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps; observer! = residual_observer)
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
         
         # Compute relative residual using inner product to save memory
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)

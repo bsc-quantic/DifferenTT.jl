@@ -7,6 +7,7 @@ using ITensorMPS
 using LinearAlgebra
 using JLD2
 using DifferenTT
+using Random
 
 base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
@@ -83,6 +84,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     global_maxiter = global_maxiter_map[task.nodes]
 
     @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
+    Random.seed!(sum(task.nodes) + gdim)
 
     sweep_kwargs = SweepingArgs(nsweeps=200, maxdim=gdim, cutoff=1e-12)
     
@@ -130,7 +132,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     
     t_build = @elapsed begin
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=20)
-        precond = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+        precond = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=1e-2)
         Gl = precond.operator
     end
     

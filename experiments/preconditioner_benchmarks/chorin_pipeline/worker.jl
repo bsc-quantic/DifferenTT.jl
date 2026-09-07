@@ -8,6 +8,7 @@ using LinearAlgebra
 using Statistics
 using JLD2
 using DifferenTT
+using Random
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
@@ -45,8 +46,8 @@ const g_maxdims = 2:10
 
 const maxdims_map = Dict(
     (8, 8) => 150,
-    (10, 10) => 200,
-    (12, 12) => 300
+    (10, 10) => 250,
+    (12, 12) => 400
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
@@ -58,13 +59,13 @@ const cutoff_map = Dict(
 
 const nsweeps_map = Dict(
     (8, 8) => 100,
-    (10, 10) => 200,
-    (12, 12) => 300
+    (10, 10) => 100,
+    (12, 12) => 100
 )
 
 const tol_map = Dict(
-    (8, 8) => 1e-4,
-    (10, 10) => 5e-4,
+    (8, 8) => 1e-3,
+    (10, 10) => 1e-3,
     (12, 12) => 1e-3
 )
 
@@ -191,22 +192,27 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     )
 
     res_observer = ResidualObserver(grid.A, rhs, tol_val)
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
-    amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
+    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
+    resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
+    amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
+    als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = resals_solver
     
     dt = experiment.time_evol_settings.dt
     # previous_p = last(experiment.p_field)
     previous_p = nothing
-    # p_field stores physical p = pdt / dt; the linear system is for pdt.
-    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
+    if isnothing(previous_p)
+        Random.seed!(grid.nodes[1] + grid.nodes[2])
+        pdt_guess = random_mps(siteinds(grid.A))
+    else
+        pdt_guess = previous_p * dt
+    end
 
     if isnothing(precond)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess; observer! = res_observer)
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess)
     else
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess; observer! = res_observer)
+        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess)
     end
     
     # Compute relative residual using inner product to save memory
@@ -355,7 +361,7 @@ function run_task(task::TaskSpec)
         fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end

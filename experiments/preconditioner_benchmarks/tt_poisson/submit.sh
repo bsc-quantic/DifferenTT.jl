@@ -27,7 +27,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
-#SBATCH --time=10:00:00
+#SBATCH --time=20:00:00
 #SBATCH --qos=gp_bsccase
 
 module load julia/1.12.0 
