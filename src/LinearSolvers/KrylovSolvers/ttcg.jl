@@ -52,6 +52,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     α = ρ / denom
 
+    # TODO Evaluate the cost of recomputing the residual at each step in order to mitigate truncation-related errors
+    # killing the A-conjugate property
     x = +(x, α * p; kwargs_tt...)
     r = +(r, -α * q; kwargs_tt...)
     normr = norm(r)
