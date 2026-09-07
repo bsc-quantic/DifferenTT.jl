@@ -8,7 +8,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    normb = norm(b)
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / normb * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)
     α₁ = convert(T, a₁)
     
@@ -25,12 +26,12 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
 
     # Algorithm parameters
     maxiter = alg.maxiter
-    tol::S = alg.tol
+    tol::S = alg.tol * normb
     numops = 1 # operator has been applied once to determine r
     numiter = 0
 
     # Check for early return
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTCG linsolve converged without any iterations:
             * norm of residual = $(normres2string(normr))
@@ -51,6 +52,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     denom = iszero(α₀) ? α₁ * ITensorMPS.inner(p', operator, p) : α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     α = ρ / denom
 
+    # TODO Evaluate the cost of recomputing the residual at each step in order to mitigate truncation-related errors
+    # killing the A-conjugate property
     x = +(x, α * p; kwargs_tt...)
     r = +(r, -α * q; kwargs_tt...)
     normr = norm(r)
@@ -60,7 +63,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     numops += 1
     numiter += 1
 
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTCG linsolve converged at iteration $numiter:
             * norm of residual = $(normres2string(normr))
@@ -73,7 +76,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     end
 
     # Check for early return
-    normr < tol && return (x, ConvergenceInfo(1, r, normr, numiter, numops))
+    normr <= tol && return (x, ConvergenceInfo(1, r, normr, numiter, numops))
 
     while true
         p = +(r, β * p; kwargs_orth...)
@@ -88,7 +91,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         r = +(r, -α * q; kwargs_tt...)
         normr = norm(r)
 
-        if normr < tol # recompute to account for buildup of floating point errors
+        if normr <= tol # recompute to account for buildup of floating point errors
             r = copy(b)
             x_op = apply(operator, x; kwargs_tt...)
             q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
@@ -104,7 +107,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         @debug @show ρ
         numops += 1
         numiter += 1
-        if normr < tol
+        if normr <= tol
             if alg.verbosity >= STARTSTOP_LEVEL
                 @info """TTCG linsolve converged at iteration $numiter:
                 * norm of residual = $(normres2string(normr))
@@ -133,7 +136,8 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    normb = norm(b)
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / normb * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)
     α₁ = convert(T, a₁)
     
@@ -150,12 +154,12 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
 
     # Algorithm parameters
     maxiter = alg.maxiter
-    tol::S = alg.tol
+    tol::S = alg.tol * normb
     numops = 1 # operator has been applied once to determine r
     numiter = 0
 
     # Check for early return
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTCG linsolve converged without any iterations:
             * norm of residual = $(normres2string(normr))
@@ -187,7 +191,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     numops += 1
     numiter += 1
 
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTCG linsolve converged at iteration $numiter:
             * norm of residual = $(normres2string(normr))
@@ -200,7 +204,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     end
 
     # Check for early return
-    normr < tol && return (x, ConvergenceInfo(1, r, normr, numiter, numops))
+    normr <= tol && return (x, ConvergenceInfo(1, r, normr, numiter, numops))
 
     while true
         p = +(z, β * p; kwargs_orth...)
@@ -216,7 +220,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         z = apply(M⁻¹, r; kwargs_tt...)
         normr = norm(r)
 
-        if normr < tol # recompute to account for buildup of floating point errors
+        if normr <= tol # recompute to account for buildup of floating point errors
             r = copy(b)
             x_op = apply(operator, x; kwargs_tt...)
             q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
@@ -233,7 +237,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         @debug @show ρ
         numops += 1
         numiter += 1
-        if normr < tol
+        if normr <= tol
             if alg.verbosity >= STARTSTOP_LEVEL
                 @info """TTCG linsolve converged at iteration $numiter:
                 * norm of residual = $(normres2string(normr))

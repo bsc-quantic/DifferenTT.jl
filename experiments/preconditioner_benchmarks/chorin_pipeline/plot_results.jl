@@ -57,8 +57,8 @@ for row in eachrow(df_nocond)
     k = row.key
     d = Dict(
         "key" => k,
-        "mu" => ismissing(row.mu) ? NaN : row.mu,
-        "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+        "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+        "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "precond_build_time" => row.precond_build_time,
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
@@ -79,8 +79,8 @@ if !isempty(df_cond)
         k = row.key
         d_cond = Dict(
             "key" => k,
-            "mu" => ismissing(row.mu) ? NaN : row.mu,
-            "G_maxdim" => ismissing(row.G_maxdim) ? 0 : row.G_maxdim,
+            "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
+            "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
             "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
             "avg_pc_cond" => hasproperty(row, :avg_pc_cond) ? row.avg_pc_cond : NaN,
             "conds_per_site" => row_vec(row, :conds_per_site),
@@ -159,6 +159,9 @@ for nodes in system_sizes
     unique_mus = sort(unique(mus))
     unique_gdims = sort(unique(gdims))
 
+    # ---------------------------------------------------------
+    # 1. Heatmaps and Pareto
+    # ---------------------------------------------------------
     Z_solve = fill(NaN, length(unique_gdims), length(unique_mus))
     Z_total = fill(NaN, length(unique_gdims), length(unique_mus))
     Z_cond = fill(NaN, length(unique_gdims), length(unique_mus))
@@ -225,67 +228,129 @@ for nodes in system_sizes
     ylims!(pf_plot, 0, max(maximum(total_solve_times), base_time) * 1.05)
     savefig(pf_plot, joinpath(plots_dir, "pareto_$(nodes[1])x$(nodes[2]).png"))
 
-    best_idx = argmax(solve_speedups)
-    best_key = keys_list[best_idx]
-    best_v = grid_data_nocond[best_key]
+    # ---------------------------------------------------------
+    # 2. Per-Bond Profiles and Combined Overlays
+    # ---------------------------------------------------------
     steps_range = 1:n_steps
+    sites_range_cond = nonempty_numeric_vec(base_conds) ? (1:length(base_conds)) : []
+    base_conds_clean = nonempty_numeric_vec(base_conds) ? clean_kappa(base_conds) : nothing
 
-    p_iters = plot(steps_range, base_iters,
-        label="Baseline", color=:red, lw=2, marker=:circle,
-        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest FAI: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
-        xlabel="Chorin Time Step",
-        ylabel="Avg Krylov Iterations per Site",
-        legend=:outertopright)
-    plot!(p_iters, steps_range, best_v["iters"],
-        label="FAI", color=:blue, lw=2, marker=:square)
-    plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
-        fillalpha=0.12, fillcolor=:blue, label="", linealpha=0)
-    savefig(p_iters, joinpath(plots_dir, "step_iterations_$(nodes[1])x$(nodes[2]).png"))
+    p_iters_combined = plot(
+        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="Chorin Time Step", ylabel="Avg Krylov Iterations", legend=:outertopright
+    )
+    p_sp_combined = plot(
+        title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright
+    )
+    p_conds_combined = plot(
+        yaxis=:log, title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="MPS Site Index", ylabel="Condition Number (Log Scale)", legend=:outertopright
+    )
+    p_cond_imp_combined = plot(
+        title=latexstring("Condition Number Improvement ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="MPS Site Index", ylabel="Improvement Factor", legend=:outertopright
+    )
 
-    per_step_speedup = base_solve_times ./ best_v["solve_times"]
-    p_sp = plot(steps_range, per_step_speedup,
-        label="FAI", color=:purple, lw=2, marker=:diamond,
-        title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI: μ=$(best_v["mu"]), \$\\chi_{max}=$(best_v["G_maxdim"])\$"),
-        xlabel="Chorin Time Step",
-        ylabel="Speedup Ratio",
-        legend=:outertopright)
-    hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
-    savefig(p_sp, joinpath(plots_dir, "step_speedup_$(nodes[1])x$(nodes[2]).png"))
+    plot!(p_iters_combined, steps_range, base_iters, label="Baseline", color=:black, lw=3, marker=:circle)
+    hline!(p_sp_combined, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+    if !isnothing(base_conds_clean)
+        plot!(p_conds_combined, sites_range_cond, base_conds_clean, label="Baseline", color=:black, lw=3, marker=:circle)
+        hline!(p_cond_imp_combined, [1.0], color=:black, lw=3, ls=:dash, label="No improvement")
+    end
 
-    best_v_cond = match_cond(grid_data_cond, best_v)
-    fai_kpc = isnothing(best_v_cond) ? nothing : kappa_pc(best_v_cond)
+    colors = palette(:tab20)
 
-    if nonempty_numeric_vec(base_conds)
-        sites_range_cond = 1:length(base_conds)
-        base_conds_clean = clean_kappa(base_conds)
-
-        p_conds = plot(sites_range_cond, base_conds_clean,
-            label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
-            title="Local Condition Number Profile ($nodes)",
-            xlabel="MPS Site Index",
-            ylabel="Condition Number (Log Scale)",
-            legend=:outertopright)
-        if !isnothing(fai_kpc)
-            plot!(p_conds, sites_range_cond, fai_kpc, label="FAI", color=:blue, lw=2, marker=:square)
-        else
-            @info "No FAI κ(P^{-1}A) for $nodes; omitting FAI from condition profile"
+    for (i, gdim) in enumerate(unique_gdims)
+        best_idx = -1
+        best_speedup = -1.0
+        for idx in 1:length(solve_speedups)
+            if gdims[idx] == gdim && solve_speedups[idx] > best_speedup
+                best_speedup = solve_speedups[idx]
+                best_idx = idx
+            end
         end
-        savefig(p_conds, joinpath(plots_dir, "site_condition_$(nodes[1])x$(nodes[2]).png"))
+        best_idx == -1 && continue
 
-        p_cond_imp = plot(
-            title="Condition Number Improvement ($nodes)\nRatio: unpreconditioned / preconditioned",
-            xlabel="MPS Site Index",
-            ylabel="Improvement Factor",
+        best_v = grid_data_nocond[keys_list[best_idx]]
+        best_v_cond = match_cond(grid_data_cond, best_v)
+        fai_kpc = isnothing(best_v_cond) ? nothing : kappa_pc(best_v_cond)
+
+        out_dir = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])", "chi_$gdim")
+        mkpath(out_dir)
+
+        p_iters = plot(steps_range, base_iters,
+            label="Baseline", color=:red, lw=2, marker=:circle,
+            title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
+            xlabel="Chorin Time Step",
+            ylabel="Avg Krylov Iterations",
             legend=:outertopright)
-        hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
-        if !isnothing(fai_kpc)
-            plot!(p_cond_imp, sites_range_cond, base_conds_clean ./ fai_kpc,
-                label="FAI", color=:blue, lw=2, marker=:square)
+        plot!(p_iters, steps_range, best_v["iters"],
+            label="FAI", color=:blue, lw=2, marker=:square)
+        plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
+            fillalpha=0.12, fillcolor=:blue, label="", linealpha=0)
+        savefig(p_iters, joinpath(out_dir, "step_iterations.png"))
+
+        per_step_speedup = base_solve_times ./ best_v["solve_times"]
+        p_sp = plot(steps_range, per_step_speedup,
+            label="FAI", color=:purple, lw=2, marker=:diamond,
+            title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
+            xlabel="Chorin Time Step",
+            ylabel="Speedup Ratio",
+            legend=:outertopright)
+        hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
+        savefig(p_sp, joinpath(out_dir, "step_speedup.png"))
+
+        c_color = colors[mod1(i, length(colors))]
+        plot!(p_iters_combined, steps_range, best_v["iters"],
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+        plot!(p_sp_combined, steps_range, per_step_speedup,
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:diamond)
+
+        if !isnothing(base_conds_clean)
+            p_conds = plot(sites_range_cond, base_conds_clean,
+                label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
+                title="Local Condition Number Profile ($nodes)",
+                xlabel="MPS Site Index",
+                ylabel="Condition Number (Log Scale)",
+                legend=:outertopright)
+            p_cond_imp = plot(
+                title="Condition Number Improvement ($nodes)\nRatio: unpreconditioned / preconditioned",
+                xlabel="MPS Site Index",
+                ylabel="Improvement Factor",
+                legend=:outertopright)
+            hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
+
+            if !isnothing(fai_kpc)
+                plot!(p_conds, sites_range_cond, fai_kpc, label="FAI", color=:blue, lw=2, marker=:square)
+                plot!(p_cond_imp, sites_range_cond, base_conds_clean ./ fai_kpc,
+                    label="FAI", color=:blue, lw=2, marker=:square)
+                plot!(p_conds_combined, sites_range_cond, fai_kpc,
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+                plot!(p_cond_imp_combined, sites_range_cond, base_conds_clean ./ fai_kpc,
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+            else
+                @info "No FAI κ(P^{-1}A) for $nodes χ=$gdim; omitting FAI from condition profile"
+            end
+
+            savefig(p_conds, joinpath(out_dir, "site_condition.png"))
+            savefig(p_cond_imp, joinpath(out_dir, "site_cond_improvement.png"))
         end
-        savefig(p_cond_imp, joinpath(plots_dir, "site_cond_improvement_$(nodes[1])x$(nodes[2]).png"))
+    end
+
+    out_dir_combined = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])")
+    mkpath(out_dir_combined)
+    savefig(p_iters_combined, joinpath(out_dir_combined, "combined_step_iterations.png"))
+    savefig(p_sp_combined, joinpath(out_dir_combined, "combined_step_speedup.png"))
+    if !isnothing(base_conds_clean)
+        savefig(p_conds_combined, joinpath(out_dir_combined, "combined_site_condition.png"))
+        savefig(p_cond_imp_combined, joinpath(out_dir_combined, "combined_site_cond_improvement.png"))
     end
 end
 
+# ---------------------------------------------------------
+# 3. Scaling Summary
+# ---------------------------------------------------------
 if !isempty(max_total_speedups) && length(max_total_speedups) > 1
     p_scale = plot(1:length(grid_labels), max_solve_speedups,
         label="Max Agg. Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,

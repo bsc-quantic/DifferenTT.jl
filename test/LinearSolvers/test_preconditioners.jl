@@ -59,7 +59,7 @@ using LinearAlgebra
         A = MPO(sites, "Id")
         solver = ALS(sweep_kwargs=DifferenTT.SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-8))
 
-        M⁻¹_1 = linsolve_preconditioner(A, solver; preconditioning=false)
+        M⁻¹_1 = linsolve_preconditioner(A, solver; preconditioning=false, residual_tol = 0.9)
         @test M⁻¹_1 isa Preconditioner
         @test M⁻¹_1.operator isa MPO
         

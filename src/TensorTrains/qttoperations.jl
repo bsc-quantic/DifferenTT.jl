@@ -102,7 +102,8 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
             end
             counter += 1
         else
-            mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], links[i], array_type)
+            pass_dim = dim(links[i-1])
+            mpo_tensors[i] = make_pass_identity_site(site_inds[i], links[i-1], links[i], pass_dim, array_type)
         end
     end
 
@@ -121,6 +122,144 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
         replaceinds!(working_mpo[active_vars], [old_s, old_s', old_left_link], [new_s, new_s', new_left_link])
         mpo_tensors[total_sites] = working_mpo[active_vars]
     end
+    return MPO(mpo_tensors)
+end
+
+"""
+    ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where N
+
+Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting on a QTT architecture.
+This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension.
+
+# Arguments
+- `onedim_ops::NTuple{N, Any}`: The 1D operator MPOs for each dimension.
+- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+- `arch::QTTArchitecture{N}`: The architecture defining the variable mapping.
+"""
+function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where N
+    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    total_sites = length(site_inds)
+    mpo_tensors = Vector{ITensor}(undef, total_sites)
+    
+    # Handle reversal if needed
+    working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
+    array_type = backend_type(working_mpos[1])
+    active_indices = [findall(==(i), arch.site_map) for i in 1:N]
+    
+    D = zeros(Int, max(0, total_sites - 1))
+    offsets = [Dict{Int, Int}() for _ in 1:total_sites-1]
+    
+    # 1. Compute link dimensions and offsets
+    for k in 1:total_sites-1
+        current_dim = 3 # 1: Id, 2: Finished. Active states start at 3.
+        for i in 1:N
+            p = active_indices[i]
+            L_i = length(p)
+            if L_i > 1 && p[1] <= k < p[end]
+                m = searchsortedlast(p, k)
+                chi = dim(commonind(working_mpos[i][m], working_mpos[i][m+1]))
+                offsets[k][i] = current_dim
+                current_dim += chi
+            end
+        end
+        D[k] = current_dim - 1
+    end
+    
+    links = [Index(D[k], "Link,l=$k") for k in 1:total_sites-1]
+    
+    function make_projector(old_ind, new_ind, offset)
+        chi = dim(old_ind)
+        d_new = dim(new_ind)
+        mat = zeros(Float64, chi, d_new)
+        for i in 1:chi
+            mat[i, offset + i - 1] = 1.0
+        end
+        return adapt(array_type, ITensor(mat, old_ind, new_ind))
+    end
+    
+    function make_pass_projector(l_ind, r_ind, off_l, off_r, chi)
+        mat = zeros(Float64, dim(l_ind), dim(r_ind))
+        for i in 1:chi
+            mat[off_l + i - 1, off_r + i - 1] = 1.0
+        end
+        return adapt(array_type, ITensor(mat, l_ind, r_ind))
+    end
+
+    # 2. Construct the tensors
+    for k in 1:total_sites
+        c = arch.site_map[k]
+        a = searchsortedlast(active_indices[c], k)
+        L_c = length(active_indices[c])
+        
+        old_s = only(siteinds(working_mpos[c], a; plev=0))
+        new_s = site_inds[k]
+        T_c = replaceinds(working_mpos[c][a], old_s => new_s, old_s' => new_s')
+        
+        # Build embedded T_c
+        T_embedded = T_c
+        if a > 1
+            l_old = commonind(working_mpos[c][a-1], working_mpos[c][a])
+            P_L = make_projector(l_old, links[k-1], offsets[k-1][c])
+            T_embedded *= P_L
+        else
+            if k > 1
+                T_embedded *= adapt(array_type, onehot(links[k-1] => 1))
+            end
+        end
+        
+        if a < L_c
+            r_old = commonind(working_mpos[c][a], working_mpos[c][a+1])
+            P_R = make_projector(r_old, links[k], offsets[k][c])
+            T_embedded *= P_R
+        else
+            if k < total_sites
+                T_embedded *= adapt(array_type, onehot(links[k] => 2))
+            end
+        end
+        
+        # Build Identity and passing terms
+        I_mat = Matrix{Float64}(I, dim(new_s), dim(new_s))
+        I_site = adapt(array_type, ITensor(I_mat, new_s', new_s))
+        
+        W_k = T_embedded
+        
+        # Id -> Id
+        if k < total_sites
+            if k == 1
+                W_k += I_site * adapt(array_type, onehot(links[1] => 1))
+            else
+                W_k += I_site * adapt(array_type, onehot(links[k-1] => 1)) * adapt(array_type, onehot(links[k] => 1))
+            end
+        end
+        
+        # Fin -> Fin
+        if k > 1
+            if k == total_sites
+                W_k += I_site * adapt(array_type, onehot(links[end] => 2))
+            else
+                W_k += I_site * adapt(array_type, onehot(links[k-1] => 2)) * adapt(array_type, onehot(links[k] => 2))
+            end
+        end
+        
+        # Active passes for j != c
+        if 1 < k < total_sites
+            for j in 1:N
+                if j != c
+                    p = active_indices[j]
+                    L_j = length(p)
+                    if L_j > 1 && p[1] <= k - 1 < p[end]
+                        m = searchsortedlast(p, k - 1)
+                        chi = dim(commonind(working_mpos[j][m], working_mpos[j][m+1]))
+                        P = make_pass_projector(links[k-1], links[k], offsets[k-1][j], offsets[k][j], chi)
+                        W_k += P * I_site
+                    end
+                end
+            end
+        end
+        
+        mpo_tensors[k] = W_k
+    end
+    
     return MPO(mpo_tensors)
 end
 

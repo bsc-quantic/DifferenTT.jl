@@ -33,9 +33,9 @@ end
     b = random_mps(s)
     
     # Large tolerance should result in early termination
-    obs_large = ResidualObserver(; A=A, b=b, tol=1e4)
+    obs_large = ResidualObserver(; A=A, b=b, rtol=1e4)
     # Very small tolerance should not result in early termination for random MPS
-    obs_small = ResidualObserver(; A=A, b=b, tol=1e-12)
+    obs_small = ResidualObserver(; A=A, b=b, rtol=1e-12)
     
     x = random_mps(s)
     

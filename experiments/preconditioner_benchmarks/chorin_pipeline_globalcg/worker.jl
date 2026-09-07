@@ -8,6 +8,7 @@ using LinearAlgebra
 using Statistics
 using JLD2
 using DifferenTT
+using Random
 
 base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -19,35 +20,40 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline_globalc
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const DT = 0.00005
 
-n_steps_map = Dict(
-    (8, 8) => 50,
-    (10, 10) => 25,
-    (12, 12) => 10
+const dt_map = Dict(
+    (8, 8) => 0.001,
+    (10, 10) => 0.0005,
+    (12, 12) => 0.00001
 )
 
-system_sizes = [(8, 8), (10, 10), (12, 12)]
+const n_steps_map = Dict(
+    (8, 8) => 30,
+    (10, 10) => 10,
+    (12, 12) => 5
+)
 
-mu_values = [5e6, 1e7, 5e7, 1e8]
-g_maxdims = 2:10
+const system_sizes = [(8, 8), (10, 10), (12, 12)]
 
-maxdims_map = Dict(
+const mu_values = [5e6, 1e7, 5e7, 1e8]
+const g_maxdims = 2:10
+
+const maxdims_map = Dict(
     (8, 8) => 150,
     (10, 10) => 200,
     (12, 12) => 250
 )
 
-cutoff_map = Dict(
+const cutoff_map = Dict(
     (8, 8) => 1e-13,
     (10, 10) => 1e-13,
     (12, 12) => 1e-13
 )
 
-maxiter_map = Dict(
-    (8, 8) => 50,
-    (10, 10) => 70,
-    (12, 12) => 1000
+const maxiter_map = Dict(
+    (8, 8) => 3000,
+    (10, 10) => 5000,
+    (12, 12) => 10000
 )
 
 ITensors.disable_warn_order()
@@ -103,7 +109,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, DT, max_steps, :euler)
+    time_evol = TimeEvol(0.0, dt_map[nodes], max_steps, :euler)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -150,6 +156,7 @@ function build_rhs(grid, masked_u)
 end
 
 function chorin_step!(grid, global_updater_kwargs, precond=nothing)
+    global_updater_kwargs.numiter_store[] = 0
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
@@ -158,8 +165,12 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
-    # p_field stores physical p = pdt / dt; the linear system is for pdt.
-    pdt_guess = isnothing(previous_p) ? nothing : previous_p * dt
+    if isnothing(previous_p)
+        Random.seed!(grid.nodes[1] + grid.nodes[2])
+        pdt_guess = random_mps(siteinds(grid.A))
+    else
+        pdt_guess = previous_p * dt
+    end
 
     if isnothing(precond)
         t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess)
@@ -172,6 +183,8 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
     term3 = ITensorMPS.inner(rhs, rhs)
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+    @info "Residual $rel_res"
     
     sol_maxdim = maxlinkdim(pdt)
     
@@ -181,7 +194,7 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
-    stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     
@@ -204,12 +217,12 @@ function run_task(task::TaskSpec)
     global_updater_kwargs = GlobalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        rtol = 5e-4,
+        rtol = 1e-3,
         maxiter = maxiter_val,
         maxdim = maxdim_val,
         cutoff = cutoff_val,
         orth_maxdim = maxdim_val,
-        orth_cutoff = cutoff_val,
+        orth_cutoff = 0.1 * cutoff_val,
         numiter_store = Ref{Int}(0)
     )
 
@@ -254,7 +267,7 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         
-        fai_builder_solver = GlobalCG(
+        global_fai_solver = GlobalCG(
             updater_kwargs = GlobalUpdaterArgs(
                 ishermitian = true,
                 isposdef = true,
@@ -266,11 +279,35 @@ function run_task(task::TaskSpec)
                 orth_cutoff = 1e-12
             )
         )
+
+        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
         
+        fai_updater_kwargs = LocalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            compute_cond = false,
+            rtol = 1e-5,
+            krylovdim = 1,
+            maxiter = 3000
+        )
+        
+        resals_solver = ResidualALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
+            residual_tol = 1e-9
+        )
+
+        als_solver = ALS(
+            sweep_kwargs = fai_sweep_kwargs,
+            updater_kwargs = fai_updater_kwargs,
+        )
+
+        fai_builder_solver = als_solver
+
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -334,7 +371,8 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
     numiter_store = Ref{Int}(0)
 )
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
+DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 chorin_step!(dummy_grid, dummy_updater_kwargs)
 @info "JIT warmup complete."
 

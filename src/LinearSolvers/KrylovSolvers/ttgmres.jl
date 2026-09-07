@@ -9,7 +9,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    normb = norm(b)
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / normb * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)::T
     α₁ = convert(T, a₁)::T
     
@@ -29,10 +30,10 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
     # Algorithm parameters
     maxiter = alg.maxiter
     krylovdim = alg.krylovdim
-    tol::S = alg.tol
+    tol::S = alg.tol * normb
 
     # Check for early return
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTGMRES linsolve converged without any iterations:
             * norm of residual = $(normres2string(normr))
@@ -129,7 +130,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number = 0, a
         numops += 1
         β = normr
         
-        if normr < tol
+        if normr <= tol
             if alg.verbosity >= STARTSTOP_LEVEL
                 @info """TTGMRES linsolve converged at iteration $numiter, step $k:
                 * norm of residual = $(normres2string(normr))
@@ -159,7 +160,8 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
 
     # Initial function operation and division defines number type
     y₀ = apply(operator, x₀; kwargs_tt...)
-    T = typeof(ITensorMPS.inner(b', operator, x₀) / norm(b) * one(a₀) * one(a₁))
+    normb = norm(b)
+    T = typeof(ITensorMPS.inner(b', operator, x₀) / normb * one(a₀) * one(a₁))
     α₀ = convert(T, a₀)::T
     α₁ = convert(T, a₁)::T
     
@@ -180,10 +182,10 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
     # Algorithm parameters
     maxiter = alg.maxiter
     krylovdim = alg.krylovdim
-    tol::S = alg.tol
+    tol::S = alg.tol * normb
 
     # Check for early return
-    if normr < tol
+    if normr <= tol
         if alg.verbosity >= STARTSTOP_LEVEL
             @info """TTGMRES linsolve converged without any iterations:
             * norm of residual = $(normres2string(normr))
@@ -281,7 +283,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
         numops += 1
         β = norm(z)
         
-        if normr < tol
+        if normr <= tol
             if alg.verbosity >= STARTSTOP_LEVEL
                 @info """TTGMRES linsolve converged at iteration $numiter, step $k:
                 * norm of residual = $(normres2string(normr))

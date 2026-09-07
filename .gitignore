@@ -10,3 +10,5 @@
 experiments/**/logs/
 experiments/**/tasks/
 !experiments/**/maskplots/*.png
+
+**/finaldata/

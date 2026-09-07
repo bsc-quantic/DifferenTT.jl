@@ -7,24 +7,33 @@ using ITensorMPS
 using LinearAlgebra
 using JLD2
 using DifferenTT
+using Random
 
 base_folder = "experiments/preconditioner_benchmarks/qtt_poisson/results"
 tasks_folder = joinpath(base_folder, "tasks")
 mkpath(tasks_folder)
 
 # We extrapolate system sizes from FAI. QTT uses 1D. (16,), (20,), (24,) correspond to 2^16, 2^20, 2^24.
-system_sizes = [(16,), (20,), (24,)]
-mu_values = [1e4, 5e4, 1e5, 5e5, 1e6]
+const system_sizes = [(4,), (8,), (12,), (16,), (20,)]
+const mu_values = [1e6, 1e7, 1e8]
 
-G_maxdims_map = Dict(
-    (8,) => [2, 3, 4, 5, 6, 7, 8],
-    (16,) => [2, 3, 4, 5, 6, 7, 8],
-    (20,) => [2, 3, 4, 5, 6, 7, 8],
-    (24,) => [2, 3, 4, 5, 6, 7, 8]
+const G_maxdims_map = Dict(
+    (4,) => [2, 4, 6, 8, 10, 12, 15],
+    (8,) => [2, 4, 6, 8, 10, 12, 15],
+    (12,) => [2, 4, 6, 8, 10, 12, 15],
+    (16,) => [2, 4, 6, 8, 10, 12, 15],
+    (20,) => [2, 4, 6, 8, 10, 12, 15]
 )
 
-cutoff = 1e-13
-box_size = (1.0,)
+const global_maxiter_map = Dict(
+    (4,) => 1000,
+    (8,) => 3000,
+    (12,) => 5000,
+    (16,) => 10000,
+    (20,) => 10000
+)
+
+const box_size = (1.0,)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -72,18 +81,20 @@ end
 function run_task(task::TaskSpec, A, exact_inv)
     μ = task.mu
     gdim = task.gdim
-    
-    @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
+    global_maxiter = global_maxiter_map[task.nodes]
 
-    sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+    @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
+    Random.seed!(sum(task.nodes) + gdim)
+
+    sweep_kwargs = SweepingArgs(nsweeps=200, maxdim=gdim, cutoff=1e-12)
     
     updater_kwargs = LocalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
         compute_cond = false,
-        rtol = 1e-9,
+        rtol = 1e-5,
         krylovdim = 1,
-        maxiter = 3000
+        maxiter = 5000
     )
 
     resals_solver = ResidualALS(
@@ -92,17 +103,36 @@ function run_task(task::TaskSpec, A, exact_inv)
         residual_tol = 1e-9
     )
 
+    als_solver = ALS(
+        sweep_kwargs = sweep_kwargs,
+        updater_kwargs = updater_kwargs,
+    )
+
     amen_solver =  AMEn(
         sweep_kwargs = sweep_kwargs,
         updater_kwargs = updater_kwargs,
-        enrichment_maxdim = 1     
+        enrichment_maxdim = 2    
     )
 
-    fai_builder_solver = resals_solver
+    global_solver = GlobalCG(updater_kwargs=GlobalUpdaterArgs(
+            ishermitian = true,
+            isposdef = true,
+            rtol = 5e-2,
+            maxiter = global_maxiter,
+            maxdim = gdim,
+            cutoff = 1e-12,
+            orth_maxdim = gdim,
+            orth_cutoff = 0.1 * 1e-12,
+            verbosity=1,
+            numiter_store = Ref{Int}(0)
+        )
+    )
+
+    fai_builder_solver = amen_solver
     
     t_build = @elapsed begin
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        precond = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false)
+        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=20)
+        precond = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=1e-2)
         Gl = precond.operator
     end
     
@@ -110,13 +140,18 @@ function run_task(task::TaskSpec, A, exact_inv)
     target_inv = -1.0 * exact_inv
     Gl_T = dag(transpose(Gl))
     Gl_T_Gl = apply(Gl_T, Gl; alg="naive")
-    replace_siteinds!(Gl_T_Gl, only.(siteinds(exact_inv; plev=0)))
     
-    # Frobenius norm
-    diff = +(target_inv, -1.0 * Gl_T_Gl; cutoff=1e-10, maxdim=20)
+    # Frobenius norm difference from exact vs FAI inverse
+    diff = +(target_inv, -1.0 * Gl_T_Gl; alg="directsum")
     norm_diff = sqrt(abs(inner(diff, diff)))
     norm_exact = sqrt(abs(inner(target_inv, target_inv)))
     rel_error = norm_diff / norm_exact
+
+    iden = identity_mpo(only.(siteinds(Gl_T_Gl; plev=0)))
+    pc_op = apply(Gl_T_Gl, A; alg="naive")
+    diff_iden = +(iden, -1.0 * pc_op; alg="directsum")
+    norm_diff_iden = sqrt(abs(inner(diff_iden, diff_iden)))
+    rel_error_iden = norm_diff_iden / 2^(length(pc_op) / 2) #sqrt(n), where n is the dimension = 2^length(pc_op)
     
     result = Dict(
         "key" => "mu_$(μ)_gdim_$(gdim)",
@@ -125,12 +160,14 @@ function run_task(task::TaskSpec, A, exact_inv)
         "G_maxdim" => gdim,
         "precond_build_time" => t_build,
         "relative_error" => rel_error,
+        "relative_error_iden" => rel_error_iden,
         "norm_exact" => norm_exact,
         "norm_diff" => norm_diff,
+        "norm_diff_iden" => norm_diff_iden,
         "compute_cond" => false
     )
     
-    @info "  build=$(round(t_build; digits=2))s, rel_error=$(round(rel_error; sigdigits=3))"
+    @info "  build=$(round(t_build; digits=2))s, rel_error=$(round(rel_error; sigdigits=3)), rel_error_iden=$(round(rel_error_iden; sigdigits=3))"
     return result
 end
 
@@ -146,9 +183,10 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_A, dummy_exact = setup_problem((4,))
-dummy_solver = ResidualALS(
+dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+dummy_solver = ALS(
     sweep_kwargs = SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-12),
-    residual_tol=1e-9
+    updater_kwargs = dummy_updater_kwargs
 )
 dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
 dummy_precond = fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
