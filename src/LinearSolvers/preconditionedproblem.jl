@@ -177,6 +177,12 @@ function ITensorMPS.makeR!(reduced_problem::ReducedPrecondLinearProblem, state::
     return reduced_problem
 end
 
+function ITensorMPS.position!(reduced_problem::ReducedPrecondLinearProblem, state::MPS, position::Int)
+    position!(reduced_problem.linear_problem, state, position)
+    position!(reduced_problem.preconditioner.reduced_op, state, position)
+    return reduced_problem
+end
+
 
 function Base.copy(reduced_problem::ReducedFAIPrecondLinearProblem)
     return ReducedFAIPrecondLinearProblem(
@@ -203,6 +209,12 @@ end
 function ITensorMPS.makeR!(reduced_problem::ReducedFAIPrecondLinearProblem, state::MPS, position::Int)
     makeR!(reduced_problem.linear_problem, state, position)
     makeR!(reduced_problem.preconditioner.reduced_op, state, position)
+    return reduced_problem
+end
+
+function ITensorMPS.position!(reduced_problem::ReducedFAIPrecondLinearProblem, state::MPS, position::Int)
+    position!(reduced_problem.linear_problem, state, position)
+    position!(reduced_problem.preconditioner.reduced_op, state, position)
     return reduced_problem
 end
 

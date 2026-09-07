@@ -1,7 +1,7 @@
 using DifferenTT
 using Test
 using ITensors: ITensors, siteinds, OpSum
-using ITensorMPS: MPS, MPO, random_mps
+using ITensorMPS
 using DifferenTT: AMEn, linearsolve, SweepingArgs, LocalUpdaterArgs, KrylovUpdater, maxlinkdim
 using LinearAlgebra: norm
 
@@ -65,5 +65,20 @@ using LinearAlgebra: norm
         res0 = res02 > 0 ? sqrt(res02) : 0.0
         
         @test res1 < res0
+    end
+
+    @testset "Preconditioned linearsolve" begin
+        n = 4
+        sites = siteinds("S=1/2", n)
+        A = MPO(sites, "Id")
+        b = random_mps(sites; linkdims=2)
+
+        solver = AMEn(
+            sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=4, cutoff=1e-8),
+        )
+        M_prec = rank1_preconditioner(A)
+        x = linearsolve(solver, A, b, M_prec, nothing)
+        @test x isa MPS
+        @test norm(apply(A, x) - b) < 1e-6
     end
 end
