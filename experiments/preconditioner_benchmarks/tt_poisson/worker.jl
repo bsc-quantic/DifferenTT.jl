@@ -145,7 +145,7 @@ function build_problem(N::Int)
     
     sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
     # Cap ttcross by maxdim_N to avoid OOM
-    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=maxdim_N, tolerance=1e-12)
+    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxdim=maxdim_N, tolerance=1e-12)
     sol_mps = MPS(sol_tci)
     replace_siteinds!(sol_mps, sites)
     
