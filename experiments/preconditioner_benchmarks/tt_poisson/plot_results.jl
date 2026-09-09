@@ -274,31 +274,6 @@ for (node_idx, nodes) in enumerate(system_sizes)
         savefig(p_solve, joinpath(plots_dir, "plot_solve_N_$(nodes).png"))
         savefig(p_total, joinpath(plots_dir, "plot_total_N_$(nodes).png"))
 
-        p_residual = plot(
-            title="Relative Residual ($nodes)",
-            xlabel=L"Bond Dimension ($\chi_{max}$)",
-            ylabel=L"\|Ax-b\| / \|b\|",
-            legend=:outertopright,
-            framestyle=:box,
-            yaxis=:log10
-        )
-        for μ in unique_mus
-            idx = findall(==(μ), mus)
-            p_idx = sortperm(gdims[idx])
-            sorted_idx = idx[p_idx]
-            plot!(p_residual, gdims[sorted_idx], fai_residuals[sorted_idx], label="μ = $μ", marker=:circle, lw=2)
-        end
-        for M in unique_Ms
-            idx = findfirst(==(M), sinc_Ms)
-            if !isnothing(idx) && isfinite(sinc_residuals[idx])
-                hline!(p_residual, [sinc_residuals[idx]], label="Sinc M = $M", lw=2, ls=:dashdot)
-            end
-        end
-        if isfinite(base_residual)
-            hline!(p_residual, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
-        end
-        savefig(p_residual, joinpath(plots_dir, "plot_residual_N_$(nodes).png"))
-
         valid_conds = filter(!isnan, Z_cond)
         if !isempty(valid_conds)
             hm_cond = heatmap(string.(unique_mus), string.(unique_gdims), Z_cond,
@@ -315,6 +290,48 @@ for (node_idx, nodes) in enumerate(system_sizes)
         end
     else
         @info "Skipping FAI plots for $nodes (no FAI runs)"
+    end
+
+    # Residual is a convergence check (same ResidualALS observer/rtol for all methods).
+    # Sinc is parameterized by M, not FAI G_maxdim, so it gets its own x-axis.
+    if !isempty(sinc_Ms)
+        sinc_order = sortperm(sinc_Ms)
+        p_res_sinc = plot(
+            title="Relative Residual, sinc ($nodes)",
+            xlabel="Sinc quadrature nodes (M)",
+            ylabel=L"\|Ax-b\| / \|b\|",
+            legend=:outertopright,
+            framestyle=:box,
+            yaxis=:log10
+        )
+        plot!(p_res_sinc, sinc_Ms[sinc_order], sinc_residuals[sinc_order],
+            label="Sinc", marker=:diamond, lw=2)
+        if isfinite(base_residual)
+            hline!(p_res_sinc, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
+        end
+        savefig(p_res_sinc, joinpath(plots_dir, "plot_residual_sinc_N_$(nodes).png"))
+    end
+
+    if !isempty(mus)
+        p_res_fai = plot(
+            title="Relative Residual, FAI ($nodes)",
+            xlabel=L"FAI factor bond dimension ($G_{maxdim}$)",
+            ylabel=L"\|Ax-b\| / \|b\|",
+            legend=:outertopright,
+            framestyle=:box,
+            yaxis=:log10
+        )
+        for μ in unique_mus
+            idx = findall(==(μ), mus)
+            p_idx = sortperm(gdims[idx])
+            sorted_idx = idx[p_idx]
+            plot!(p_res_fai, gdims[sorted_idx], fai_residuals[sorted_idx],
+                label="μ = $μ", marker=:circle, lw=2)
+        end
+        if isfinite(base_residual)
+            hline!(p_res_fai, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
+        end
+        savefig(p_res_fai, joinpath(plots_dir, "plot_residual_fai_N_$(nodes).png"))
     end
 
     # ---------------------------------------------------------
