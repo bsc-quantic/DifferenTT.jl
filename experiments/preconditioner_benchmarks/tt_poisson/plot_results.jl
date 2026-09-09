@@ -68,7 +68,8 @@ for row in eachrow(df_nocond)
         "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
         "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "M" => hasproperty(row, :M) && !ismissing(row.M) ? Int(row.M) : 0,
-        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
+        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing,
+        "relative_residual" => hasproperty(row, :relative_residual) && !ismissing(row.relative_residual) ? Float64(row.relative_residual) : NaN
     )
     results_nocond[nodes][k] = d_nocond
 end
@@ -153,6 +154,9 @@ for (node_idx, nodes) in enumerate(system_sizes)
     sinc_build_times = Float64[]
     sinc_solve_times = Float64[]
     sinc_keys = String[]
+    fai_residuals = Float64[]
+    sinc_residuals = Float64[]
+    base_residual = get(grid_data_nocond["baseline"], "relative_residual", NaN)
 
     for (k, v) in grid_data_nocond
         v["method"] == "baseline" && continue
@@ -165,6 +169,7 @@ for (node_idx, nodes) in enumerate(system_sizes)
             push!(sinc_Ms, m_val)
             push!(sinc_build_times, v["precond_build_time"])
             push!(sinc_solve_times, v["solve_time"])
+            push!(sinc_residuals, get(v, "relative_residual", NaN))
             s_sp = base_time / v["solve_time"]
             t_sp = base_time / v["total_time"]
             push!(sinc_solve_speedups, s_sp)
@@ -184,6 +189,7 @@ for (node_idx, nodes) in enumerate(system_sizes)
             push!(gdims, gdim_val)
             push!(fai_build_times, v["precond_build_time"])
             push!(fai_solve_times, v["solve_time"])
+            push!(fai_residuals, get(v, "relative_residual", NaN))
             s_sp = base_time / v["solve_time"]
             t_sp = base_time / v["total_time"]
             push!(fai_solve_speedups, s_sp)
@@ -267,6 +273,31 @@ for (node_idx, nodes) in enumerate(system_sizes)
 
         savefig(p_solve, joinpath(plots_dir, "plot_solve_N_$(nodes).png"))
         savefig(p_total, joinpath(plots_dir, "plot_total_N_$(nodes).png"))
+
+        p_residual = plot(
+            title="Relative Residual ($nodes)",
+            xlabel=L"Bond Dimension ($\chi_{max}$)",
+            ylabel=L"\|Ax-b\| / \|b\|",
+            legend=:outertopright,
+            framestyle=:box,
+            yaxis=:log10
+        )
+        for μ in unique_mus
+            idx = findall(==(μ), mus)
+            p_idx = sortperm(gdims[idx])
+            sorted_idx = idx[p_idx]
+            plot!(p_residual, gdims[sorted_idx], fai_residuals[sorted_idx], label="μ = $μ", marker=:circle, lw=2)
+        end
+        for M in unique_Ms
+            idx = findfirst(==(M), sinc_Ms)
+            if !isnothing(idx) && isfinite(sinc_residuals[idx])
+                hline!(p_residual, [sinc_residuals[idx]], label="Sinc M = $M", lw=2, ls=:dashdot)
+            end
+        end
+        if isfinite(base_residual)
+            hline!(p_residual, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
+        end
+        savefig(p_residual, joinpath(plots_dir, "plot_residual_N_$(nodes).png"))
 
         valid_conds = filter(!isnan, Z_cond)
         if !isempty(valid_conds)

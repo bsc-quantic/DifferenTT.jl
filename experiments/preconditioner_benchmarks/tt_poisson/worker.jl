@@ -215,9 +215,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         
@@ -230,7 +230,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -259,9 +259,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         iters_per_site = DifferenTT.positions_sum(numiter_store)
@@ -274,7 +274,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -353,9 +353,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         iters_per_site = DifferenTT.positions_sum(numiter_store)
@@ -369,7 +369,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
