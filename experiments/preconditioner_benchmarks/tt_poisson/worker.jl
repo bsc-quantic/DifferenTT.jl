@@ -122,6 +122,10 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
+    # Seed before TCI: optfirstpivot and TCI2 global-pivot search both use the global RNG.
+    # Seeding by N makes baseline/sinc/FAI for the same N rebuild the same (A, rhs).
+    Random.seed!(N)
+
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
     
