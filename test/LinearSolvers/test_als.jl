@@ -22,4 +22,9 @@ using DifferenTT: ALS
     x_precond = linearsolve(solver, A, b, M⁻¹, nothing; nsweeps=1)
     @test x_precond isa MPS
     @test length(x_precond) == n
+
+    # With local preconditioning
+    x_local_precond = linearsolve(solver, A, b, M⁻¹, nothing; nsweeps=1, preconditioner_sites=2:3)
+    @test x_local_precond isa MPS
+    @test length(x_local_precond) == n
 end

@@ -5,6 +5,7 @@ using LinearAlgebra
 using DifferenTT
 
 @testset "symmetrized_laplacian optimal MPO construction" begin
+    ITensors.set_warn_order(17)
     # Helper to construct the exact dense matrix using directsum (the old inefficient way)
     # This serves as the ground truth to ensure the exact block MPO is mathematically identical.
     function directsum_symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8) where N

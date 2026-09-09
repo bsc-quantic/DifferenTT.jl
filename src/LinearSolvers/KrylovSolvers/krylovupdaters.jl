@@ -433,7 +433,7 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     cond_store = get(kwargs, :cond_store, nothing)
     verbosity = get(kwargs, :verbosity, 0)
     use_cg = _uses_cg_metric(kwargs)
-    kwargs = filter(p -> first(p) != :compute_cond && first(p) != :numiter_store && first(p) != :cond_store && first(p) != :pc_cond_store, kwargs)
+    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store), kwargs)
 
     x, info = linsolve(
         operator(problem),
@@ -463,23 +463,46 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
     pc_cond_store = get(kwargs, :pc_cond_store, nothing)
+    preconditioner_sites = get(kwargs, :preconditioner_sites, nothing)
     verbosity = get(kwargs, :verbosity, 0)
     use_cg = _uses_cg_metric(kwargs)
-    kwargs = filter(p -> first(p) != :compute_cond && first(p) != :numiter_store && first(p) != :cond_store && first(p) != :pc_cond_store, kwargs)
+    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store, :preconditioner_sites), kwargs)
 
-    x, info = linsolve(
-        operator(problem.linear_problem),
-        constant_term(problem.linear_problem),
-        init,
-        problem.preconditioner,
-        coefficients[1],
-        coefficients[2];
-        kwargs...,
-    )
+    use_preconditioner = true
+    if !isnothing(preconditioner_sites)
+        lpos = _krylov_lpos(problem)
+        use_preconditioner = (lpos + 1) in preconditioner_sites
+    end
 
-    if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
-        b_tensor = constant_term(problem.linear_problem)
-        _compute_and_record_cond!(problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+    if use_preconditioner
+        x, info = linsolve(
+            operator(problem.linear_problem),
+            constant_term(problem.linear_problem),
+            init,
+            problem.preconditioner,
+            coefficients[1],
+            coefficients[2];
+            kwargs...,
+        )
+
+        if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
+            b_tensor = constant_term(problem.linear_problem)
+            _compute_and_record_cond!(problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+        end
+    else
+        x, info = linsolve(
+            operator(problem.linear_problem),
+            constant_term(problem.linear_problem),
+            init,
+            coefficients[1],
+            coefficients[2];
+            kwargs...,
+        )
+
+        if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
+            b_tensor = constant_term(problem.linear_problem)
+            _compute_and_record_cond!(problem.linear_problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, nothing)
+        end
     end
 
     if !isnothing(numiter_store)
