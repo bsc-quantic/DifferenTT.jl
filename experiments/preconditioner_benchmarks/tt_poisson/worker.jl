@@ -122,9 +122,6 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
-    # Seed before TCI: optfirstpivot and TCI2 global-pivot search both use the global RNG.
-    # Seeding by N makes baseline/sinc/FAI for the same N rebuild the same (A, rhs).
-    Random.seed!(N)
 
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
@@ -173,11 +170,11 @@ end
 
 function run_task(task::TaskSpec)
     N = task.N
+    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    Random.seed!(task.N)
     init_mps = random_mps(sites)
     
     # Tight maxdim truncation may mess up the residual truncation...
