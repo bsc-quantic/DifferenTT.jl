@@ -169,11 +169,11 @@ end
 
 function run_task(task::TaskSpec)
     N = task.N
+    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    Random.seed!(task.N)
     init_mps = random_mps(sites)
     
     # Tight maxdim truncation may mess up the residual truncation...
@@ -295,7 +295,7 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=20, maxdim=gdim, cutoff=1e-12)
         
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,

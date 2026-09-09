@@ -84,7 +84,7 @@ function run_task(task::TaskSpec, A, exact_inv)
     global_maxiter = global_maxiter_map[task.nodes]
 
     @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
-    Random.seed!(sum(task.nodes) + gdim)
+    Random.seed!(sum(task.nodes))
 
     sweep_kwargs = SweepingArgs(nsweeps=200, maxdim=gdim, cutoff=1e-12)
     

@@ -10,6 +10,10 @@ using JLD2
 using DifferenTT
 using Random
 
+const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", "1"))
+LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
+@info "Set BLAS threads to $cpus_per_task"
+
 base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -51,9 +55,9 @@ const cutoff_map = Dict(
 )
 
 const maxiter_map = Dict(
-    (8, 8) => 3000,
-    (10, 10) => 5000,
-    (12, 12) => 10000
+    (8, 8) => 2000,
+    (10, 10) => 3000,
+    (12, 12) => 5000
 )
 
 ITensors.disable_warn_order()
@@ -109,7 +113,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, dt_map[nodes], max_steps, :euler)
+    time_evol = TimeEvol(0.0, dt_map[nodes] * max_steps, max_steps, :rk4)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -155,7 +159,7 @@ function build_rhs(grid, masked_u)
     return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
 end
 
-function chorin_step!(grid, global_updater_kwargs, precond=nothing)
+function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=nothing)
     global_updater_kwargs.numiter_store[] = 0
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
@@ -166,8 +170,8 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
     if isnothing(previous_p)
-        Random.seed!(grid.nodes[1] + grid.nodes[2])
-        pdt_guess = random_mps(siteinds(grid.A))
+        Random.seed!(hash((grid.nodes, step_index)))
+        pdt_guess = random_mps(grid.experiment.u_fields.usites)
     else
         pdt_guess = previous_p * dt
     end
@@ -194,7 +198,14 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
     
-    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    if experiment.time_evol_settings.scheme == :rk4
+        stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    elseif experiment.time_evol_settings.scheme == :euler
+        stepper = Euler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+    else
+        error("Unknown scheme")
+    end
+
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
     
@@ -208,6 +219,7 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
 end
 
 function run_task(task::TaskSpec)
+    Random.seed!(task.nodes[1] + task.nodes[2])
     N_STEPS = n_steps_map[task.nodes]
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
@@ -230,7 +242,7 @@ function run_task(task::TaskSpec)
         @info "Running baseline for $(task.nodes)"
         
         # Warmup
-        chorin_step!(grid, global_updater_kwargs)
+        chorin_step!(grid, global_updater_kwargs, 0)
         
         solve_times = Float64[]
         global_iters = Int[]
@@ -240,7 +252,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, global_updater_kwargs)
+            step_res = chorin_step!(grid, global_updater_kwargs, i)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -313,7 +325,7 @@ function run_task(task::TaskSpec)
         end
         
         # Warmup
-        chorin_step!(grid, global_updater_kwargs, precond)
+        chorin_step!(grid, global_updater_kwargs, 0, precond)
         
         solve_times = Float64[]
         global_iters = Int[]
@@ -323,7 +335,7 @@ function run_task(task::TaskSpec)
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
             
-            step_res = chorin_step!(grid, global_updater_kwargs, precond)
+            step_res = chorin_step!(grid, global_updater_kwargs, i, precond)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
@@ -373,7 +385,7 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
 dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-chorin_step!(dummy_grid, dummy_updater_kwargs)
+chorin_step!(dummy_grid, dummy_updater_kwargs, 0)
 @info "JIT warmup complete."
 
 result = run_task(task)

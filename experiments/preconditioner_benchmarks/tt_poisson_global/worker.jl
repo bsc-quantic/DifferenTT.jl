@@ -191,11 +191,11 @@ end
 
 function run_task(task::TaskSpec)
     N = task.N
+    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    Random.seed!(task.N)
     init_mps = random_mps(sites)
     
     global_updater_kwargs = GlobalUpdaterArgs(
