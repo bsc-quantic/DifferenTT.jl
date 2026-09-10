@@ -73,7 +73,7 @@ using TensorCrossInterpolation
         @test length(pivot) == length(arch.site_map)
         @test all(1 .<= pivot .<= 8)
         
-        tt2, err2 = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxdim=10, tolerance=1e-2)
+        tt2, err2 = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxbonddim=10, tolerance=1e-2)
         mps2 = MPS(tt2)
         @test mps2 isa MPS
         @test length(mps2) == length(arch.site_map)
@@ -89,7 +89,7 @@ using TensorCrossInterpolation
         arch = TTArchitecture((4, 4))
         grid = Grid(arch, (1.0, 1.0))
         pivot = DifferenTT.optfirstpivot(Float64, func, grid, arch; iters=10)
-        tt, _ = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxdim=10, tolerance=1e-5)
+        tt, _ = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxbonddim=10, tolerance=1e-5)
         mps = MPS(tt)
         
         point = (1.0/3, 2.0/3)
@@ -127,7 +127,7 @@ using TensorCrossInterpolation
         arch = TTArchitecture((4, 4))
         grid = Grid(arch, (1.0, 1.0))
         pivot = DifferenTT.optfirstpivot(Float64, func, grid, arch; iters=10)
-        tt, _ = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxdim=10, tolerance=1e-5)
+        tt, _ = DifferenTT.crossinterpolate2(Float64, func, grid, arch; initialpivots=[pivot], maxbonddim=10, tolerance=1e-5)
         mps = MPS(tt)
         
         ranges, data = DifferenTT.samples(mps, grid, arch, (4, 4))

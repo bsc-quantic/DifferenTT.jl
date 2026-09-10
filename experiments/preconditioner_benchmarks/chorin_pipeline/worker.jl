@@ -126,7 +126,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, dt_map[nodes], max_steps, :euler)
+    time_evol = TimeEvol(0.0, dt_map[nodes]*max_steps, max_steps, :euler)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -253,6 +253,7 @@ end
 
 function run_task(task::TaskSpec)
     N_STEPS = n_steps_map[task.nodes]
+    Random.seed!(task.nodes)
     compute_cond = should_compute_cond(task.nodes, use_nocond)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]

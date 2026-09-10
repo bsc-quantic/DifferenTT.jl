@@ -122,6 +122,7 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
+
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
     
@@ -169,11 +170,11 @@ end
 
 function run_task(task::TaskSpec)
     N = task.N
+    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
     
     sites = siteinds(rhs)
-    Random.seed!(task.N)
     init_mps = random_mps(sites)
     
     # Tight maxdim truncation may mess up the residual truncation...
@@ -211,9 +212,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         
@@ -226,7 +227,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -255,9 +256,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         iters_per_site = DifferenTT.positions_sum(numiter_store)
@@ -270,7 +271,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -349,9 +350,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         iters_per_site = DifferenTT.positions_sum(numiter_store)
@@ -365,7 +366,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "iters_per_site" => iters_per_site,
             "solution_maxdim" => maxlinkdim(out_mps)
         )

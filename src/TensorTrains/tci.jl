@@ -83,14 +83,14 @@ function sequence_to_point(sequence::Vector{Int}, grid::Grid{N}, arch::TTArchite
 end
 
 """
-    TensorCrossInterpolation.crossinterpolate2(func::Function, grid::Grid{N}, arch::Architecture{N}; tolerance::Float64=1e-8, maxbond::Int=100, verbosity::Int=0, kwargs...)
+    TensorCrossInterpolation.crossinterpolate2(func::Function, grid::Grid{N}, arch::Architecture{N}; tolerance::Float64=1e-8, maxbonddim::Int=100, verbosity::Int=0, kwargs...)
 
 Interpolate by a 2 site scheme a scalar function `func(point::NTuple{N,Float64})::ValueType` given a specified grid and architecture.
 Uses `TensorCrossInterpolation` (TCI) engine.
 
 """
 function TensorCrossInterpolation.crossinterpolate2(func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture;
-    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))], tolerance::Float64=1e-8, maxdim::Int=100, maxiter::Int=50, verbosity::Int=0, kwargs...) where N
+    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))], tolerance::Float64=1e-8, maxbonddim::Int=100, maxiter::Int=50, verbosity::Int=0, kwargs...) where N
     @assert !isempty(initialpivots) "At least one initial pivot is required."
     @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
 
@@ -106,14 +106,14 @@ function TensorCrossInterpolation.crossinterpolate2(func_type::Type{<:Number}, f
 
     return crossinterpolate2(func_type, batchthreaded_func, local_dims, initialpivots;
         tolerance=tolerance,
-        maxbonddim=maxdim,
+        maxbonddim=maxbonddim,
         maxiter=maxiter,
         verbosity=verbosity,
         kwargs...)
 end
 
 """
-    TensorCrossInterpolation.crossinterpolate1(func::Function, grid::Grid{N}, arch::Architecture{N}; tolerance::Float64=1e-8, maxbond::Int=100, verbosity::Int=0, kwargs...)
+    TensorCrossInterpolation.crossinterpolate1(func::Function, grid::Grid{N}, arch::Architecture{N}; tolerance::Float64=1e-8, verbosity::Int=0, kwargs...)
 
 Interpolate a scalar function `func(point::NTuple{N,Float64})::ValueType` given a specified grid and architecture.
 Uses `TensorCrossInterpolation` (TCI) engine.

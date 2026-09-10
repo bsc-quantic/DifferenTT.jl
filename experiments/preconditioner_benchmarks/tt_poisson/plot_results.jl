@@ -68,7 +68,8 @@ for row in eachrow(df_nocond)
         "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
         "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "M" => hasproperty(row, :M) && !ismissing(row.M) ? Int(row.M) : 0,
-        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing
+        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing,
+        "relative_residual" => hasproperty(row, :relative_residual) && !ismissing(row.relative_residual) ? Float64(row.relative_residual) : NaN
     )
     results_nocond[nodes][k] = d_nocond
 end
@@ -153,6 +154,9 @@ for (node_idx, nodes) in enumerate(system_sizes)
     sinc_build_times = Float64[]
     sinc_solve_times = Float64[]
     sinc_keys = String[]
+    fai_residuals = Float64[]
+    sinc_residuals = Float64[]
+    base_residual = get(grid_data_nocond["baseline"], "relative_residual", NaN)
 
     for (k, v) in grid_data_nocond
         v["method"] == "baseline" && continue
@@ -165,6 +169,7 @@ for (node_idx, nodes) in enumerate(system_sizes)
             push!(sinc_Ms, m_val)
             push!(sinc_build_times, v["precond_build_time"])
             push!(sinc_solve_times, v["solve_time"])
+            push!(sinc_residuals, get(v, "relative_residual", NaN))
             s_sp = base_time / v["solve_time"]
             t_sp = base_time / v["total_time"]
             push!(sinc_solve_speedups, s_sp)
@@ -184,6 +189,7 @@ for (node_idx, nodes) in enumerate(system_sizes)
             push!(gdims, gdim_val)
             push!(fai_build_times, v["precond_build_time"])
             push!(fai_solve_times, v["solve_time"])
+            push!(fai_residuals, get(v, "relative_residual", NaN))
             s_sp = base_time / v["solve_time"]
             t_sp = base_time / v["total_time"]
             push!(fai_solve_speedups, s_sp)
@@ -284,6 +290,48 @@ for (node_idx, nodes) in enumerate(system_sizes)
         end
     else
         @info "Skipping FAI plots for $nodes (no FAI runs)"
+    end
+
+    # Residual is a convergence check (same ResidualALS observer/rtol for all methods).
+    # Sinc is parameterized by M, not FAI G_maxdim, so it gets its own x-axis.
+    if !isempty(sinc_Ms)
+        sinc_order = sortperm(sinc_Ms)
+        p_res_sinc = plot(
+            title="Relative Residual, sinc ($nodes)",
+            xlabel="Sinc quadrature nodes (M)",
+            ylabel=L"\|Ax-b\| / \|b\|",
+            legend=:outertopright,
+            framestyle=:box,
+            yaxis=:log10
+        )
+        plot!(p_res_sinc, sinc_Ms[sinc_order], sinc_residuals[sinc_order],
+            label="Sinc", marker=:diamond, lw=2)
+        if isfinite(base_residual)
+            hline!(p_res_sinc, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
+        end
+        savefig(p_res_sinc, joinpath(plots_dir, "plot_residual_sinc_N_$(nodes).png"))
+    end
+
+    if !isempty(mus)
+        p_res_fai = plot(
+            title="Relative Residual, FAI ($nodes)",
+            xlabel=L"FAI factor bond dimension ($G_{maxdim}$)",
+            ylabel=L"\|Ax-b\| / \|b\|",
+            legend=:outertopright,
+            framestyle=:box,
+            yaxis=:log10
+        )
+        for μ in unique_mus
+            idx = findall(==(μ), mus)
+            p_idx = sortperm(gdims[idx])
+            sorted_idx = idx[p_idx]
+            plot!(p_res_fai, gdims[sorted_idx], fai_residuals[sorted_idx],
+                label="μ = $μ", marker=:circle, lw=2)
+        end
+        if isfinite(base_residual)
+            hline!(p_res_fai, [base_residual], label="Baseline", color=:black, lw=2, ls=:dash)
+        end
+        savefig(p_res_fai, joinpath(plots_dir, "plot_residual_fai_N_$(nodes).png"))
     end
 
     # ---------------------------------------------------------
