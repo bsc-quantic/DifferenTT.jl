@@ -6,7 +6,7 @@
 #
 # Usage: bash experiments/preconditioner_benchmarks/chorin_pipeline/submit.sh [nocond]
 #
-# By default, condition-number estimates are collected only for (8,8) and (10,10).
+# By default, condition-number estimates are collected for (10,10).
 # Pass "nocond" to skip condition-number estimates for all grid sizes.
 #
 
@@ -33,7 +33,8 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --job-name=chorin_pipeline
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
-#SBATCH --array=1-111
+# #SBATCH --array=1-111
+#SBATCH --array=1-37
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
@@ -41,7 +42,8 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 
 module load julia/1.12.0 
 
-echo "Task \${SLURM_ARRAY_TASK_ID} / 111 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+# echo "Task \${SLURM_ARRAY_TASK_ID} / 111 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "Task \${SLURM_ARRAY_TASK_ID} / 37 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
 julia --project=. -t 1 --heap-size-hint=35G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
@@ -50,10 +52,12 @@ ARRAY_EOF
 if [ -n "${NOCOND_ARG}" ]; then
     echo "Mode: nocond (no condition-number estimates)"
 else
-    echo "Mode: default (condition-number estimates on 8x8 and 10x10 only)"
+    # echo "Mode: default (condition-number estimates on 8x8 and 10x10 only)"
+    echo "Mode: default (condition-number estimates on 10x10)"
 fi
 
-echo "Submitted array job: ${ARRAY_JOB_ID} (111 tasks)"
+# echo "Submitted array job: ${ARRAY_JOB_ID} (111 tasks)"
+echo "Submitted array job: ${ARRAY_JOB_ID} (37 tasks)"
 
 # ---- Submit collector job ----
 COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \

@@ -1,5 +1,12 @@
 """
     FAI Preconditioner Benchmark: Local Precond Plotting Script
+
+    Reads the evolution distributed JLD2 results and generates visualizations:
+    1. Pareto fronts of Build Time vs Total Solve Time
+    2. Step-by-step Iteration profiles (total Krylov iterations)
+    3. Step-by-step Speedup profiles
+    4. Site-by-site iteration profiles (sum of iterations across full evolution)
+    5. Scaling behavior across system sizes
 """
 
 using JLD2
@@ -18,8 +25,22 @@ nocond_folder = joinpath(base_folder, "results_nocond")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
+include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
-@info "Loading nocond dataframe from \$results_file_nocond"
+if !isfile(results_file_nocond)
+    alt_file = joinpath(base_folder, "results", "collected_results.jld2")
+    if isfile(alt_file)
+        results_file_nocond = alt_file
+    end
+end
+
+if !isfile(results_file_nocond)
+    @error "Results file not found at $results_file_nocond"
+    exit(0)
+end
+
+@info "Loading nocond dataframe from $results_file_nocond"
 df_nocond = load(results_file_nocond, "df")
 
 results_nocond = Dict()
@@ -39,8 +60,10 @@ for row in eachrow(df_nocond)
         "precond_build_time" => row.precond_build_time,
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
-        "iters" => [mean(step_iters) for step_iters in row.iters],
-        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing,
+        "iters" => [sum(step_iters) for step_iters in row.iters],
+        "iters_per_site" => hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site) ?
+                            row.iters_per_site :
+                            (hasproperty(row, :iters) ? sum(row.iters) : Float64[]),
         "n_steps" => length(row.solve_times)
     )
     results_nocond[nodes][k] = d
@@ -53,12 +76,12 @@ max_solve_speedups = Float64[]
 grid_labels = String[]
 
 for nodes in system_sizes
-    @info "Generating plots for system size \$nodes"
-    push!(grid_labels, "\$(nodes[1])x\$(nodes[2])")
+    @info "Generating plots for system size $nodes"
+    push!(grid_labels, "$(nodes[1])x$(nodes[2])")
 
     grid_data = results_nocond[nodes]
     if !haskey(grid_data, "baseline")
-        @warn "Skipping \$nodes: Missing baseline data"
+        @warn "Skipping $nodes: Missing baseline data"
         push!(max_solve_speedups, NaN)
         push!(max_total_speedups, NaN)
         continue
@@ -69,9 +92,9 @@ for nodes in system_sizes
     base_iters = base["iters"]
     base_solve_times = base["solve_times"]
     n_steps = base["n_steps"]
-    base_iters_per_site = base["iters_per_site"] ./ n_steps
+    base_iters_per_site = get(base, "iters_per_site", Float64[])
     
-    out_dir = joinpath(plots_dir, "\$(nodes[1])x\$(nodes[2])")
+    out_dir = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])")
     mkpath(out_dir)
 
     gdims = unique([v["G_maxdim"] for (k, v) in grid_data if v["mode"] != "baseline"])
@@ -103,19 +126,21 @@ for nodes in system_sizes
     push!(max_total_speedups, best_total_speedup_overall)
     
     # Pareto Plot
-    pf_plot = plot(title="Pareto Front: Build Time vs Total Solve Time (\$nodes)",
+    pf_plot = plot(title="Pareto Front: Build Time vs Total Solve Time ($nodes)",
                    xlabel="Preconditioner Build Time (s)",
                    ylabel="Total Solve Time (s)", legend=:outertopright)
     
-    for gdim in gdims
+    colors = palette(:tab20)
+    for (i, gdim) in enumerate(gdims)
+        c = colors[mod1(i, length(colors))]
         for mode in ["precond_all", "precond_local"]
             idx = findfirst(x -> gdims_list[x] == gdim && modes[x] == mode, 1:length(gdims_list))
             if !isnothing(idx)
                 mode_label = mode == "precond_all" ? "All Sites" : "Local"
                 shape = mode == "precond_all" ? :circle : :square
                 scatter!(pf_plot, [build_times[idx]], [total_solve_times[idx]],
-                    label=latexstring("FAI \\\$\\\\chi_{max}=\$(gdim)\\\$ (\$mode_label)"),
-                    marker=shape, markersize=6)
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ ($mode_label)"),
+                    marker=shape, markersize=6, color=c)
             end
         end
     end
@@ -125,49 +150,109 @@ for nodes in system_sizes
     ylims!(pf_plot, 0, max(maximum(total_solve_times), base_time) * 1.05)
     savefig(pf_plot, joinpath(out_dir, "pareto.png"))
     
-    # Combined Iterations and Speedup across all configurations
-    p_iters_comb = plot(title="Krylov Iterations vs Time Step (\$nodes)", xlabel="Chorin Time Step", ylabel="Avg Krylov Iterations", legend=:outertopright)
-    p_sp_comb = plot(title="Solve Speedup vs Time Step (\$nodes)", xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright)
+    # Combined Iterations, Speedup, and Site-by-Site Iterations across all configurations
+    p_iters_comb = plot(title=latexstring("Total Krylov Iterations vs Time Step ($nodes)"),
+                        xlabel="Chorin Time Step", ylabel="Total Krylov Iterations", legend=:outertopright)
+    p_sp_comb = plot(title=latexstring("Solve Speedup vs Time Step ($nodes)"),
+                     xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright)
+    
+    sites_range_iters = nonempty_numeric_vec(base_iters_per_site) ? (1:length(base_iters_per_site)) : []
+    p_site_comb = plot(title="Site-by-Site Sum of Iterations ($nodes)",
+                       xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright)
+    p_site_all_comb = plot(title="Site-by-Site Sum of Iterations ($nodes)\nAll Preconditioner Setups",
+                           xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright,
+                           size=(1050, 600), legendfont=font(8, "Computer Modern"))
     
     plot!(p_iters_comb, 1:n_steps, base_iters, label="Baseline", color=:black, lw=3)
     hline!(p_sp_comb, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+    if !isempty(sites_range_iters)
+        plot!(p_site_comb, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
+        plot!(p_site_all_comb, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
+    end
     
     colors = palette(:tab20)
     for (i, gdim) in enumerate(gdims)
+        c = colors[mod1(i, length(colors))]
         for mode in ["precond_all", "precond_local"]
             idx = findfirst(x -> gdims_list[x] == gdim && modes[x] == mode, 1:length(gdims_list))
             if !isnothing(idx)
-                v = grid_data[[k for (k, val) in grid_data if val["mode"] == mode && val["G_maxdim"] == gdim][1]]
-                mode_label = mode == "precond_all" ? "All" : "Local"
-                shape = mode == "precond_all" ? :circle : :square
-                
-                plot!(p_iters_comb, 1:n_steps, v["iters"], label=latexstring("FAI \\\$\\\\chi_{max}=\$(gdim)\\\$ (\$mode_label)"), lw=1, marker=shape, markersize=3)
-                plot!(p_sp_comb, 1:n_steps, base_solve_times ./ v["solve_times"], label=latexstring("FAI \\\$\\\\chi_{max}=\$(gdim)\\\$ (\$mode_label)"), lw=1, marker=shape, markersize=3)
+                matching_keys = [k for (k, val) in grid_data if val["mode"] == mode && val["G_maxdim"] == gdim]
+                if !isempty(matching_keys)
+                    v = grid_data[matching_keys[1]]
+                    mode_label = mode == "precond_all" ? "All" : "Local"
+                    shape = mode == "precond_all" ? :circle : :square
+                    
+                    plot!(p_iters_comb, 1:n_steps, v["iters"], label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ ($mode_label)"), lw=1, marker=shape, markersize=3, color=c)
+                    plot!(p_sp_comb, 1:n_steps, base_solve_times ./ v["solve_times"], label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ ($mode_label)"), lw=1, marker=shape, markersize=3, color=c)
+
+                    if !isempty(sites_range_iters)
+                        v_iters_site = get(v, "iters_per_site", nothing)
+                        if nonempty_numeric_vec(v_iters_site)
+                            plot!(p_site_comb, sites_range_iters, v_iters_site,
+                                label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ ($mode_label)"),
+                                lw=1.5, marker=shape, markersize=3, color=c)
+                            plot!(p_site_all_comb, sites_range_iters, v_iters_site,
+                                label=latexstring("FAI \$\\chi=$(gdim)\$ ($mode_label)"),
+                                lw=1.5, marker=shape, markersize=3, color=c)
+                        end
+                    end
+                end
             end
         end
     end
     savefig(p_iters_comb, joinpath(out_dir, "combined_step_iterations.png"))
     savefig(p_sp_comb, joinpath(out_dir, "combined_step_speedup.png"))
+    if !isempty(sites_range_iters)
+        savefig(p_site_comb, joinpath(out_dir, "combined_site_iterations.png"))
+        savefig(p_site_all_comb, joinpath(out_dir, "combined_site_iterations_all_setups.png"))
+    end
     
-    # New plot: Site-by-Site Average Iterations
-    for gdim in gdims
-        p_site = plot(title="Avg Krylov Iterations per Site (\$nodes)\nPreconditioner Rank = \$gdim",
-                      xlabel="MPS Site Index", ylabel="Avg Iterations", legend=:outertopright)
+    # Site-by-Site Iterations, Step Iterations, & Step Speedup per gdim
+    for (i, gdim) in enumerate(gdims)
+        p_site = plot(title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"),
+                      xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright)
         
-        plot!(p_site, 1:length(base_iters_per_site), base_iters_per_site, label="Baseline", color=:black, lw=2)
+        if !isempty(sites_range_iters)
+            plot!(p_site, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=2.5, marker=:circle)
+        end
         
+        p_iters_gdim = plot(title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"),
+                            xlabel="Chorin Time Step", ylabel="Total Krylov Iterations", legend=:outertopright)
+        plot!(p_iters_gdim, 1:n_steps, base_iters, label="Baseline", color=:black, lw=2.5, marker=:circle)
+
+        p_sp_gdim = plot(title=latexstring("Solve Speedup vs Time Step ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"),
+                         xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright)
+        hline!(p_sp_gdim, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+        
+        c_site = colors[mod1(i, length(colors))]
         for mode in ["precond_all", "precond_local"]
             idx = findfirst(x -> gdims_list[x] == gdim && modes[x] == mode, 1:length(gdims_list))
             if !isnothing(idx)
-                v = grid_data[[k for (k, val) in grid_data if val["mode"] == mode && val["G_maxdim"] == gdim][1]]
-                iters_per_site = v["iters_per_site"] ./ n_steps
-                mode_label = mode == "precond_all" ? "All Sites" : "Local"
-                c = mode == "precond_all" ? :blue : :red
-                shape = mode == "precond_all" ? :circle : :square
-                plot!(p_site, 1:length(iters_per_site), iters_per_site, label=mode_label, color=c, lw=2, marker=shape)
+                matching_keys = [k for (k, val) in grid_data if val["mode"] == mode && val["G_maxdim"] == gdim]
+                if !isempty(matching_keys)
+                    v = grid_data[matching_keys[1]]
+                    
+                    v_iters_site = get(v, "iters_per_site", nothing)
+                    mode_label = mode == "precond_all" ? "All Sites" : "Local"
+                    shape = mode == "precond_all" ? :circle : :square
+                    
+                    if !isempty(sites_range_iters) && nonempty_numeric_vec(v_iters_site)
+                        plot!(p_site, sites_range_iters, v_iters_site, label=mode_label, color=c_site, lw=2, marker=shape, ls=mode == "precond_all" ? :solid : :dash)
+                    end
+                    plot!(p_iters_gdim, 1:n_steps, v["iters"], label=mode_label, color=c_site, lw=2, marker=shape)
+                    plot!(p_sp_gdim, 1:n_steps, base_solve_times ./ v["solve_times"], label=mode_label, color=c_site, lw=2, marker=shape, markersize=4)
+                end
             end
         end
-        savefig(p_site, joinpath(out_dir, "site_iterations_gdim_\$(gdim).png"))
+        savefig(p_site, joinpath(out_dir, "site_iterations_gdim_$(gdim).png"))
+        savefig(p_iters_gdim, joinpath(out_dir, "step_iterations_gdim_$(gdim).png"))
+        savefig(p_sp_gdim, joinpath(out_dir, "step_speedup_gdim_$(gdim).png"))
+
+        chi_dir = joinpath(out_dir, "chi_$gdim")
+        mkpath(chi_dir)
+        savefig(p_site, joinpath(chi_dir, "site_iterations.png"))
+        savefig(p_iters_gdim, joinpath(chi_dir, "step_iterations.png"))
+        savefig(p_sp_gdim, joinpath(chi_dir, "step_speedup.png"))
     end
 end
 

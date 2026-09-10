@@ -23,9 +23,9 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline_local_p
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const precond_sites_map = Dict(
-    (8, 8) => 5:12,
-    (10, 10) => 6:15,
-    (12, 12) => 7:18
+    (8, 8) => 6:10,
+    (10, 10) => 8:12,
+    (12, 12) => 10:14
 )
 
 const BOX_SIZE = (2.0, 1.0)
@@ -40,7 +40,7 @@ const dt_map = Dict(
 
 const n_steps_map = Dict(
     (8, 8) => 100,
-    (10, 10) => 15,
+    (10, 10) => 50,
     (12, 12) => 10
 )
 
@@ -52,7 +52,7 @@ function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
 end
 
 const mu_values = [1e7]
-const g_maxdims = 2:10
+const g_maxdims = 2:7
 
 const maxdims_map = Dict(
     (8, 8) => 150,

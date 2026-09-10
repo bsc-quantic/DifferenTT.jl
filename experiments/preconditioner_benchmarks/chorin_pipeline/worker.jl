@@ -34,12 +34,14 @@ const dt_map = Dict(
 
 const n_steps_map = Dict(
     (8, 8) => 100,
-    (10, 10) => 15,
-    (12, 12) => 10
+    (10, 10) => 100,
+    (12, 12) => 25
 )
 
-const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const cond_nodes  = [(8, 8), (10, 10), (12, 12)]
+# const system_sizes = [(8, 8), (10, 10), (12, 12)]
+# const cond_nodes  = [(8, 8), (10, 10), (12, 12)]
+const system_sizes = [(10, 10)]
+const cond_nodes  = [(10, 10)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes

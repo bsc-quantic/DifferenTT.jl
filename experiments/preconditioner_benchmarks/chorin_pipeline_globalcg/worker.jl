@@ -37,7 +37,8 @@ const n_steps_map = Dict(
     (12, 12) => 5
 )
 
-const system_sizes = [(8, 8), (10, 10), (12, 12)]
+# const system_sizes = [(8, 8), (10, 10), (12, 12)]
+const system_sizes = [(8, 8)]
 
 const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
@@ -319,7 +320,7 @@ function run_task(task::TaskSpec)
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-3)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end

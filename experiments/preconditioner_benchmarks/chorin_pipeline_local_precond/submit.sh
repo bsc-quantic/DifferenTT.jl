@@ -33,7 +33,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --job-name=chorin_pipeline_local_precond
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
-#SBATCH --array=1-57
+#SBATCH --array=1-39
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
@@ -41,7 +41,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 
 module load julia/1.12.0 
 
-echo "Task \${SLURM_ARRAY_TASK_ID} / 57 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "Task \${SLURM_ARRAY_TASK_ID} / 39 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
 julia --project=. -t 1 --heap-size-hint=35G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
@@ -53,7 +53,7 @@ else
     echo "Mode: default (condition-number estimates on 8x8 and 10x10 only)"
 fi
 
-echo "Submitted array job: ${ARRAY_JOB_ID} (57 tasks)"
+echo "Submitted array job: ${ARRAY_JOB_ID} (39 tasks)"
 
 # ---- Submit collector job ----
 COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \

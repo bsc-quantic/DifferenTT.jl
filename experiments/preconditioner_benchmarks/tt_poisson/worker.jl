@@ -17,8 +17,8 @@ mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
 const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_NODES_PER_DIM = 20
-const residual_tol = 1e-5
+const N_NODES_PER_DIM = 10
+const residual_tol = 1e-7
 
 const maxdims_map = Dict(
     5 => 30,
@@ -295,13 +295,13 @@ function run_task(task::TaskSpec)
         gdim = task.param2
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
         
-        fai_sweep_kwargs = SweepingArgs(nsweeps=20, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
         
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
-            rtol = 1e-2,
+            rtol = 1e-4,
             krylovdim = 1,
             maxiter = 1000
         )
@@ -340,7 +340,7 @@ function run_task(task::TaskSpec)
         fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=5e-2)
+            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=5e-3)
         end
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
