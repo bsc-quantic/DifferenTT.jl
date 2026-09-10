@@ -111,8 +111,8 @@ object_mask = nothing
 if save_mask
     initialpivot = TensorCrossInterpolation.optfirstpivot(Float64, mask, grid, arch)
 
-    tci_mask, ranks_mask, error_mask = crossinterpolate2(Float64, mask, grid, arch, maxdim=30)
-    # tci_mask, ranks_mask, error_mask = crossinterpolate2(Float64, mask, grid, arch; tolerance=1e-8, maxdim=30, maxiter=200, initialpivots=[initialpivot])
+    tci_mask, ranks_mask, error_mask = crossinterpolate2(Float64, mask, grid, arch; maxbonddim=30)
+    # tci_mask, ranks_mask, error_mask = crossinterpolate2(Float64, mask, grid, arch; tolerance=1e-8, maxbonddim=30, maxiter=200, initialpivots=[initialpivot])
 
     @show ranks_mask
     @show error_mask

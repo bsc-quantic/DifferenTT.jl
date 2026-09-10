@@ -40,7 +40,7 @@ jldopen(mask_path, "w") do file
 
         tci_mask, ranks_mask, error_mask = crossinterpolate2(
             Float64, mask_func, grid, arch;
-            tolerance=1e-10, maxdim=50, initialpivots=[initialpivot]
+            tolerance=1e-10, maxbonddim=50, initialpivots=[initialpivot]
         )
 
         @show ranks_mask
