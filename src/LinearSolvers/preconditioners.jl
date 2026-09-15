@@ -156,6 +156,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     projector_complement = +(identity_mpo(combiner_inds, array_type), -1.0 * projector; alg="directsum")
 
     linsolve_b = identity_mpo(sites, backend_type(operator))
+    linsolve_x0 = lower_triang_mpo(sites, true; array_type=array_type)
 
     for i in 1:n
         A[i] = A[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
@@ -163,12 +164,15 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
 
         replaceind!(linsolve_b[i], sites[i]' => helper_sites[i])
         linsolve_b[i] = linsolve_b[i] * combiners[i]
+
+        replaceind!(linsolve_x0[i], sites[i]' => helper_sites[i])
+        linsolve_x0[i] = linsolve_x0[i] * combiners[i]
     end
 
     projected_A = +(apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum")
     projected_b = MPS([linsolve_b...])
-    projected_x0 = 1e-12 * adapt(array_type, random_mps(combiner_inds; linkdims=1))
-
+    # projected_x0 = apply(projector, 1e-10 * adapt(array_type, ones_mps(combiner_inds, 1)); alg="naive")
+    projected_x0 = MPS([linsolve_x0...])
     ls_kwargs = Dict{Symbol, Any}(kwargs)
     if !isnothing(residual_tol)
         ls_kwargs[:sweep_observer!] = ResidualObserver(A=projected_A, b=projected_b, rtol=residual_tol)
@@ -181,6 +185,13 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     else
         unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0; ls_kwargs...)
     end
+
+    term1 = ITensorMPS.inner(projected_A, unscaledG, projected_A, unscaledG)
+    term2 = 2 * real(ITensorMPS.inner(projected_b', projected_A, unscaledG))
+    term3 = ITensorMPS.inner(projected_b, projected_b)
+    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(projected_b)
+
+    @info "Preconditioner found with rel residual = $rel_error"
 
     # We need to go back to MPO form from the vectorized solution by reverting the combiners!
     for i in 1:n
@@ -408,7 +419,6 @@ Construct the exact explicit QTT representation of the -1.0 * 1D inverse Laplaci
 Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
 Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
 """
-# TODO Understand what is going on with reversal
 function inverse_laplacian_preconditioner(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
     if isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)
         mpo = _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
