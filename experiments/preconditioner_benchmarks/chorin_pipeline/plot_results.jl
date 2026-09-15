@@ -301,8 +301,8 @@ for nodes in system_sizes
             label="Baseline", color=:red, lw=2, marker=:circle,
             title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Chorin Time Step",
-            ylabel="Total Krylov Iterations",
-            legend=:outertopright)
+            ylabel="Total Krylov Iterations"
+        )
         plot!(p_iters, steps_range, best_v["iters"],
             label="FAI", color=:blue, lw=2, marker=:square)
         plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],

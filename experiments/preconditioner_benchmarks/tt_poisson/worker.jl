@@ -16,8 +16,8 @@ const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
 # Sweeping over number of dimensions N
-const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const N_NODES_PER_DIM = 10
+const system_dims = [5, 10, 15, 20, 25, 30]
+const N_NODES_PER_DIM = 15
 const residual_tol = 1e-7
 
 const maxdims_map = Dict(
@@ -42,10 +42,21 @@ const nsweeps_map = Dict(
     50 => 120
 )
 
+const pc_tol_map = Dict(
+    5 => 1e-3,
+    10 => 1e-3,
+    15 => 1e-3,
+    20 => 1e-2,
+    25 => 1e-1,
+    30 => 2e-1,
+    40 => 2e-1,
+    50 => 2e-1
+)
+
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
-const sinc_M_values = [1, 2, 3, 5, 7, 10]
-const fai_configs = [(1e6, 4), (1e6, 6), (1e6, 8), (1e6, 10)]
+const sinc_M_values = [3, 4, 5, 7, 10]
+const fai_configs = [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -135,7 +146,7 @@ function build_problem(N::Int)
     sites = siteinds(arch)
     
     # sol_func = get_gaussian_sol(N, 30)
-    sol_func = get_coulomb_sol(N, 0.02)
+    sol_func = get_coulomb_sol(N, 0.2)
     
     maxdim_N = get(maxdims_map, N, 10)
     
@@ -301,9 +312,9 @@ function run_task(task::TaskSpec)
             ishermitian = true,
             isposdef = true,
             compute_cond = false,
-            rtol = 1e-4,
+            rtol = 1e-5,
             krylovdim = 1,
-            maxiter = 1000
+            maxiter = 2000
         )
         
         fai_resals_solver = ResidualALS(
@@ -340,7 +351,7 @@ function run_task(task::TaskSpec)
         fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=5e-3)
+            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=pc_tol_map[N])
         end
         
         t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
@@ -402,13 +413,28 @@ dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_prob
 dummy_sites = siteinds(dummy_rhs)
 dummy_init = random_mps(dummy_sites)
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_solver = ALS(
+
+# Warmup ALS for FAI builder
+dummy_als = ALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     updater_kwargs = dummy_updater_kwargs
 )
-sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
-fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
+
+# Warmup ResidualALS for actual solve
+dummy_resals = ResidualALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    updater_kwargs = dummy_updater_kwargs,
+    residual_tol = 1e-2
+)
+
+# Build dummy preconditioners
+dummy_sinc = sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 1)
+dummy_fai = fai_preconditioner(dummy_A, 1.0, dummy_als, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+
+# Warmup solves to compile all types
+linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_init)
+linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_sinc, dummy_init)
+linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_fai, dummy_init)
 @info "JIT warmup complete."
 
 result = run_task(task)

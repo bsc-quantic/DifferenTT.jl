@@ -40,7 +40,9 @@ const n_steps_map = Dict(
 # const system_sizes = [(8, 8), (10, 10), (12, 12)]
 const system_sizes = [(8, 8)]
 
-const mu_values = [5e6, 1e7, 5e7, 1e8]
+# const mu_values = [5e6, 1e7, 5e7, 1e8]
+const mu_values = [1e7]
+
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
@@ -56,9 +58,21 @@ const cutoff_map = Dict(
 )
 
 const maxiter_map = Dict(
-    (8, 8) => 2000,
+    (8, 8) => 3000,
     (10, 10) => 3000,
     (12, 12) => 5000
+)
+
+const tol_map = Dict(
+    (8, 8) => 1e-3,
+    (10, 10) => 1e-2,
+    (12, 12) => 1e-2
+)
+
+const fai_tol_map = Dict(
+    (8, 8) => 0.05,
+    (10, 10) => 0.15,
+    (12, 12) => 0.2
 )
 
 ITensors.disable_warn_order()
@@ -97,10 +111,11 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = zeros_mps(sites)
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    v0 = 1.0
+    mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
-    bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
+    bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -225,12 +240,14 @@ function run_task(task::TaskSpec)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
     maxiter_val = maxiter_map[task.nodes]
+    rtol = tol_map[task.nodes]
+    fai_rtol = fai_tol_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
     
     global_updater_kwargs = GlobalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        rtol = 1e-3,
+        rtol = rtol,
         maxiter = maxiter_val,
         maxdim = maxdim_val,
         cutoff = cutoff_val,
@@ -320,7 +337,7 @@ function run_task(task::TaskSpec)
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-3)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -385,8 +402,11 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
 )
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
 dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-chorin_step!(dummy_grid, dummy_updater_kwargs, 0)
+unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+
+chorin_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)
+chorin_step!(dummy_grid, dummy_updater_kwargs, 0, dummy_fai)
 @info "JIT warmup complete."
 
 result = run_task(task)

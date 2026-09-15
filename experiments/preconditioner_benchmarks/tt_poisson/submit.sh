@@ -23,7 +23,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --job-name=tt_poisson
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
-#SBATCH --array=1-88
+#SBATCH --array=1-60
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
@@ -32,13 +32,13 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 
 module load julia/1.12.0 
 
-echo "Task \${SLURM_ARRAY_TASK_ID} / 88 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "Task \${SLURM_ARRAY_TASK_ID} / 60 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
 julia --project=. -t 1 --heap-size-hint=35G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 )
 
-echo "Submitted array job: ${ARRAY_JOB_ID} (88 tasks)"
+echo "Submitted array job: ${ARRAY_JOB_ID} (60 tasks)"
 
 # ---- Submit collector job ----
 COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \

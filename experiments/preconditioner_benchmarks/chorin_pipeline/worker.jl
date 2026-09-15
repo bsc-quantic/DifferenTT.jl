@@ -33,26 +33,28 @@ const dt_map = Dict(
 )
 
 const n_steps_map = Dict(
-    (8, 8) => 100,
+    (8, 8) => 200,
     (10, 10) => 100,
-    (12, 12) => 25
+    (12, 12) => 20
 )
 
-# const system_sizes = [(8, 8), (10, 10), (12, 12)]
-# const cond_nodes  = [(8, 8), (10, 10), (12, 12)]
-const system_sizes = [(10, 10)]
-const cond_nodes  = [(10, 10)]
+const system_sizes = [(8, 8), (10, 10)]
+const cond_nodes  = [(8, 8), (10, 10)]
+# const system_sizes = [(10, 10)]
+# const cond_nodes  = [(10, 10)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
-const mu_values = [5e6, 1e7, 5e7, 1e8]
+# const mu_values = [5e6, 1e7, 5e7, 1e8]
+const mu_values = [1e7]
+
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (8, 8) => 150,
-    (10, 10) => 250,
+    (8, 8) => 200,
+    (10, 10) => 400,
     (12, 12) => 400
 )
 
@@ -70,9 +72,15 @@ const nsweeps_map = Dict(
 )
 
 const tol_map = Dict(
-    (8, 8) => 1e-3,
-    (10, 10) => 1e-3,
-    (12, 12) => 1e-3
+    (8, 8) => 1e-4,
+    (10, 10) => 5e-3,
+    (12, 12) => 1e-2
+)
+
+const fai_tol_map = Dict(
+    (8, 8) => 0.05,
+    (10, 10) => 0.1,
+    (12, 12) => 0.2
 )
 
 ITensors.disable_warn_order()
@@ -115,15 +123,17 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         @warn "mask not found"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    v0 = 1.0
+    mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
-    bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
+    bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    
     
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
@@ -271,6 +281,7 @@ function run_task(task::TaskSpec)
     nsweep_val = nsweeps_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
     tol_val = tol_map[task.nodes]
+    faibuild_tol = fai_tol_map[task.nodes]
     
     sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
@@ -341,7 +352,7 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=gdim, cutoff=1e-12)
         
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
@@ -373,7 +384,7 @@ function run_task(task::TaskSpec)
         fai_builder_solver = fai_als_solver
         
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
+            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -452,20 +463,18 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_grid = build_grid((8, 8), 1)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
-)
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
 dummy_als_solver = ALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     updater_kwargs = dummy_updater_kwargs
 )
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
 # When running with condition numbers, compute time does not really count, so it is better to avoid
 # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0)
+chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, nothing)
+chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, dummy_fai)
 @info "JIT warmup complete."
 
 result = run_task(task)

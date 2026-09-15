@@ -34,7 +34,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 # #SBATCH --array=1-111
-#SBATCH --array=1-37
+#SBATCH --array=1-20
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
@@ -42,8 +42,8 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 
 module load julia/1.12.0 
 
-# echo "Task \${SLURM_ARRAY_TASK_ID} / 111 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
-echo "Task \${SLURM_ARRAY_TASK_ID} / 37 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "Task \${SLURM_ARRAY_TASK_ID} / 20 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+# echo "Task \${SLURM_ARRAY_TASK_ID} / 37 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
 julia --project=. -t 1 --heap-size-hint=35G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
@@ -56,8 +56,8 @@ else
     echo "Mode: default (condition-number estimates on 10x10)"
 fi
 
-# echo "Submitted array job: ${ARRAY_JOB_ID} (111 tasks)"
-echo "Submitted array job: ${ARRAY_JOB_ID} (37 tasks)"
+echo "Submitted array job: ${ARRAY_JOB_ID} (20 tasks)"
+# echo "Submitted array job: ${ARRAY_JOB_ID} (37 tasks)"
 
 # ---- Submit collector job ----
 COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \

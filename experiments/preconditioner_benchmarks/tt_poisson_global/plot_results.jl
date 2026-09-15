@@ -60,14 +60,24 @@ end
 
 system_sizes = sort(collect(keys(results_dict)))
 
-# To track max speedups for the scaling plot
+# To track max speedups and iterations for the scaling plot
 max_total_speedups_fai = Float64[]
 max_solve_speedups_fai = Float64[]
 max_total_speedups_sinc = Float64[]
 max_solve_speedups_sinc = Float64[]
+baseline_iters_list = Float64[]
+min_iters_fai = Float64[]
+min_iters_sinc = Float64[]
 grid_labels = String[]
 
-for nodes in system_sizes
+detailed_fai_solve = Dict{Tuple{Int, Float64}, Vector{Float64}}()
+detailed_fai_total = Dict{Tuple{Int, Float64}, Vector{Float64}}()
+detailed_fai_iters = Dict{Tuple{Int, Float64}, Vector{Float64}}()
+detailed_sinc_solve = Dict{Int, Vector{Float64}}()
+detailed_sinc_total = Dict{Int, Vector{Float64}}()
+detailed_sinc_iters = Dict{Int, Vector{Float64}}()
+
+for (node_idx, nodes) in enumerate(system_sizes)
     @info "Generating plots for system size $nodes"
 
     grid_data = results_dict[nodes]
@@ -78,12 +88,14 @@ for nodes in system_sizes
     end
 
     base_time = grid_data["baseline"]["time"]
+    base_iters = get(grid_data["baseline"], "global_iters", nothing)
 
     # FAI grid-search arrays
     mus = Float64[]
     gdims = Int[]
     fai_solve_speedups = Float64[]
     fai_total_speedups = Float64[]
+    fai_iters_list = Float64[]
     cond_improvement_factors = Float64[]
     fai_build_times = Float64[]
     fai_solve_times = Float64[]
@@ -92,6 +104,7 @@ for nodes in system_sizes
     sinc_Ms = Int[]
     sinc_solve_speedups = Float64[]
     sinc_total_speedups = Float64[]
+    sinc_iters_list = Float64[]
     sinc_build_times = Float64[]
     sinc_solve_times = Float64[]
     sinc_keys = String[]
@@ -99,20 +112,54 @@ for nodes in system_sizes
     for (k, v) in grid_data
         v["method"] == "baseline" && continue
         if v["method"] == "sinc"
+            m_val = v["M"]
             push!(sinc_keys, k)
-            push!(sinc_Ms, v["M"])
+            push!(sinc_Ms, m_val)
             push!(sinc_build_times, v["precond_build_time"])
             push!(sinc_solve_times, v["solve_time"])
-            push!(sinc_solve_speedups, base_time / v["solve_time"])
-            push!(sinc_total_speedups, base_time / v["total_time"])
+            s_sp = base_time / v["solve_time"]
+            t_sp = base_time / v["total_time"]
+            push!(sinc_solve_speedups, s_sp)
+            push!(sinc_total_speedups, t_sp)
+
+            s_iter = get(v, "global_iters", nothing)
+            s_it_val = isnothing(s_iter) || ismissing(s_iter) ? NaN : Float64(s_iter)
+            push!(sinc_iters_list, s_it_val)
+
+            if !haskey(detailed_sinc_solve, m_val)
+                detailed_sinc_solve[m_val] = fill(NaN, length(system_sizes))
+                detailed_sinc_total[m_val] = fill(NaN, length(system_sizes))
+                detailed_sinc_iters[m_val] = fill(NaN, length(system_sizes))
+            end
+            detailed_sinc_solve[m_val][node_idx] = s_sp
+            detailed_sinc_total[m_val][node_idx] = t_sp
+            detailed_sinc_iters[m_val][node_idx] = s_it_val
         elseif v["method"] == "fai"
+            mu_val = v["mu"]
+            gdim_val = v["G_maxdim"]
             push!(fai_keys, k)
-            push!(mus, v["mu"])
-            push!(gdims, v["G_maxdim"])
+            push!(mus, mu_val)
+            push!(gdims, gdim_val)
             push!(fai_build_times, v["precond_build_time"])
             push!(fai_solve_times, v["solve_time"])
-            push!(fai_solve_speedups, base_time / v["solve_time"])
-            push!(fai_total_speedups, base_time / v["total_time"])
+            s_sp = base_time / v["solve_time"]
+            t_sp = base_time / v["total_time"]
+            push!(fai_solve_speedups, s_sp)
+            push!(fai_total_speedups, t_sp)
+
+            f_iter = get(v, "global_iters", nothing)
+            f_it_val = isnothing(f_iter) || ismissing(f_iter) ? NaN : Float64(f_iter)
+            push!(fai_iters_list, f_it_val)
+
+            cfg = (gdim_val, mu_val)
+            if !haskey(detailed_fai_solve, cfg)
+                detailed_fai_solve[cfg] = fill(NaN, length(system_sizes))
+                detailed_fai_total[cfg] = fill(NaN, length(system_sizes))
+                detailed_fai_iters[cfg] = fill(NaN, length(system_sizes))
+            end
+            detailed_fai_solve[cfg][node_idx] = s_sp
+            detailed_fai_total[cfg][node_idx] = t_sp
+            detailed_fai_iters[cfg][node_idx] = f_it_val
         end
     end
 
@@ -121,12 +168,23 @@ for nodes in system_sizes
         continue
     end
 
+    # Sort FAI and Sinc keys so bar plots are ordered by chi and M
+    sort!(fai_keys, by = k -> (get(grid_data[k], "G_maxdim", 0), get(grid_data[k], "mu", NaN)))
+    sort!(sinc_keys, by = k -> get(grid_data[k], "M", 0))
+
     # Track for scaling plot
     push!(grid_labels, "N_$(nodes)")
     push!(max_solve_speedups_fai, isempty(fai_solve_speedups) ? NaN : maximum(fai_solve_speedups))
     push!(max_total_speedups_fai, isempty(fai_total_speedups) ? NaN : maximum(fai_total_speedups))
     push!(max_solve_speedups_sinc, isempty(sinc_solve_speedups) ? NaN : maximum(sinc_solve_speedups))
     push!(max_total_speedups_sinc, isempty(sinc_total_speedups) ? NaN : maximum(sinc_total_speedups))
+
+    b_it = isnothing(base_iters) || ismissing(base_iters) ? NaN : Float64(base_iters)
+    push!(baseline_iters_list, b_it)
+    val_fai = filter(!isnan, fai_iters_list)
+    push!(min_iters_fai, isempty(val_fai) ? NaN : minimum(val_fai))
+    val_sinc = filter(!isnan, sinc_iters_list)
+    push!(min_iters_sinc, isempty(val_sinc) ? NaN : minimum(val_sinc))
 
     unique_mus = sort(unique(mus))
     unique_gdims = sort(unique(gdims))
@@ -213,7 +271,7 @@ for nodes in system_sizes
     # 3. Global Iteration Profiles
     # ---------------------------------------------------------
     base_global_iters = get(grid_data["baseline"], "global_iters", nothing)
-    if !isnothing(base_global_iters)
+    if !isnothing(base_global_iters) && !ismissing(base_global_iters)
         labels = ["Baseline"]
         iters = [base_global_iters]
         bar_colors = [:red]
@@ -221,8 +279,8 @@ for nodes in system_sizes
         # Group FAI configurations
         for k in fai_keys
             v = grid_data[k]
-            if !isnothing(v["global_iters"])
-                push!(labels, "FAI μ=$(v["mu"]), χ=$(v["G_maxdim"])")
+            if !isnothing(v["global_iters"]) && !ismissing(v["global_iters"])
+                push!(labels, "FAI χ=$(v["G_maxdim"])")
                 push!(iters, v["global_iters"])
                 push!(bar_colors, :blue)
             end
@@ -231,7 +289,7 @@ for nodes in system_sizes
         # Group Sinc configurations
         for k in sinc_keys
             v = grid_data[k]
-            if !isnothing(v["global_iters"])
+            if !isnothing(v["global_iters"]) && !ismissing(v["global_iters"])
                 push!(labels, "Sinc M=$(v["M"])")
                 push!(iters, v["global_iters"])
                 push!(bar_colors, :darkorange)
@@ -243,6 +301,7 @@ for nodes in system_sizes
             ylabel="Total Krylov Iterations",
             color=bar_colors,
             legend=false,
+            yscale=:log10,
             xrotation=45,
             bottom_margin=15Plots.mm)
 
@@ -253,7 +312,7 @@ for nodes in system_sizes
     # 3b. Solve Time Profiles
     # ---------------------------------------------------------
     base_solve_time = get(grid_data["baseline"], "solve_time", nothing)
-    if !isnothing(base_solve_time)
+    if !isnothing(base_solve_time) && !ismissing(base_solve_time)
         labels_st = ["Baseline"]
         stimes = [base_solve_time]
         bar_colors_st = [:red]
@@ -261,8 +320,8 @@ for nodes in system_sizes
         # Group FAI configurations
         for k in fai_keys
             v = grid_data[k]
-            if !isnothing(v["solve_time"])
-                push!(labels_st, "FAI μ=$(v["mu"]), χ=$(v["G_maxdim"])")
+            if !isnothing(v["solve_time"]) && !ismissing(v["solve_time"])
+                push!(labels_st, "FAI χ=$(v["G_maxdim"])")
                 push!(stimes, v["solve_time"])
                 push!(bar_colors_st, :blue)
             end
@@ -271,7 +330,7 @@ for nodes in system_sizes
         # Group Sinc configurations
         for k in sinc_keys
             v = grid_data[k]
-            if !isnothing(v["solve_time"])
+            if !isnothing(v["solve_time"]) && !ismissing(v["solve_time"])
                 push!(labels_st, "Sinc M=$(v["M"])")
                 push!(stimes, v["solve_time"])
                 push!(bar_colors_st, :darkorange)
@@ -284,6 +343,7 @@ for nodes in system_sizes
             color=bar_colors_st,
             legend=false,
             xrotation=45,
+            yscale=:log10,
             bottom_margin=15Plots.mm)
 
         savefig(p_times, joinpath(plots_dir, "solve_times_N_$(nodes).png"))
@@ -313,6 +373,94 @@ if !isempty(grid_labels)
     hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
 
     savefig(p_scale, joinpath(plots_dir, "scaling_summary.png"))
+
+    p_scale_iters = plot(
+        title="Scaling of Iterations",
+        xlabel="System Size",
+        ylabel="Total Krylov Iterations",
+        yscale=:log10,
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:topleft,
+        framestyle=:box)
+
+    if any(!isnan, baseline_iters_list)
+        plot!(p_scale_iters, 1:length(grid_labels), baseline_iters_list,
+            label="Baseline", color=:black, lw=3, marker=:circle, markersize=8)
+    end
+    plot!(p_scale_iters, 1:length(grid_labels), min_iters_fai,
+        label="Min FAI Iterations", color=:blue, lw=3, marker=:square, markersize=8)
+    plot!(p_scale_iters, 1:length(grid_labels), min_iters_sinc,
+        label="Min Sinc Iterations", color=:darkorange, lw=3, marker=:diamond, markersize=8)
+
+    savefig(p_scale_iters, joinpath(plots_dir, "scaling_summary_iters.png"))
+
+    p_scale_det_solve = plot(
+        title="Detailed Scaling of Solve Speedups",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:outertopright,
+        framestyle=:box)
+
+    p_scale_det_total = plot(
+        title="Detailed Scaling of Total Speedups",
+        xlabel="System Size",
+        ylabel="Speedup Factor",
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:outertopright,
+        framestyle=:box)
+
+    p_scale_det_iters = plot(
+        title="Detailed Scaling of Iterations",
+        xlabel="System Size",
+        ylabel="Total Krylov Iterations",
+        yscale=:log10,
+        xticks=(1:length(grid_labels), grid_labels),
+        legend=:outertopright,
+        framestyle=:box)
+
+    if any(!isnan, baseline_iters_list)
+        plot!(p_scale_det_iters, 1:length(grid_labels), baseline_iters_list,
+              label="Baseline", color=:black, lw=3, marker=:circle, markersize=6)
+    end
+
+    fai_cfgs = sort(collect(keys(detailed_fai_solve)))
+    sinc_cfgs = sort(collect(keys(detailed_sinc_solve)))
+    
+    fai_colors = [cgrad(:Blues)[z] for z in range(0.45, 1.0, length=max(2, length(fai_cfgs)))]
+    sinc_colors = [cgrad(:Oranges)[z] for z in range(0.45, 1.0, length=max(2, length(sinc_cfgs)))]
+
+    for (i, cfg) in enumerate(fai_cfgs)
+        g, m = cfg
+        c = fai_colors[mod1(i, length(fai_colors))]
+        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_fai_solve[cfg], 
+              label="FAI χ=$(g)", lw=2.5, marker=:circle, color=c)
+        plot!(p_scale_det_total, 1:length(grid_labels), detailed_fai_total[cfg], 
+              label="FAI χ=$(g)", lw=2.5, marker=:square, color=c)
+        if haskey(detailed_fai_iters, cfg)
+            plot!(p_scale_det_iters, 1:length(grid_labels), detailed_fai_iters[cfg], 
+                  label="FAI χ=$(g)", lw=2.5, marker=:circle, color=c)
+        end
+    end
+    
+    for (i, m_val) in enumerate(sinc_cfgs)
+        c = sinc_colors[mod1(i, length(sinc_colors))]
+        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_sinc_solve[m_val], 
+              label="Sinc M=$(m_val)", lw=2.5, marker=:diamond, color=c)
+        plot!(p_scale_det_total, 1:length(grid_labels), detailed_sinc_total[m_val], 
+              label="Sinc M=$(m_val)", lw=2.5, marker=:utriangle, color=c)
+        if haskey(detailed_sinc_iters, m_val)
+            plot!(p_scale_det_iters, 1:length(grid_labels), detailed_sinc_iters[m_val], 
+                  label="Sinc M=$(m_val)", lw=2.5, marker=:diamond, color=c)
+        end
+    end
+
+    hline!(p_scale_det_solve, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    hline!(p_scale_det_total, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+
+    savefig(p_scale_det_solve, joinpath(plots_dir, "scaling_summary_detailed_solve.png"))
+    savefig(p_scale_det_total, joinpath(plots_dir, "scaling_summary_detailed_total.png"))
+    savefig(p_scale_det_iters, joinpath(plots_dir, "scaling_summary_detailed_iters.png"))
 end
 
 @info "All plots successfully generated in $plots_dir"

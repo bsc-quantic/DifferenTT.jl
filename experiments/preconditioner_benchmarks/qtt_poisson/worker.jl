@@ -184,9 +184,10 @@ task = all_tasks[task_id]
 @info "Running JIT warmup..."
 dummy_A, dummy_exact = setup_problem((4,))
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_solver = ALS(
+dummy_solver = AMEn(
     sweep_kwargs = SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-12),
-    updater_kwargs = dummy_updater_kwargs
+    updater_kwargs = dummy_updater_kwargs,
+    enrichment_maxdim = 1
 )
 dummy_D_kwargs = (; cutoff=1e-11, oversample=2, maxdim=2)
 dummy_precond = fai_preconditioner(dummy_A, 1.0, dummy_solver, dummy_D_kwargs; totalmaxdim=2, preconditioning=false)
