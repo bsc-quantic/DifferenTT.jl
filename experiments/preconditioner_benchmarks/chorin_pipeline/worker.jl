@@ -105,12 +105,12 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = load(MASK_FILE, mask_key)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
-        object_mask = zeros_mps(sites)
-        @warn "mask not found"
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    mps_vx = tt_mul(object_mask, ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -204,7 +204,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     previous_p = nothing
     if isnothing(previous_p)
         Random.seed!(grid.nodes[1] + grid.nodes[2])
-        pdt_guess = random_mps(siteinds(grid.A))
+        pdt_guess = random_mps(siteinds(rhs))
     else
         pdt_guess = previous_p * dt
     end
@@ -253,7 +253,7 @@ end
 
 function run_task(task::TaskSpec)
     N_STEPS = n_steps_map[task.nodes]
-    Random.seed!(task.nodes)
+    Random.seed!(task.nodes[1] + task.nodes[2])
     compute_cond = should_compute_cond(task.nodes, use_nocond)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
