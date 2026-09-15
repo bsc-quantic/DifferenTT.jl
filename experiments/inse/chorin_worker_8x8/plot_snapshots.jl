@@ -4,7 +4,7 @@ using DifferenTT
 using JLD2
 using Plots
 
-base_folder = "experiments/inse/chorin_worker_8x8/results"
+base_folder = "experiments/inse/chorin_worker_8x8/results_nocond"
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 
 if !isfile(snapshots_file)
@@ -17,7 +17,7 @@ grid = file["grid"]
 fig_size = (1200, 600)
 plot_dir = base_folder
 
-for i in 200:200:1000
+for i in 200:200:3000
     if haskey(file, "u_fields_$i")
         @info "Generating plots for step $i"
         u_fields = file["u_fields_$i"]

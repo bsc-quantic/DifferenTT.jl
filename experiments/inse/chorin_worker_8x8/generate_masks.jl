@@ -13,15 +13,19 @@ using JLD2
 using DifferenTT
 
 box_size = (2.0, 1.0)
-system_sizes = [(8, 8), (10, 10), (12, 12)]
+# system_sizes = [(8, 8), (9, 8), (10, 10), (12, 12)]
+system_sizes = [(9, 8)]
+
 mask_path = "experiments/inse/chorin_worker_8x8/masks.jld2"
 
 maskplots_subfolder = "experiments/inse/chorin_worker_8x8/maskplots"
 mkpath(maskplots_subfolder)
 
-function circle(x, y; bx=0.5, by=0.5, rad=0.1)
+function circle(x, y; bx=0.5, by=0.45, rad=0.1)
     value = (x - bx)^2 + (y - by)^2 - rad^2
-    return 0.5 * (1 + tanh(700 * value))
+    # return 0.5 * (1 + tanh(1000 * value))
+    value += abs(value)
+    return 1 - exp(-1000 * value)
 end
 
 mask_func(x) = circle(x...)
@@ -40,7 +44,7 @@ jldopen(mask_path, "w") do file
 
         tci_mask, ranks_mask, error_mask = crossinterpolate2(
             Float64, mask_func, grid, arch;
-            tolerance=1e-10, maxdim=50, initialpivots=[initialpivot]
+            tolerance=1e-10, maxdim=30, initialpivots=[initialpivot]
         )
 
         @show ranks_mask

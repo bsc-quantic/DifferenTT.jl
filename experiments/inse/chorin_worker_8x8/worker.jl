@@ -24,23 +24,23 @@ const MASK_FILE = "experiments/inse/chorin_worker_8x8/masks.jld2"
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
-const RE_NUM = 1000
+const RE_NUM = 10000
 const STENCIL_ORDER = 8
 
 const dt_map = Dict(
-    (8, 8) => 0.001,
+    (9, 8) => 0.001,
     (10, 10) => 0.0005,
     (12, 12) => 0.00001
 )
 
 const n_steps_map = Dict(
-    (8, 8) => 1501,
+    (9, 8) => 3001,
     (10, 10) => 15,
     (12, 12) => 10
 )
 
-const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const cond_nodes  = [(8, 8), (10, 10), (12, 12)]
+const system_sizes = [(9, 8), (10, 10), (12, 12)]
+const cond_nodes  = [(9, 8), (10, 10), (12, 12)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
@@ -50,26 +50,26 @@ const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (8, 8) => 150,
+    (9, 8) => 250,
     (10, 10) => 250,
     (12, 12) => 400
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
 const cutoff_map = Dict(
-    (8, 8) => 0.0,
+    (9, 8) => 0.0,
     (10, 10) => 0.0,
     (12, 12) => 0.0
 )
 
 const nsweeps_map = Dict(
-    (8, 8) => 100,
+    (9, 8) => 100,
     (10, 10) => 100,
     (12, 12) => 100
 )
 
 const tol_map = Dict(
-    (8, 8) => 1e-3,
+    (9, 8) => 1e-3,
     (10, 10) => 1e-3,
     (12, 12) => 1e-3
 )
@@ -85,7 +85,7 @@ struct TaskSpec
 end
 
 function build_task_list()
-    return [TaskSpec((8, 8), true, 0.0, 0)]
+    return [TaskSpec((9, 8), true, 0.0, 0)]
 end
 
 function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
@@ -105,13 +105,16 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         @warn "mask not found"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    v0 = 1.0
+    mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
-    bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
+    bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
+
+    bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     
@@ -122,7 +125,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, 3.0, max_steps, :rk4)
+    time_evol = TimeEvol(0.0, 4.0, max_steps, :rk4)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -252,6 +255,36 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     return res_dict
 end
 
+function load_kickstart!(grid, base_folder)
+    snapshots_path = joinpath(base_folder, "snapshots.jld2")
+    start_step = 1
+    if isfile(snapshots_path)
+        jldopen(snapshots_path, "r") do file
+            last_step = 0
+            for k in keys(file)
+                if startswith(k, "u_fields_")
+                    step = parse(Int, k[10:end])
+                    last_step = max(last_step, step)
+                end
+            end
+            if last_step > 0
+                @info "Kickstarting simulation from step $last_step in snapshots.jld2"
+                start_step = last_step + 1
+                loaded_u = last(file["u_fields_$last_step"])
+                for m in loaded_u
+                    siteinds(m) != grid.experiment.u_fields.usites && replace_siteinds!(m, grid.experiment.u_fields.usites)
+                end
+                grid.experiment.u_fields[1] = loaded_u
+                
+                loaded_p = last(file["p_field_$last_step"])
+                siteinds(loaded_p) != grid.experiment.p_field.usites && replace_siteinds!(loaded_p, grid.experiment.p_field.usites)
+                grid.experiment.p_field[1] = loaded_p
+            end
+        end
+    end
+    return start_step
+end
+
 function run_task(task::TaskSpec)
     Random.seed!(task.nodes[1] + task.nodes[2])
     N_STEPS = n_steps_map[task.nodes]
@@ -270,15 +303,17 @@ function run_task(task::TaskSpec)
         # Warmup
         chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0)
         
-        solve_times = Float64[]
-        iters = Vector{Float64}[]
-        residuals = Float64[]
-        solution_maxdims = Int[]
+        start_step = load_kickstart!(grid, base_folder)
+        
+        solve_times = zeros(Float64, start_step - 1)
+        iters = [Float64[] for _ in 1:(start_step - 1)]
+        residuals = zeros(Float64, start_step - 1)
+        solution_maxdims = zeros(Int, start_step - 1)
         iters_per_site = Float64[]
         conds_per_site = Float64[]
         avg_conds = Float64[]
         
-        for i in 1:N_STEPS
+        for i in start_step:N_STEPS
             @info "Step $i / $N_STEPS"
             
             step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i)
@@ -321,7 +356,7 @@ function run_task(task::TaskSpec)
             "key" => "baseline",
             "nodes" => task.nodes,
             "compute_cond" => compute_cond,
-            "total_solve_time" => sum(solve_times),
+            "total_solve_time" => isempty(solve_times) ? 0.0 : sum(solve_times),
             "solve_times" => solve_times,
             "iters" => iters,
             "iters_per_site" => iters_per_site,
@@ -331,9 +366,10 @@ function run_task(task::TaskSpec)
         )
         
         if compute_cond
-            conds_per_site ./= N_STEPS
+            performed_steps = max(1, N_STEPS - start_step + 1)
+            conds_per_site ./= performed_steps
             result_dict["conds_per_site"] = conds_per_site
-            result_dict["avg_cond"] = mean(avg_conds)
+            result_dict["avg_cond"] = isempty(avg_conds) ? NaN : mean(avg_conds)
         end
         
         return result_dict
@@ -382,15 +418,17 @@ function run_task(task::TaskSpec)
         # Warmup
         chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0, precond)
         
-        solve_times = Float64[]
-        iters = Vector{Float64}[]
-        residuals = Float64[]
-        solution_maxdims = Int[]
+        start_step = load_kickstart!(grid, base_folder)
+        
+        solve_times = zeros(Float64, start_step - 1)
+        iters = [Float64[] for _ in 1:(start_step - 1)]
+        residuals = zeros(Float64, start_step - 1)
+        solution_maxdims = zeros(Int, start_step - 1)
         iters_per_site = Float64[]
         pc_conds_per_site = Float64[]
         avg_pc_conds = Float64[]
         
-        for i in 1:N_STEPS
+        for i in start_step:N_STEPS
             @info "Step $i / $N_STEPS"
             
             step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i, precond)
@@ -424,7 +462,7 @@ function run_task(task::TaskSpec)
             "mu" => μ,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
-            "total_solve_time" => sum(solve_times),
+            "total_solve_time" => isempty(solve_times) ? 0.0 : sum(solve_times),
             "solve_times" => solve_times,
             "iters" => iters,
             "iters_per_site" => iters_per_site,
@@ -433,9 +471,10 @@ function run_task(task::TaskSpec)
         )
         
         if compute_cond
-            pc_conds_per_site ./= N_STEPS
+            performed_steps = max(1, N_STEPS - start_step + 1)
+            pc_conds_per_site ./= performed_steps
             result_dict["pc_conds_per_site"] = pc_conds_per_site
-            result_dict["avg_pc_cond"] = mean(avg_pc_conds)
+            result_dict["avg_pc_cond"] = isempty(avg_pc_conds) ? NaN : mean(avg_pc_conds)
         end
         
         return result_dict
@@ -452,7 +491,7 @@ end
 task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
-dummy_grid = build_grid((8, 8), 1)
+dummy_grid = build_grid((9, 8), 1)
 dummy_solver = ResidualALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2
