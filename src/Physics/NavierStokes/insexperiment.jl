@@ -75,38 +75,84 @@ struct INSExperiment{N} <: INSExperimentBase
     end
 end
 
-"""
-    check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number)
+# # TODO THIS NEEDS TO TAKE INTO ACCOUNT TOO THE VELOCITY MAGNITUDES!!!
 
-Checks if the temporal and spatial dimensions of a given INSExperiment comply with the CFL condition for stability
+# """
+#     check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number)
+
+# Checks if the temporal and spatial dimensions of a given INSExperiment comply with the CFL condition for stability
+# """
+# function check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number) where N
+#     dt = time_evol_settings.dt
+#     max_dt = typemax(Float64)
+#     for i in 1:N
+#         max_advection_dt = grid.dx[i] # Velocity is assumed to be always u ~ 1.0
+#         if dt > max_advection_dt
+#             @warn "CFL condition violated for advection term in dimension $i"
+#             max_dt = max_advection_dt
+#         end
+
+#         max_diffusion_dt = Re * grid.dx[i]^2
+#         if dt > max_diffusion_dt
+#             @warn "CFL condition violated for diffusion term in dimension $i"
+#             max_dt = min(max_dt, max_diffusion_dt)
+#         end
+#     end
+
+#     if dt > max_dt
+#         @info "CFL condition violated, must set dt<=$max_dt"
+#     else
+#         @info "CFL condition satisfied"
+#     end
+# end
+
+# function check_cfl(experiment::INSExperiment{N}) where N
+#     check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re)
+# end
+
 """
-# TODO THIS NEEDS TO TAKE INTO ACCOUNT TOO THE VELOCITY MAGNITUDES!!!
-function check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number) where N
+    check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number;
+              stencil_order::Int=8, vmax::Float64=1.0) where N
+
+Checks RK4 stability for the actual finite-difference stencil in use, combining
+advection and diffusion contributions from all spatial dimensions.
+"""
+function check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number;
+                    stencil_order::Int=8, vmax::Float64=1.0) where N
     dt = time_evol_settings.dt
-    max_dt = typemax(Float64)
-    for i in 1:N
-        max_advection_dt = grid.dx[i] # Velocity is assumed to be always u ~ 1.0
-        if dt > max_advection_dt
-            @warn "CFL condition violated for advection term in dimension $i"
-            max_dt = max_advection_dt
-        end
 
-        max_diffusion_dt = Re * grid.dx[i]^2
-        if dt > max_diffusion_dt
-            @warn "CFL condition violated for diffusion term in dimension $i"
-            max_dt = min(max_dt, max_diffusion_dt)
-        end
+    # Spectral radius bounds from the actual stencil coefficients (Gershgorin bound,
+    # exact for these central-difference coefficient patterns).
+    s1 = sum(abs, values(derivative_coefficients(1; stencil_order=stencil_order)))  # advection
+    s2 = sum(abs, values(derivative_coefficients(2; stencil_order=stencil_order)))  # diffusion
+
+    # Contributions from each dimension add, since RK4 advances the full combined RHS.
+    adv_eig  = sum(vmax * s1 / grid.dx[i]        for i in 1:N)
+    diff_eig = sum((1/Re) * s2 / grid.dx[i]^2    for i in 1:N)
+
+    # RK4 stability boundaries: |z|<=2√2 on the imaginary axis (advection is skew-symmetric),
+    # |z|<=2.785 on the negative real axis (diffusion is symmetric negative-definite).
+    dt_adv_max  = 2*sqrt(2) / adv_eig
+    dt_diff_max = 2.785 / diff_eig
+
+    dt_max = min(dt_adv_max, dt_diff_max)
+
+    if dt > dt_adv_max
+        @warn "CFL condition violated for advection term" dt dt_adv_max
+    end
+    if dt > dt_diff_max
+        @warn "CFL condition violated for diffusion term" dt dt_diff_max
     end
 
-    if dt > max_dt
-        @info "CFL condition violated, must set dt<=$max_dt"
+    if dt > dt_max
+        @info "CFL condition violated, must set dt<=$dt_max"
     else
-        @info "CFL condition satisfied"
+        @info "CFL condition satisfied" dt dt_max
     end
 end
 
-function check_cfl(experiment::INSExperiment{N}) where N
-    check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re)
+function check_cfl(experiment::INSExperiment{N}; stencil_order::Int=8, vmax::Float64=1.0) where N
+    check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re; stencil_order=stencil_order, vmax=vmax)
 end
 
 function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N 
