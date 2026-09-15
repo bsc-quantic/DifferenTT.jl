@@ -202,19 +202,20 @@ function regularization_check(experiment::INSExperiment{N}) where N
 end
 
 """
-    chorin_evolve!(experiment::INSExperiment{N}, save_every::Int=1, logger=nothing, log_filename::String="chorin_euler_log"; solver::Function=cg_linsolve, linsolve_kwargs) where N
+    chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, stepper::AbstractExplicitStepper, save_every::Int=1, logger=nothing, log_filename::String="chorin_log") where N
 
 Run the time evolution of the Incompressible Navier-Stokes experiment using Chorin's projection method.
-Supports Euler and RK4 time integration. Updates the fields in `experiment` in-place (appends to time series).
+The predictor step uses `stepper` (`ExplicitEuler`, `RK4`, ...). Updates the fields in `experiment` in-place (appends to time series).
 
 # Arguments
 - `experiment::INSExperiment{N}`: The experiment object to evolve.
+- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation (`ALS`, `ResidualALS`, `GlobalCG`, ...). Truncation and stopping criteria come from its `sweep_kwargs` / `updater_kwargs`.
+- `stepper::AbstractExplicitStepper`: Time integrator for the explicit advection-diffusion predictor.
 - `save_every::Int`: MPS saving frequency. Defaults to 1 (save every step).
 - `logger`: Optional logger for data persistence.
 - `log_filename::String`: Filename prefix for logged data.
-- `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation (`ALS`, `ResidualALS`, `GlobalCG`, ...). Truncation and stopping criteria come from its `sweep_kwargs` / `updater_kwargs`.
 """
-function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, save_every::Int=1, logger=nothing, log_filename::String="chorin_euler_log") where N
+function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, stepper::AbstractExplicitStepper, save_every::Int=1, logger=nothing, log_filename::String="chorin_log") where N
     any(x -> length(x) == 0, [component.u for component in experiment.u_fields.components]) && throw(ArgumentError("Velocity fields in experiment must be initialized."))
     length(experiment.p_field.u) > 0 && throw(ArgumentError("Pressure field must not be initialized."))
 
@@ -239,15 +240,6 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     @info "regularization = $regularization_needed"
     linsolve_errorlog = Float64[]
 
-    scheme_sym = experiment.time_evol_settings.scheme
-    if scheme_sym == :euler
-        stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    elseif scheme_sym == :rk4
-        stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    else
-        throw(ArgumentError("Unknown scheme $scheme_sym"))
-    end
-    
     rhs_func = NavierStokesPredictorRHS(experiment, u_diff_ops, u_boundary_nullifier)
 
     for s in 1:experiment.time_evol_settings.nsteps

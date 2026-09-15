@@ -141,7 +141,7 @@ p_field = ScalarField(sites, arch, bcsp)
 # 6. Set up the time evolution settings, the Reynolds number and the experiment object  
 
 ############################################################
-time_evol_settings = TimeEvol(0.0, 0.00005, 4, :euler)
+time_evol_settings = TimeEvol(0.0, 0.00005, 4)
 Re = 3000
 experiment = INSExperiment(grid, time_evol_settings, v_field, p_field, Re, object_mask; stencil_order=8, maxdim=150, cutoff=1e-11)
 

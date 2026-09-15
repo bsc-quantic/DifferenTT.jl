@@ -14,7 +14,7 @@ using LinearAlgebra
     sites = siteinds(2, sum(abs, nodes))
     
     # 1 step RK4 to check pipeline works
-    time_evol_settings = TimeEvol(0.0, 0.001, 1, :rk4)
+    time_evol_settings = TimeEvol(0.0, 0.001, 1)
     Re = 100
     
     # Initialization
@@ -47,7 +47,8 @@ using LinearAlgebra
     
     @testset "Chorin Step Execution" begin
         # Do not save or log to file
-        DifferenTT.chorin_evolve!(experiment, solver, 1, nothing, "")
+        stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+        DifferenTT.chorin_evolve!(experiment, solver, stepper, 1, nothing, "")
         
         # Verify that fields have been updated
         @test length(experiment.u_fields) == 2

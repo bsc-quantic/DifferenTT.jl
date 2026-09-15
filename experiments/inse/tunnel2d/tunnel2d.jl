@@ -133,9 +133,9 @@ end
 
 isnothing(object_mask) && @warn "Mask was not initialized."
 
-# time_evol_settings = TimeEvol(0.0, 2.0, 401, :rk4)
-# time_evol_settings = TimeEvol(0.0, 1.0, 4001, :rk4)
-time_evol_settings = TimeEvol(0.0, 0.001, 1, :rk4)
+# time_evol_settings = TimeEvol(0.0, 2.0, 401)
+# time_evol_settings = TimeEvol(0.0, 1.0, 4001)
+time_evol_settings = TimeEvol(0.0, 0.001, 1)
 
 Re = 3000
 
@@ -209,7 +209,8 @@ reset_timer!(timeit_to)
 
 save_step = 1
 plot_step = 1 #How many save steps to skip from plot to plot
-chorin_evolve!(experiment, solver, save_step, logger, destination_file)
+stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
+chorin_evolve!(experiment, solver, stepper, save_step, logger, destination_file)
 display(timeit_to)
 TimerOutputs.disable_debug_timings(DifferenTT)
 
