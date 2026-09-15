@@ -266,9 +266,6 @@ function run_task(task::TaskSpec)
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
         
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val)
-        
         solve_times = Float64[]
         iters = Vector{Float64}[]
         residuals = Float64[]
@@ -367,9 +364,6 @@ function run_task(task::TaskSpec)
             precond = FactorizedPreconditioner(Gl)
         end
         
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, precond)
-        
         solve_times = Float64[]
         iters = Vector{Float64}[]
         residuals = Float64[]
@@ -441,20 +435,23 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_grid = build_grid((8, 8), 1)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
-)
+dummy_sweep = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8)
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
 dummy_als_solver = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    sweep_kwargs = dummy_sweep,
     updater_kwargs = dummy_updater_kwargs
 )
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 
-# When running with condition numbers, compute time does not really count, so it is better to avoid
-# crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3)
+# Baseline path: unpreconditioned ResidualALS inside chorin_step!
+chorin_step!(dummy_grid, dummy_sweep, false, 1e-3)
+
+# FAI path: FactorizedPreconditioner + chorin_step!
+unscaledG, D = DifferenTT.fai_dg(
+    dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2);
+    preconditioning=false, residual_tol=1e-2
+)
+dummy_precond = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+chorin_step!(dummy_grid, dummy_sweep, false, 1e-3, dummy_precond)
 @info "JIT warmup complete."
 
 result = run_task(task)

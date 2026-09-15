@@ -6,7 +6,6 @@
 #
 # Usage: bash experiments/preconditioner_benchmarks/chorin_pipeline/submit.sh [nocond]
 #
-# By default, condition-number estimates are collected only for (8,8) and (10,10).
 # Pass "nocond" to skip condition-number estimates for all grid sizes.
 #
 
