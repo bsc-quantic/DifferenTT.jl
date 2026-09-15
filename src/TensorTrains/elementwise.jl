@@ -397,7 +397,6 @@ Inputs must share the same physical site indexing and array backend.
 - `MPS` for MPS-MPS products.
 - `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
 """
-
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     @assert siteinds(mps1) == siteinds(mps2) "Site indices between the two MPS must match"
     @assert backend_type(mps1) == backend_type(mps2) "Array backend mismatch between multiplied MPSs"
