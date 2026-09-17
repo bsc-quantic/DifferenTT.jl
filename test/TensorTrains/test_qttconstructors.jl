@@ -80,5 +80,26 @@ using LinearAlgebra
         @test length(mpo) == n
         @test linkdim(mpo, n - 2) == 1
         @test linkdim(mpo, n - 1) == 2
+
+        # Content check: the default flag is :upper, which must place the corner block in the
+        # top-left N_corner x N_corner corner and leave every other entry exactly zero. The
+        # corner block itself must equal the upper-triangular Toeplitz matrix of `coefficients`
+        # (this is the same block `corner_pick_matrix(coefficients, :upper)` builds for the dense
+        # TT path, and the two are required to agree — see bcoperators.jl tests).
+        full = DifferenTT.contract_mpo(mpo)
+        N = 2^n
+        expected_corner = DifferenTT.upper_toeplitz_matrix(coefficients)
+        @test full[1:4, 1:4] ≈ expected_corner atol=1e-12
+        @test full[1:4, 1:4] ≈ DifferenTT.corner_pick_matrix(coefficients, :upper) atol=1e-12
+        @test all(iszero, full[1:4, 5:N])
+        @test all(iszero, full[5:N, :])
+
+        mpo_lower = DifferenTT.corner_pick_mpo(coefficients, sites, :lower)
+        full_lower = DifferenTT.contract_mpo(mpo_lower)
+        expected_corner_lower = DifferenTT.lower_toeplitz_matrix(coefficients)
+        @test full_lower[N-3:N, N-3:N] ≈ expected_corner_lower atol=1e-12
+        @test full_lower[N-3:N, N-3:N] ≈ DifferenTT.corner_pick_matrix(coefficients, :lower) atol=1e-12
+        @test all(iszero, full_lower[N-3:N, 1:N-4])
+        @test all(iszero, full_lower[1:N-4, :])
     end
 end

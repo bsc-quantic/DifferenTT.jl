@@ -188,7 +188,7 @@ function corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vecto
     tensor = permutedims(reshape(block1, 2, 2, 2), (1, 2, 3)) # Does this permute do anything?
     push!(corner_tensors, tensor)
 
-    term1 = coefficients[1] * eye + coefficients[1] * J
+    term1 = coefficients[1] * eye + coefficients[2] * J
     term2 = coefficients[3] * eye + coefficients[2] * J' + coefficients[4] * J
 
     block2 = vcat(term1, term2)
