@@ -14,7 +14,6 @@ spectral κ for CG/PCG, 2-norm κ from singular values for GMRES.
 # Returns
 - `(x::ITensor, (; info))`: The solution tensor and a named tuple containing KrylovKit convergence info.
 """
-
 struct KrylovUpdater <: AbstractUpdater end
 
 # ---------------------------------------------------------------------------

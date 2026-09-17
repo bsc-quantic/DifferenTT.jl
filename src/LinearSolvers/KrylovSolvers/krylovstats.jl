@@ -42,12 +42,12 @@ function _ensure_sweep_capacity!(stats::KrylovSweepStats, position::Int, sweep::
     return stats
 end
 
+# TODO Understand how the different iter values are recorded -> TESTS DISABLED FOR NOW
 """
     record_krylov_numiter!(stats::KrylovSweepStats, lpos::Int, numiter::Integer)
 
 Record one local Krylov iteration count for projected position `lpos`.
 """
-# TODO Understand how the different iter values are recorded -> TESTS DISABLED FOR NOW
 function record_krylov_numiter!(stats::KrylovSweepStats, lpos::Int, numiter::Integer)
     if stats.last_lpos == 0 && lpos == 0 && stats.moved_since_sweep_start
         stats.current_sweep += 1
