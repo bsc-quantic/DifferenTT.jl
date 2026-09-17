@@ -10,25 +10,43 @@ using TensorCrossInterpolation
 using DifferenTT
 using Random
 
+# ---- Runtime configuration ----
+# Match BLAS threads to the SLURM allocation (falls back to Julia's default if not under SLURM).
+if haskey(ENV, "SLURM_CPUS_PER_TASK")
+    LinearAlgebra.BLAS.set_num_threads(parse(Int, ENV["SLURM_CPUS_PER_TASK"]))
+end
+@info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
+const default_base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
+base_folder = get(ENV, "TT_POISSON_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
+# Timed solves per task. Run 1 is "cold" (JIT/heap warmed only by the global warmup at process
+# start), the last run is "warm" and is what `solve_time` reports. This isolates any remaining
+# compilation/GC bias between methods so it shows up explicitly in `*_cold` fields instead of
+# silently inflating one method's `solve_time` over another's.
+const N_SOLVE_REPEATS = use_nocond ? 2 : 1
+
+# Number of sweeps used to build the FAI preconditioner. Overridable for fast local verification;
+# the default (30) matches the value used in every existing FAI run.
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_FAI_NSWEEPS", "30"))
+
 # Sweeping over number of dimensions N
-const system_dims = [5, 10, 15, 20, 25, 30]
+const system_dims = [5, 10, 15, 20, 25]
 const N_NODES_PER_DIM = 15
 const residual_tol = 1e-7
 
 const maxdims_map = Dict(
-    5 => 30,
-    10 => 30,
-    15 => 40,
-    20 => 40,
-    25 => 45,
+    5 => 20,
+    10 => 25,
+    15 => 25,
+    20 => 30,
+    25 => 30,
     30 => 50,
-    40 => 60,
-    50 => 60
+    40 => 50,
+    50 => 50
 )
 
 const nsweeps_map = Dict(
@@ -178,23 +196,21 @@ function build_problem(N::Int)
     return A, rhs_mps, sol_mps, A_list, grid, arch
 end
 
-function run_task(task::TaskSpec)
-    N = task.N
-    Random.seed!(task.N)
-    @info "Building problem for N=$N..."
-    A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
-    
-    sites = siteinds(rhs)
-    init_mps = random_mps(sites)
-    
-    # Tight maxdim truncation may mess up the residual truncation...
+"""
+    make_outer_solver(A, rhs; nsweeps, maxdim)
+
+Build the outer ResidualALS solver and its stat-tracking stores. Used both by the JIT `warmup()`
+and by every timed task, with identical argument *types* (same `observer!` type, same store
+types), so no keyword-method compilation is deferred into the timed solve.
+"""
+function make_outer_solver(A::MPO, rhs::MPS; nsweeps::Int, maxdim::Int)
     residual_observer = ResidualObserver(A, rhs, residual_tol)
-    sweep_kwargs = SweepingArgs(nsweeps=nsweeps_map[N], maxdim=maxdims_map[N], cutoff=1e-13, observer! = residual_observer)
-    
+    sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=maxdim, cutoff=1e-13, observer! = residual_observer)
+
     numiter_store = KrylovSweepStats()
-    cond_store = use_nocond ? nothing : KrylovCondStats()
+    cond_store    = use_nocond ? nothing : KrylovCondStats()
     pc_cond_store = use_nocond ? nothing : KrylovCondStats()
-    
+
     updater_kwargs = LocalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
@@ -206,238 +222,269 @@ function run_task(task::TaskSpec)
         pc_cond_store = pc_cond_store
     )
 
-    resals_solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5*residual_tol)
-    amen_solver = AMEn(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
+    solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5*residual_tol)
+    return solver, (; numiter_store, cond_store, pc_cond_store)
+end
 
-    solver = resals_solver
-    
-    if task.method == "baseline"
+"""
+    build_fai(A, μ, gdim; nsweeps, residual_tol_build)
+
+Build the FAI factorized preconditioner. Used both by `warmup()` and by every timed FAI task,
+with the same keyword set as the real build (including `residual_tol`), so the
+`sweep_observer!` path inside `fai_dg` is compiled ahead of time.
+"""
+function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
+    fai_sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
+
+    fai_updater_kwargs = LocalUpdaterArgs(
+        ishermitian = true,
+        isposdef = true,
+        compute_cond = false,
+        rtol = 1e-5,
+        krylovdim = 1,
+        maxiter = 2000
+    )
+
+    fai_als_solver = ALS(
+        sweep_kwargs = fai_sweep_kwargs,
+        updater_kwargs = fai_updater_kwargs,
+    )
+
+    D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+
+    return fai_preconditioner(A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build)
+end
+
+"""Summarize a `KrylovSweepStats` store: per-site iteration totals, grand total, and sweep count."""
+function krylov_iters_summary(stats_store::KrylovSweepStats)
+    per_site = DifferenTT.positions_sum(stats_store)
+    nsweeps = isempty(stats_store.numiters) ? 0 : maximum(length, stats_store.numiters)
+    return (; iters_per_site = per_site, total_iters = sum(per_site; init=0.0), nsweeps)
+end
+
+"""
+    repeated_solves(A, rhs, init_mps, N, solve_fn)
+
+Run the outer solve `N_SOLVE_REPEATS` times, each with a freshly built solver/stores and a
+`GC.gc(true)` right before timing. Returns a `Vector{NamedTuple}`, one entry per repeat, holding
+the solution, timings (`time`, `compile_time`, `gc_time`), iteration/sweep counts, and the stores
+(needed afterwards for condition-number extraction).
+"""
+function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
+    runs = NamedTuple[]
+    for rep in 1:N_SOLVE_REPEATS
+        solver, stores = make_outer_solver(A, rhs; nsweeps=nsweeps_map[N], maxdim=maxdims_map[N])
+        x0 = copy(init_mps)
+        GC.gc(true)
+        stats = @timed solve_fn(solver, x0)
+        numiters = krylov_iters_summary(stores.numiter_store)
+        push!(runs, (;
+            out_mps = stats.value,
+            time = stats.time,
+            compile_time = stats.compile_time,
+            gc_time = stats.gctime,
+            stores = stores,
+            numiters...
+        ))
+        @info "solve repeat $rep" time=stats.time compile=stats.compile_time gc=stats.gctime total_iters=numiters.total_iters nsweeps=numiters.nsweeps
+    end
+    return runs
+end
+
+function run_task(task::TaskSpec; warmup_time::Float64=0.0)
+    N = task.N
+    Random.seed!(task.N)
+    @info "Building problem for N=$N..."
+    A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
+
+    sites = siteinds(rhs)
+    init_mps = random_mps(sites)
+
+    method = task.method
+    key = ""
+    extra = Dict{String, Any}()
+    pc = nothing
+    t_build = 0.0
+    build_compile = 0.0
+    build_gc = 0.0
+
+    if method == "baseline"
+        key = "baseline"
         @info "Running Baseline N=$N"
-        
-        t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
-        
-        # Compute relative residual using inner product to save memory
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
-
-        
-        iters_per_site = DifferenTT.positions_sum(numiter_store)
-        
-        result_dict = Dict{String, Any}(
-            "key" => "baseline",
-            "N" => N,
-            "method" => "baseline",
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_solve,
-            "relative_error" => rel_error,
-            "iters_per_site" => iters_per_site,
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        result_dict["compute_cond"] = !use_nocond
-        if !use_nocond
-            conds_per_site = positions_mean_cond(cond_store)
-            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
-            result_dict["conds_per_site"] = conds_per_site
-            result_dict["avg_cond"] = avg_cond
-        end
-        
-        return result_dict
-        
-    elseif task.method == "sinc"
+    elseif method == "sinc"
         M = Int(task.param1)
+        key = "sinc_M_$(M)"
         @info "Running Sinc (M=$M) N=$N"
-        
-        t_build = @elapsed begin
-            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M)
-        end
-        
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps)
-        
-        # Compute relative residual using inner product to save memory
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
-        iters_per_site = DifferenTT.positions_sum(numiter_store)
-        
-        result_dict = Dict{String, Any}(
-            "key" => "sinc_M_$(M)",
-            "N" => N,
-            "method" => "sinc",
-            "M" => M,
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
-            "iters_per_site" => iters_per_site,
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        result_dict["compute_cond"] = !use_nocond
-        if !use_nocond
-            conds_per_site = positions_mean_cond(cond_store)
-            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
-            result_dict["conds_per_site"] = conds_per_site
-            result_dict["avg_cond"] = avg_cond
-            
-            pc_conds_per_site = positions_mean_cond(pc_cond_store)
-            avg_pc_cond = length(pc_conds_per_site) > 0 ? sum(pc_conds_per_site) / length(pc_conds_per_site) : NaN
-            result_dict["pc_conds_per_site"] = pc_conds_per_site
-            result_dict["avg_pc_cond"] = avg_pc_cond
-        end
-        
-        return result_dict
-        
-    elseif task.method == "fai"
+        GC.gc(true)
+        b = @timed sincquadrature_preconditioner(arch, sites, A_list, M)
+        pc = b.value
+        t_build = b.time
+        build_compile = b.compile_time
+        build_gc = b.gctime
+        extra["M"] = M
+
+    elseif method == "fai"
         μ = task.param1
         gdim = task.param2
+        key = "fai_mu_$(μ)_gdim_$(gdim)"
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
-        
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
-        
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            compute_cond = false,
-            rtol = 1e-5,
-            krylovdim = 1,
-            maxiter = 2000
-        )
-        
-        fai_resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 5e-3
-        )
 
-        fai_als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
+        GC.gc(true)
+        b = @timed build_fai(A, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N])
+        pc = b.value
+        t_build = b.time
+        build_compile = b.compile_time
+        build_gc = b.gctime
+        extra["mu"] = μ
+        extra["G_maxdim"] = gdim
 
-        fai_amen_solver =  AMEn(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            enrichment_maxdim = 1,
-        )
+    else
+        error("Unknown task method: $method")
+    end
 
-        fai_global_solver = GlobalCG(
-            updater_kwargs = GlobalUpdaterArgs(
-                ishermitian = true,
-                isposdef = true,
-                rtol = 5e-2,
-                maxiter = 3000,
-                maxdim = gdim,
-                cutoff = 1e-12,
-                orth_maxdim = gdim,
-                orth_cutoff = 0.1 * 1e-12
-            )
-        )
+    solve_fn = isnothing(pc) ?
+        (s, x0) -> linearsolve(s, A, rhs, x0) :
+        (s, x0) -> linearsolve(s, A, rhs, pc, x0)
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = fai_als_solver
-        
-        t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=pc_tol_map[N])
-        end
-        
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
-        
-        # Compute relative residual using inner product to save memory
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
+    runs = repeated_solves(A, rhs, init_mps, N, solve_fn)
+    cold = first(runs)
+    warm = last(runs)
 
-        iters_per_site = DifferenTT.positions_sum(numiter_store)
-        
-        result_dict = Dict{String, Any}(
-            "key" => "fai_mu_$(μ)_gdim_$(gdim)",
-            "N" => N,
-            "method" => "fai",
-            "mu" => μ,
-            "G_maxdim" => gdim,
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
-            "iters_per_site" => iters_per_site,
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        result_dict["compute_cond"] = !use_nocond
-        if !use_nocond
-            conds_per_site = positions_mean_cond(cond_store)
-            avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
-            result_dict["conds_per_site"] = conds_per_site
-            result_dict["avg_cond"] = avg_cond
-            
+    out_mps = warm.out_mps
+
+    # Compute relative residual using inner product to save memory
+    term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+    term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+    term3 = ITensorMPS.inner(rhs, rhs)
+    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+    @info "Residual $rel_error"
+    @info "Max bond dimension = $(maxlinkdim(out_mps))"
+
+    result_dict = Dict{String, Any}(
+        "key" => key,
+        "N" => N,
+        "method" => method,
+        "precond_build_time" => t_build,
+        "solve_time" => warm.time,
+        "total_time" => t_build + warm.time,
+        "relative_error" => rel_error,
+        "iters_per_site" => warm.iters_per_site,
+        "solution_maxdim" => maxlinkdim(out_mps),
+
+        # Diagnostics: cold (first) vs warm (last, reported above) timed solve, to expose any
+        # remaining compilation/GC bias directly in the data.
+        "solve_time_cold" => cold.time,
+        "compile_time_cold" => cold.compile_time,
+        "gc_time_cold" => cold.gc_time,
+        "total_iters_cold" => cold.total_iters,
+
+        "compile_time" => warm.compile_time,
+        "gc_time" => warm.gc_time,
+        "total_iters" => warm.total_iters,
+        "nsweeps" => warm.nsweeps,
+
+        "n_solve_repeats" => N_SOLVE_REPEATS,
+
+        "precond_build_compile_time" => build_compile,
+        "precond_build_gc_time" => build_gc,
+
+        "hostname" => gethostname(),
+        "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+        "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+        "julia_threads" => Threads.nthreads(),
+        "warmup_time" => warmup_time,
+    )
+
+    if !isnothing(pc)
+        result_dict["precond_linkdims"] = collect(linkdims(pc.operator))
+        result_dict["precond_maxlinkdim"] = maxlinkdim(pc.operator)
+    end
+
+    for (k, v) in extra
+        result_dict[k] = v
+    end
+
+    result_dict["compute_cond"] = !use_nocond
+    if !use_nocond
+        cond_store = warm.stores.cond_store
+        conds_per_site = positions_mean_cond(cond_store)
+        avg_cond = length(conds_per_site) > 0 ? sum(conds_per_site) / length(conds_per_site) : NaN
+        result_dict["conds_per_site"] = conds_per_site
+        result_dict["avg_cond"] = avg_cond
+
+        if !isnothing(pc)
+            pc_cond_store = warm.stores.pc_cond_store
             pc_conds_per_site = positions_mean_cond(pc_cond_store)
             avg_pc_cond = length(pc_conds_per_site) > 0 ? sum(pc_conds_per_site) / length(pc_conds_per_site) : NaN
             result_dict["pc_conds_per_site"] = pc_conds_per_site
             result_dict["avg_pc_cond"] = avg_pc_cond
         end
-        
-        return result_dict
     end
+
+    return result_dict
 end
 
-task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
-all_tasks = build_task_list()
+"""
+    warmup()
 
-if task_id < 1 || task_id > length(all_tasks)
-    error("Invalid task_id=$task_id")
+JIT-warm every code path that a timed task will exercise, using the *same* solver/FAI-builder
+factories as the timed tasks (`make_outer_solver`, `build_fai`) so that argument-type-specific
+compilation (e.g. `observer! = ResidualObserver`, `numiter_store::KrylovSweepStats`) happens here
+rather than inside a timed solve. `dummy_N = 4` is the smallest chain with an interior 2-site
+bond (both left/right environments are real, non-trivial tensors), which is what N >= 3 problems
+actually hit.
+"""
+function warmup()
+    @info "Running JIT warmup..."
+    t = @elapsed begin
+        dummy_N = 4
+        dA, drhs, dsol, dA_list, dgrid, darch = build_problem(dummy_N)
+        dsites = siteinds(drhs)
+        dinit = random_mps(dsites)
+
+        dsinc = sincquadrature_preconditioner(darch, dsites, dA_list, 1)
+        dfai  = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+
+        solve_fns = (
+            (s, x0) -> linearsolve(s, dA, drhs, x0),
+            (s, x0) -> linearsolve(s, dA, drhs, dsinc, x0),
+            (s, x0) -> linearsolve(s, dA, drhs, dfai, x0),
+        )
+        for solve_fn in solve_fns
+            solver, stores = make_outer_solver(dA, drhs; nsweeps=2, maxdim=10)
+            @timed solve_fn(solver, copy(dinit))
+            DifferenTT.positions_sum(stores.numiter_store)
+        end
+
+        # Warm the residual-computation path used after every solve.
+        ITensorMPS.inner(dA, dinit, dA, dinit)
+    end
+    @info "JIT warmup complete" seconds=t
+    return t
 end
 
-task = all_tasks[task_id]
+function main()
+    task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
+    all_tasks = build_task_list()
 
-@info "Running JIT warmup..."
-dummy_N = 2
-dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
-dummy_sites = siteinds(dummy_rhs)
-dummy_init = random_mps(dummy_sites)
-dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+    if task_id < 1 || task_id > length(all_tasks)
+        error("Invalid task_id=$task_id")
+    end
 
-# Warmup ALS for FAI builder
-dummy_als = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    updater_kwargs = dummy_updater_kwargs
-)
+    task = all_tasks[task_id]
 
-# Warmup ResidualALS for actual solve
-dummy_resals = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    updater_kwargs = dummy_updater_kwargs,
-    residual_tol = 1e-2
-)
+    warmup_time = warmup()
 
-# Build dummy preconditioners
-dummy_sinc = sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 1)
-dummy_fai = fai_preconditioner(dummy_A, 1.0, dummy_als, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+    result = run_task(task; warmup_time=warmup_time)
 
-# Warmup solves to compile all types
-linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_init)
-linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_sinc, dummy_init)
-linearsolve(dummy_resals, dummy_A, dummy_rhs, dummy_fai, dummy_init)
-@info "JIT warmup complete."
+    mkpath(TASKS_DIR)
+    output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
+    save(output_file, "result", result)
+end
 
-result = run_task(task)
-
-output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
-save(output_file, "result", result)
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end

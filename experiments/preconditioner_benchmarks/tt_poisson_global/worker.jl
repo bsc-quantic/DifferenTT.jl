@@ -10,22 +10,36 @@ using TensorCrossInterpolation
 using DifferenTT
 using Random
 
-base_folder = "experiments/preconditioner_benchmarks/tt_poisson_global/results"
+if haskey(ENV, "SLURM_CPUS_PER_TASK")
+    LinearAlgebra.BLAS.set_num_threads(parse(Int, ENV["SLURM_CPUS_PER_TASK"]))
+end
+@info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
+
+const default_base_folder = "experiments/preconditioner_benchmarks/tt_poisson_global/results"
+base_folder = get(ENV, "TT_POISSON_GLOBAL_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
+# Timed solves per task. Run 1 is "cold", the last run is "warm" and is what `solve_time`
+# reports. This file has no cond/nocond distinction, so every task always repeats.
+const N_SOLVE_REPEATS = 2
+
+# Number of sweeps used to build the FAI preconditioner. Overridable for fast local
+# verification; the default (30) matches the literal used today.
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_GLOBAL_FAI_NSWEEPS", "30"))
+
 # Sweeping over number of dimensions N
 # const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const system_dims = [5, 10, 15, 20, 25, 30]
+const system_dims = [5, 10, 15, 20, 25]
 
 const N_NODES_PER_DIM = 15
 
 const maxdims_map = Dict(
     5 => 20,
-    10 => 30,
-    15 => 30,
+    10 => 25,
+    15 => 25,
     20 => 30,
-    25 => 50,
+    25 => 30,
     30 => 50,
     40 => 50,
     50 => 50
@@ -202,216 +216,230 @@ function build_problem(N::Int)
 end
 
 
-function run_task(task::TaskSpec)
+"""
+    make_global_solver(; rtol, maxiter, maxdim, cutoff, orth_maxdim, orth_cutoff)
+
+Build the outer GlobalCG solver and its iteration-count `Ref`. Used both by the JIT `warmup()`
+and by every timed task, with identical argument *types*, so no keyword-method compilation is
+deferred into the timed solve.
+"""
+function make_global_solver(; rtol::Float64, maxiter::Int, maxdim::Int, cutoff::Float64, orth_maxdim::Int, orth_cutoff::Float64)
+    numiter_store = Ref{Int}(0)
+    updater_kwargs = GlobalUpdaterArgs(
+        ishermitian = true,
+        isposdef = true,
+        rtol = rtol,
+        maxiter = maxiter,
+        maxdim = maxdim,
+        cutoff = cutoff,
+        orth_maxdim = orth_maxdim,
+        orth_cutoff = orth_cutoff,
+        numiter_store = numiter_store,
+    )
+    return GlobalCG(updater_kwargs=updater_kwargs), numiter_store
+end
+
+"""
+    build_fai(A, μ, gdim; nsweeps, residual_tol_build)
+
+Build the FAI factorized preconditioner. Used both by `warmup()` and by every timed FAI task,
+with the same keyword set as the real build (including `residual_tol`), so the
+`sweep_observer!` path inside `fai_dg` is compiled ahead of time.
+"""
+function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
+    fai_sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
+    fai_updater_kwargs = LocalUpdaterArgs(
+        ishermitian = true, isposdef = true, compute_cond = false,
+        rtol = 1e-5, krylovdim = 1, maxiter = 2000,
+    )
+    fai_als_solver = ALS(sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
+    D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
+    return fai_preconditioner(A, μ, fai_als_solver, D_kwargs_local;
+                              totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build)
+end
+
+"""Run the outer GlobalCG solve N_SOLVE_REPEATS times with a fresh solver each time. Returns a
+Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and iteration count."""
+function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
+    runs = NamedTuple[]
+    for rep in 1:N_SOLVE_REPEATS
+        solver, numiter_store = make_global_solver(; rtol=rtol_map[N], maxiter=maxiter_map[N],
+                                                     maxdim=maxdims_map[N], cutoff=1e-13,
+                                                     orth_maxdim=maxdims_map[N], orth_cutoff=1e-14)
+        x0 = copy(init_mps)
+        GC.gc(true)
+        stats = @timed solve_fn(solver, x0)
+        push!(runs, (; out_mps = stats.value, time = stats.time, compile_time = stats.compile_time,
+                       gc_time = stats.gctime, global_iters = numiter_store[]))
+        @info "solve repeat $rep" time=stats.time compile=stats.compile_time gc=stats.gctime global_iters=numiter_store[]
+    end
+    return runs
+end
+
+function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     N = task.N
     Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
-    
+
     sites = siteinds(rhs)
     init_mps = random_mps(sites)
-    
-    global_updater_kwargs = GlobalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = rtol_map[N],
-        maxiter = maxiter_map[N],
-        maxdim = maxdims_map[N],
-        cutoff = 1e-13,
-        orth_maxdim = maxdims_map[N],
-        orth_cutoff = 1e-14,
-        numiter_store = Ref{Int}(0)
-    )
 
-    global_solver = GlobalCG(updater_kwargs=global_updater_kwargs)
+    method = task.method
+    key = ""
+    extra = Dict{String, Any}()
+    pc = nothing
+    t_build = 0.0
+    build_compile = 0.0
+    build_gc = 0.0
 
-    solver = global_solver
-    
-    if task.method == "baseline"
+    if method == "baseline"
+        key = "baseline"
         @info "Running Baseline N=$N"
-        
-        t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
-        
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
-        
-        result_dict = Dict{String, Any}(
-            "key" => "baseline",
-            "N" => N,
-            "method" => "baseline",
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_solve,
-            "relative_error" => rel_error,
-            "global_iters" => global_updater_kwargs.numiter_store[],
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        return result_dict
-        
-    elseif task.method == "sinc"
+
+    elseif method == "sinc"
         M = Int(task.param1)
+        key = "sinc_M_$(M)"
         @info "Running Sinc (M=$M) N=$N"
-        
-        t_build = @elapsed begin
-            sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M)
-        end
-        
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, sinc_pc, init_mps)
-        
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
-        
-        result_dict = Dict{String, Any}(
-            "key" => "sinc_M_$(M)",
-            "N" => N,
-            "method" => "sinc",
-            "M" => M,
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
-            "global_iters" => global_updater_kwargs.numiter_store[],
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        return result_dict
-        
-    elseif task.method == "fai"
+
+        GC.gc(true)
+        b = @timed sincquadrature_preconditioner(arch, sites, A_list, M)
+        pc = b.value
+        t_build = b.time
+        build_compile = b.compile_time
+        build_gc = b.gctime
+        extra["M"] = M
+
+    elseif method == "fai"
         μ = task.param1
         gdim = task.param2
+        key = "fai_mu_$(μ)_gdim_$(gdim)"
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
-        
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
-        
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            compute_cond = false,
-            rtol = 1e-5,
-            krylovdim = 1,
-            maxiter = 2000
-        )
-        
-        fai_resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 5e-3
-        )
 
-        fai_als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
+        GC.gc(true)
+        b = @timed build_fai(A, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N])
+        pc = b.value
+        t_build = b.time
+        build_compile = b.compile_time
+        build_gc = b.gctime
+        extra["mu"] = μ
+        extra["G_maxdim"] = gdim
 
-        fai_amen_solver =  AMEn(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            enrichment_maxdim = 1,
-        )
-
-        fai_global_solver = GlobalCG(
-            updater_kwargs = GlobalUpdaterArgs(
-                ishermitian = true,
-                isposdef = true,
-                rtol = 5e-2,
-                maxiter = 3000,
-                maxdim = gdim,
-                cutoff = 1e-12,
-                orth_maxdim = gdim,
-                orth_cutoff = 0.1 * 1e-12
-            )
-        )
-
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        fai_builder_solver = fai_als_solver
-        
-        t_build = @elapsed begin
-            fai_pc = fai_preconditioner(A, μ, fai_builder_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=pc_tol_map[N])
-        end
-        
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, fai_pc, init_mps)
-        
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_error"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
-
-        result_dict = Dict{String, Any}(
-            "key" => "fai_mu_$(μ)_gdim_$(gdim)",
-            "N" => N,
-            "method" => "fai",
-            "mu" => μ,
-            "G_maxdim" => gdim,
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
-            "global_iters" => global_updater_kwargs.numiter_store[],
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        return result_dict
+    else
+        error("Unknown task method: $method")
     end
+
+    solve_fn = isnothing(pc) ?
+        (s, x0) -> linearsolve(s, A, rhs, x0) :
+        (s, x0) -> linearsolve(s, A, rhs, pc, x0)
+
+    runs = repeated_solves(A, rhs, init_mps, N, solve_fn)
+    cold = first(runs)
+    warm = last(runs)
+
+    out_mps = warm.out_mps
+
+    term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+    term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+    term3 = ITensorMPS.inner(rhs, rhs)
+    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+
+    @info "Residual $rel_error"
+    @info "Max bond dimension = $(maxlinkdim(out_mps))"
+
+    if cold.global_iters != warm.global_iters
+        @warn "cold/warm global_iters disagree" cold=cold.global_iters warm=warm.global_iters
+    end
+
+    result_dict = Dict{String, Any}(
+        "key" => key,
+        "N" => N,
+        "method" => method,
+        "precond_build_time" => t_build,
+        "solve_time" => warm.time,
+        "total_time" => t_build + warm.time,
+        "relative_error" => rel_error,
+        "global_iters" => warm.global_iters,
+        "solution_maxdim" => maxlinkdim(out_mps),
+
+        "solve_time_cold" => cold.time,
+        "compile_time_cold" => cold.compile_time,
+        "gc_time_cold" => cold.gc_time,
+        "global_iters_cold" => cold.global_iters,
+
+        "compile_time" => warm.compile_time,
+        "gc_time" => warm.gc_time,
+
+        "n_solve_repeats" => N_SOLVE_REPEATS,
+
+        "precond_build_compile_time" => build_compile,
+        "precond_build_gc_time" => build_gc,
+
+        "hostname" => gethostname(),
+        "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+        "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+        "julia_threads" => Threads.nthreads(),
+        "warmup_time" => warmup_time,
+    )
+
+    if !isnothing(pc)
+        result_dict["precond_linkdims"] = collect(linkdims(pc.operator))
+        result_dict["precond_maxlinkdim"] = maxlinkdim(pc.operator)
+    end
+
+    for (k, v) in extra
+        result_dict[k] = v
+    end
+
+    return result_dict
 end
 
-task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
-all_tasks = build_task_list()
+"""
+    warmup()
 
-if task_id < 1 || task_id > length(all_tasks)
-    error("Invalid task_id=$task_id")
+JIT-warm every code path a timed task will exercise, using the *same* solver/FAI-builder
+factories as the timed tasks so argument-type-specific compilation happens here rather than
+inside a timed solve. `dummy_N = 4` is the smallest chain with an interior 2-site bond.
+"""
+function warmup()
+    @info "Running JIT warmup..."
+    t = @elapsed begin
+        dummy_N = 4
+        dA, drhs, dsol, dA_list, dgrid, darch = build_problem(dummy_N)
+        dsites = siteinds(drhs)
+        dinit = random_mps(dsites)
+
+        dsinc = sincquadrature_preconditioner(darch, dsites, dA_list, 1)
+        dfai  = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+
+        solve_fns = (
+            (s, x0) -> linearsolve(s, dA, drhs, x0),
+            (s, x0) -> linearsolve(s, dA, drhs, dsinc, x0),
+            (s, x0) -> linearsolve(s, dA, drhs, dfai, x0),
+        )
+        for solve_fn in solve_fns
+            solver, _ = make_global_solver(; rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, orth_maxdim=10, orth_cutoff=1e-8)
+            @timed solve_fn(solver, copy(dinit))
+        end
+
+        ITensorMPS.inner(dA, dinit, dA, dinit)
+    end
+    @info "JIT warmup complete" seconds=t
+    return t
 end
 
-task = all_tasks[task_id]
+function main()
+    task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
+    all_tasks = build_task_list()
+    (1 <= task_id <= length(all_tasks)) || error("Invalid task_id=$task_id")
 
-@info "Running JIT warmup..."
-dummy_N = 2
-dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
-dummy_sites = siteinds(dummy_rhs)
-dummy_init = random_mps(dummy_sites)
+    warmup_time = warmup()
+    result = run_task(all_tasks[task_id]; warmup_time=warmup_time)
 
-dummy_updater_kwargs = GlobalUpdaterArgs(
-    ishermitian = true,
-    isposdef = true,
-    rtol = 1e-2,
-    maxiter = 2,
-    maxdim = 10,
-    cutoff = 1e-8,
-    orth_maxdim = 10,
-    orth_cutoff = 1e-8,
-    numiter_store = Ref{Int}(0)
-)
-dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
+    mkpath(TASKS_DIR)
+    save(joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2"), "result", result)
+end
 
-dummy_als_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_als = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    updater_kwargs = dummy_als_updater_kwargs
-)
-
-dummy_sinc = sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 1)
-dummy_fai = fai_preconditioner(dummy_A, 1.0, dummy_als, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-
-linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
-linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_sinc, dummy_init)
-linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_fai, dummy_init)
-@info "JIT warmup complete."
-
-result = run_task(task)
-
-output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
-save(output_file, "result", result)
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
