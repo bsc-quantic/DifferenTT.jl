@@ -13,9 +13,13 @@ using Random
 const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", "1"))
 LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 @info "Set BLAS threads to $cpus_per_task"
+flush(stderr)
+@info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
+flush(stderr)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
+const default_base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
+base_folder = get(ENV, "CHORIN_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
@@ -23,12 +27,12 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.j
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
-const RE_NUM = 1000
+const RE_NUM = 10000
 const STENCIL_ORDER = 8
 
 const dt_map = Dict(
     (8, 8) => 0.001,
-    (10, 10) => 0.0005,
+    (10, 10) => 0.0002,
     (12, 12) => 0.00001
 )
 
@@ -54,7 +58,7 @@ const g_maxdims = 2:10
 
 const maxdims_map = Dict(
     (8, 8) => 200,
-    (10, 10) => 400,
+    (10, 10) => 350,
     (12, 12) => 400
 )
 
@@ -73,12 +77,12 @@ const nsweeps_map = Dict(
 
 const tol_map = Dict(
     (8, 8) => 1e-4,
-    (10, 10) => 5e-3,
+    (10, 10) => 1e-3,
     (12, 12) => 1e-2
 )
 
 const fai_tol_map = Dict(
-    (8, 8) => 0.05,
+    (8, 8) => 0.1,
     (10, 10) => 0.1,
     (12, 12) => 0.2
 )
@@ -106,13 +110,19 @@ function build_task_list()
     return tasks
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
-    sites = siteinds(2, sum(nodes))
+function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
+    # `siteinds` mints fresh, uniquely-tagged Index objects on every call. A throwaway warmup
+    # grid built independently from the real grid would therefore carry *different* site
+    # indices even with identical nodes/mask — any MPO built against one (e.g. a FAI
+    # preconditioner built from the real grid's A) cannot be applied to the other's MPS/MPO,
+    # and ITensorMPS raises "must share a set of site indices". Passing `shared_sites` lets a
+    # warmup grid reuse the real grid's indices so cross-grid objects like `precond` stay valid.
+    sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
-    
+
     # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
-    # The benchmark requires the true masks to reflect exact conditions. 
+    # The benchmark requires the true masks to reflect exact conditions.
     # For now, we will create an empty mask if the file doesn't exist, to prevent crashing.
     if isfile(MASK_FILE)
         mask_key = "mask_$(nodes[1])_$(nodes[2])"
@@ -122,35 +132,37 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = zeros_mps(sites)
         @warn "mask not found"
     end
-    
+
     v0 = 1.0
     mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
     mps_vy = 0.0 * ones_mps(sites)
-    
+
     bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
+
+    bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    
-    
+
+
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
     bcsp = BoundaryConditions(bcspx, bcspy)
-    
+
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
-    
+
     time_evol = TimeEvol(0.0, dt_map[nodes] * max_steps, max_steps, :rk4)
     experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
-    
+
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
     p_diff_ops = DifferentialOpsScalar(grid, experiment.p_field; stencil_order=STENCIL_ORDER)
     Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER)
     A = -1.0 * Δ_cache
-    
+
     return (;
         nodes=nodes,
         A=A,
@@ -158,7 +170,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         u_diff_ops=u_diff_ops,
         u_boundary_null=u_boundary_null,
         p_diff_ops=p_diff_ops,
-        object_mask=object_mask
+        object_mask=object_mask,
+        sites=sites
     )
 end
 
@@ -178,9 +191,9 @@ function build_rhs(grid, masked_u)
     ∇u = divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
     ∇u_correction = divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
     Δp_correction_mpo = scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    
+
     Δp_correction = isnothing(Δp_correction_mpo) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites); alg="naive", cutoff=cutoff_val, maxdim=maxdim_val)
-    
+
     ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff_val, maxdim=maxdim_val)
     ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff_val, maxdim=maxdim_val)
 
@@ -192,7 +205,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
-    
+
     numiter_store = KrylovSweepStats()
     cond_store = compute_cond ? KrylovCondStats() : nothing
     pc_cond_store = compute_cond ? KrylovCondStats() : nothing
@@ -214,7 +227,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = resals_solver
-    
+
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
     # previous_p = nothing
@@ -226,11 +239,13 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     end
 
     if isnothing(precond)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess)
+        stats = @timed linearsolve(solver, grid.A, rhs, pdt_guess)
     else
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess)
+        stats = @timed linearsolve(solver, grid.A, rhs, precond, pdt_guess)
     end
-    
+    pdt = stats.value
+    t = stats.time
+
     # Compute relative residual using inner product to save memory
     term1 = ITensorMPS.inner(grid.A, pdt, grid.A, pdt)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
@@ -238,12 +253,14 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
     @info "Residual $rel_res"
-    
+    flush(stderr)
+
     sol_maxdim = maxlinkdim(pdt)
     @info "Sol_maxdim = $sol_maxdim"
-    
+    flush(stderr)
+
     divfree_p = pdt * (1/dt)
-    
+
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
@@ -256,23 +273,23 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     end
     rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
     timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
-    
+
     experiment.u_fields[length(experiment.u_fields)] = timestepped_u
-    
+
     iters_per_site = DifferenTT.positions_sum(numiter_store)
-    
-    res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
-    
+
+    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, iters_per_site)
+
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
         local_cond_mean = isempty(local_conds) ? NaN : mean(local_conds)
         res_dict = merge(res_dict, (; local_conds, local_cond_mean))
     end
-    
+
     return res_dict
 end
 
-function run_task(task::TaskSpec)
+function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     Random.seed!(task.nodes[1] + task.nodes[2])
     N_STEPS = n_steps_map[task.nodes]
     compute_cond = should_compute_cond(task.nodes, use_nocond)
@@ -282,38 +299,54 @@ function run_task(task::TaskSpec)
     cutoff_val = cutoff_map[task.nodes]
     tol_val = tol_map[task.nodes]
     faibuild_tol = fai_tol_map[task.nodes]
-    
+
     sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
-        
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0)
-        
+        flush(stderr)
+
+        # Warmup on a throwaway grid: compilation for this task's compute_cond-specific types
+        # happens here, without consuming one of the N_STEPS real, logged physics steps on `grid`.
+        GC.gc(true)
+        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
+        step0_res = chorin_step!(warmup_grid, sweep_kwargs, compute_cond, tol_val, 0)
+        step0_compile_time = step0_res.compile_t
+        step0_gc_time = step0_res.gc_t
+
+        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
+        # alongside `grid` for the whole task, roughly doubling resident memory.
+        warmup_grid = nothing
+        GC.gc(true)
+
         solve_times = Float64[]
+        compile_times = Float64[]
+        gc_times = Float64[]
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
         iters_per_site = Float64[]
         conds_per_site = Float64[]
         avg_conds = Float64[]
-        
+
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
-            
+            flush(stderr)
+
             step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i)
             push!(solve_times, step_res.t)
+            push!(compile_times, step_res.compile_t)
+            push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(iters, step_res.iters_per_site)
-            
+
             if isempty(iters_per_site)
                 iters_per_site = copy(step_res.iters_per_site)
             else
                 iters_per_site .+= step_res.iters_per_site
             end
-            
+
             if compute_cond
                 # For baseline, local_conds contains the standard condition numbers
                 if isempty(conds_per_site)
@@ -323,10 +356,10 @@ function run_task(task::TaskSpec)
                 end
                 push!(avg_conds, step_res.local_cond_mean)
             end
-            
+
             GC.gc(true)
         end
-        
+
         result_dict = Dict{String, Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
@@ -337,23 +370,35 @@ function run_task(task::TaskSpec)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
-            "precond_build_time" => 0.0
+            "precond_build_time" => 0.0,
+            "compile_times" => compile_times,
+            "gc_times" => gc_times,
+            "total_compile_time" => sum(compile_times),
+            "total_gc_time" => sum(gc_times),
+            "step0_compile_time" => step0_compile_time,
+            "step0_gc_time" => step0_gc_time,
+            "hostname" => gethostname(),
+            "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+            "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+            "julia_threads" => Threads.nthreads(),
+            "warmup_time" => warmup_time,
         )
-        
+
         if compute_cond
             conds_per_site ./= N_STEPS
             result_dict["conds_per_site"] = conds_per_site
             result_dict["avg_cond"] = mean(avg_conds)
         end
-        
+
         return result_dict
     else
         μ = task.mu
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
-        
-        fai_sweep_kwargs = SweepingArgs(nsweeps=50, maxdim=gdim, cutoff=1e-12)
-        
+        flush(stderr)
+
+        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
+
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
@@ -362,7 +407,7 @@ function run_task(task::TaskSpec)
             krylovdim = 1,
             maxiter = 3000
         )
-        
+
         fai_resals_solver = ResidualALS(
             sweep_kwargs = fai_sweep_kwargs,
             updater_kwargs = fai_updater_kwargs,
@@ -382,39 +427,57 @@ function run_task(task::TaskSpec)
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
-        
+
+        GC.gc(true)
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
-        
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0, precond)
-        
+
+        # Warmup on a throwaway grid that shares `grid`'s site indices (via `shared_sites`), so
+        # `precond` — built from the real grid's A — is index-compatible with it too —
+        # compilation happens here without consuming one of the N_STEPS real, logged physics
+        # steps on `grid`.
+        GC.gc(true)
+        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
+        step0_res = chorin_step!(warmup_grid, sweep_kwargs, compute_cond, tol_val, 0, precond)
+        step0_compile_time = step0_res.compile_t
+        step0_gc_time = step0_res.gc_t
+
+        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
+        # alongside `grid` for the whole task, roughly doubling resident memory.
+        warmup_grid = nothing
+        GC.gc(true)
+
         solve_times = Float64[]
+        compile_times = Float64[]
+        gc_times = Float64[]
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
         iters_per_site = Float64[]
         pc_conds_per_site = Float64[]
         avg_pc_conds = Float64[]
-        
+
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
-            
+            flush(stderr)
+
             step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i, precond)
             push!(solve_times, step_res.t)
+            push!(compile_times, step_res.compile_t)
+            push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(iters, step_res.iters_per_site)
-            
+
             if isempty(iters_per_site)
                 iters_per_site = copy(step_res.iters_per_site)
             else
                 iters_per_site .+= step_res.iters_per_site
             end
-            
+
             if compute_cond
                 if isempty(pc_conds_per_site)
                     pc_conds_per_site = step_res.local_conds
@@ -423,10 +486,10 @@ function run_task(task::TaskSpec)
                 end
                 push!(avg_pc_conds, step_res.local_cond_mean)
             end
-            
+
             GC.gc(true)
         end
-        
+
         result_dict = Dict{String, Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
@@ -439,45 +502,65 @@ function run_task(task::TaskSpec)
             "iters" => iters,
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
-            "solution_maxdims" => solution_maxdims
+            "solution_maxdims" => solution_maxdims,
+            "compile_times" => compile_times,
+            "gc_times" => gc_times,
+            "total_compile_time" => sum(compile_times),
+            "total_gc_time" => sum(gc_times),
+            "step0_compile_time" => step0_compile_time,
+            "step0_gc_time" => step0_gc_time,
+            "hostname" => gethostname(),
+            "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+            "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+            "julia_threads" => Threads.nthreads(),
+            "warmup_time" => warmup_time,
         )
-        
+
         if compute_cond
             pc_conds_per_site ./= N_STEPS
             result_dict["pc_conds_per_site"] = pc_conds_per_site
             result_dict["avg_pc_cond"] = mean(avg_pc_conds)
         end
-        
+
         return result_dict
     end
 end
 
-task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
-all_tasks = build_task_list()
+function warmup()
+    @info "Running JIT warmup..."
+    flush(stderr)
+    t = @elapsed begin
+        dummy_grid = build_grid((8, 8), 1)
+        dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+        dummy_als_solver = ALS(
+            sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+            updater_kwargs = dummy_updater_kwargs
+        )
+        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
-if task_id < 1 || task_id > length(all_tasks)
-    error("Invalid task_id=$task_id")
+        # When running with condition numbers, compute time does not really count, so it is better to avoid
+        # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
+        chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, nothing)
+        chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, dummy_fai)
+    end
+    @info "JIT warmup complete" seconds=t
+    flush(stderr)
+    return t
 end
 
-task = all_tasks[task_id]
+function main()
+    task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
+    all_tasks = build_task_list()
+    (1 <= task_id <= length(all_tasks)) || error("Invalid task_id=$task_id")
 
-@info "Running JIT warmup..."
-dummy_grid = build_grid((8, 8), 1)
-dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_als_solver = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    updater_kwargs = dummy_updater_kwargs
-)
-unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+    warmup_time = warmup()
+    result = run_task(all_tasks[task_id]; warmup_time=warmup_time)
 
-# When running with condition numbers, compute time does not really count, so it is better to avoid
-# crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, nothing)
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0, dummy_fai)
-@info "JIT warmup complete."
+    mkpath(TASKS_DIR)
+    save(joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2"), "result", result)
+end
 
-result = run_task(task)
-
-output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
-save(output_file, "result", result)
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end

@@ -13,8 +13,12 @@ using Random
 const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", "1"))
 LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 @info "Set BLAS threads to $cpus_per_task"
+flush(stderr)
+@info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
+flush(stderr)
 
-base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
+const default_base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/results"
+base_folder = get(ENV, "CHORIN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
@@ -27,7 +31,7 @@ const STENCIL_ORDER = 8
 
 const dt_map = Dict(
     (8, 8) => 0.001,
-    (10, 10) => 0.0005,
+    (10, 10) => 0.0002,
     (12, 12) => 0.00001
 )
 
@@ -37,8 +41,14 @@ const n_steps_map = Dict(
     (12, 12) => 5
 )
 
+# Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
+function resolve_n_steps(nodes::Tuple{Int,Int})
+    override = get(ENV, "CHORIN_GLOBALCG_N_STEPS_OVERRIDE", "")
+    return isempty(override) ? n_steps_map[nodes] : parse(Int, override)
+end
+
 # const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const system_sizes = [(8, 8)]
+const system_sizes = [(8, 8), (10, 10)]
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
@@ -98,8 +108,14 @@ function build_task_list()
     return tasks
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
-    sites = siteinds(2, sum(nodes))
+function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
+    # `siteinds` mints fresh, uniquely-tagged Index objects on every call. A throwaway warmup
+    # grid built independently from the real grid would therefore carry *different* site
+    # indices even with identical nodes/mask — any MPO built against one (e.g. a FAI
+    # preconditioner built from the real grid's A) cannot be applied to the other's MPS/MPO,
+    # and ITensorMPS raises "must share a set of site indices". Passing `shared_sites` lets a
+    # warmup grid reuse the real grid's indices so cross-grid objects like `precond` stay valid.
+    sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
     
@@ -117,8 +133,10 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     
     bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
+
+    bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     
@@ -145,7 +163,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         u_diff_ops=u_diff_ops,
         u_boundary_null=u_boundary_null,
         p_diff_ops=p_diff_ops,
-        object_mask=object_mask
+        object_mask=object_mask,
+        sites=sites
     )
 end
 
@@ -193,10 +212,12 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     end
 
     if isnothing(precond)
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, pdt_guess)
+        stats = @timed linearsolve(solver, grid.A, rhs, pdt_guess)
     else
-        t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess)
+        stats = @timed linearsolve(solver, grid.A, rhs, precond, pdt_guess)
     end
+    pdt = stats.value
+    t = stats.time
     
     # Compute relative residual using inner product to save memory
     term1 = ITensorMPS.inner(grid.A, pdt, grid.A, pdt)
@@ -205,7 +226,8 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
     @info "Residual $rel_res"
-    
+    flush(stderr)
+
     sol_maxdim = maxlinkdim(pdt)
     
     divfree_p = pdt * (1/dt)
@@ -229,14 +251,14 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     
     global_iters = global_updater_kwargs.numiter_store[]
     
-    res_dict = (; t, rel_res, sol_maxdim, global_iters)
+    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, global_iters)
     
     return res_dict
 end
 
-function run_task(task::TaskSpec)
+function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     Random.seed!(task.nodes[1] + task.nodes[2])
-    N_STEPS = n_steps_map[task.nodes]
+    N_STEPS = resolve_n_steps(task.nodes)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
     maxiter_val = maxiter_map[task.nodes]
@@ -258,27 +280,43 @@ function run_task(task::TaskSpec)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
-        
-        # Warmup
-        chorin_step!(grid, global_updater_kwargs, 0)
-        
+        flush(stderr)
+
+        # Warmup on a throwaway grid: compilation happens here, without consuming one of the
+        # N_STEPS real, logged physics steps on `grid`.
+        GC.gc(true)
+        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
+        step0_res = chorin_step!(warmup_grid, global_updater_kwargs, 0)
+        step0_compile_time = step0_res.compile_t
+        step0_gc_time = step0_res.gc_t
+
+        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
+        # alongside `grid` for the whole task, roughly doubling resident memory.
+        warmup_grid = nothing
+        GC.gc(true)
+
         solve_times = Float64[]
+        compile_times = Float64[]
+        gc_times = Float64[]
         global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
-        
+
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
-            
+            flush(stderr)
+
             step_res = chorin_step!(grid, global_updater_kwargs, i)
             push!(solve_times, step_res.t)
+            push!(compile_times, step_res.compile_t)
+            push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(global_iters, step_res.global_iters)
-            
+
             GC.gc(true)
         end
-        
+
         result_dict = Dict{String, Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
@@ -288,15 +326,28 @@ function run_task(task::TaskSpec)
             "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
-            "precond_build_time" => 0.0
+            "precond_build_time" => 0.0,
+            "compile_times" => compile_times,
+            "gc_times" => gc_times,
+            "total_compile_time" => sum(compile_times),
+            "total_gc_time" => sum(gc_times),
+            "step0_compile_time" => step0_compile_time,
+            "step0_gc_time" => step0_gc_time,
+            "n_steps_run" => N_STEPS,
+            "hostname" => gethostname(),
+            "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+            "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+            "julia_threads" => Threads.nthreads(),
+            "warmup_time" => warmup_time,
         )
-        
+
         return result_dict
     else
         μ = task.mu
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
-        
+        flush(stderr)
+
         global_fai_solver = GlobalCG(
             updater_kwargs = GlobalUpdaterArgs(
                 ishermitian = true,
@@ -335,33 +386,51 @@ function run_task(task::TaskSpec)
         fai_builder_solver = als_solver
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-        
+
+        GC.gc(true)
         t_build = @elapsed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
-        
-        # Warmup
-        chorin_step!(grid, global_updater_kwargs, 0, precond)
-        
+
+        # Warmup on a throwaway grid that shares `grid`'s site indices (via `shared_sites`), so
+        # `precond` — built from the real grid's A — is index-compatible with it too —
+        # compilation happens here without consuming one of the N_STEPS real, logged physics
+        # steps on `grid`.
+        GC.gc(true)
+        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
+        step0_res = chorin_step!(warmup_grid, global_updater_kwargs, 0, precond)
+        step0_compile_time = step0_res.compile_t
+        step0_gc_time = step0_res.gc_t
+
+        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
+        # alongside `grid` for the whole task, roughly doubling resident memory.
+        warmup_grid = nothing
+        GC.gc(true)
+
         solve_times = Float64[]
+        compile_times = Float64[]
+        gc_times = Float64[]
         global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
-        
+
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
-            
+            flush(stderr)
+
             step_res = chorin_step!(grid, global_updater_kwargs, i, precond)
             push!(solve_times, step_res.t)
+            push!(compile_times, step_res.compile_t)
+            push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(global_iters, step_res.global_iters)
-            
+
             GC.gc(true)
         end
-        
+
         result_dict = Dict{String, Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
@@ -373,43 +442,64 @@ function run_task(task::TaskSpec)
             "global_iters" => global_iters,
             "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
-            "solution_maxdims" => solution_maxdims
+            "solution_maxdims" => solution_maxdims,
+            "compile_times" => compile_times,
+            "gc_times" => gc_times,
+            "total_compile_time" => sum(compile_times),
+            "total_gc_time" => sum(gc_times),
+            "step0_compile_time" => step0_compile_time,
+            "step0_gc_time" => step0_gc_time,
+            "n_steps_run" => N_STEPS,
+            "hostname" => gethostname(),
+            "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
+            "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
+            "julia_threads" => Threads.nthreads(),
+            "warmup_time" => warmup_time,
         )
-        
+
         return result_dict
     end
 end
 
-task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
-all_tasks = build_task_list()
+function warmup()
+    @info "Running JIT warmup..."
+    flush(stderr)
+    t = @elapsed begin
+        dummy_grid = build_grid((8, 8), 1)
+        dummy_updater_kwargs = GlobalUpdaterArgs(
+            ishermitian = true, isposdef = true, rtol = 1e-2, maxiter = 2,
+            maxdim = 10, cutoff = 1e-8, numiter_store = Ref{Int}(0),
+        )
+        dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
 
-if task_id < 1 || task_id > length(all_tasks)
-    error("Invalid task_id=$task_id")
+        dummy_als_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+        dummy_als_solver = ALS(
+            sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+            updater_kwargs = dummy_als_updater_kwargs,
+        )
+        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false, residual_tol=fai_tol_map[(8,8)])
+        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+
+        chorin_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)
+        chorin_step!(dummy_grid, dummy_updater_kwargs, 0, dummy_fai)
+    end
+    @info "JIT warmup complete" seconds=t
+    flush(stderr)
+    return t
 end
 
-task = all_tasks[task_id]
+function main()
+    task_id = length(ARGS) > 0 ? parse(Int, ARGS[1]) : 1
+    all_tasks = build_task_list()
+    (1 <= task_id <= length(all_tasks)) || error("Invalid task_id=$task_id")
 
-@info "Running JIT warmup..."
-dummy_grid = build_grid((8, 8), 1)
-dummy_updater_kwargs = GlobalUpdaterArgs(
-    ishermitian = true,
-    isposdef = true,
-    rtol = 1e-2,
-    maxiter = 2,
-    maxdim = 10,
-    cutoff = 1e-8,
-    numiter_store = Ref{Int}(0)
-)
-dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
-dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
-unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
-dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+    warmup_time = warmup()
+    result = run_task(all_tasks[task_id]; warmup_time=warmup_time)
 
-chorin_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)
-chorin_step!(dummy_grid, dummy_updater_kwargs, 0, dummy_fai)
-@info "JIT warmup complete."
+    mkpath(TASKS_DIR)
+    save(joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2"), "result", result)
+end
 
-result = run_task(task)
-
-output_file = joinpath(TASKS_DIR, "task_$(lpad(task_id, 3, '0')).jld2")
-save(output_file, "result", result)
+if abspath(PROGRAM_FILE) == @__FILE__
+    main()
+end
