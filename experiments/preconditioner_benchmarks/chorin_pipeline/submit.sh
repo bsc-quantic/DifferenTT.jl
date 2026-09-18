@@ -12,6 +12,9 @@
 
 SCRIPT_DIR="experiments/preconditioner_benchmarks/chorin_pipeline"
 
+# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
+
 NOCOND_ARG=""
 RESULTS_DIR="${SCRIPT_DIR}/results"
 
@@ -39,13 +42,24 @@ ARRAY_JOB_ID=$(sbatch --parsable \
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
 #SBATCH --qos=ngp_bsccase
+#SBATCH --exclusive
 
 module load julia/1.12.0 
 
+if [ -n "\${SLURM_MEM_PER_NODE}" ]; then
+    TASK_MEM_MB=\${SLURM_MEM_PER_NODE}
+else
+    TASK_MEM_MB=\$(( \${SLURM_MEM_PER_CPU:-2000} * SLURM_CPUS_PER_TASK ))
+fi
+HEAP_HINT_MB=\$(( TASK_MEM_MB * 80 / 100 ))
+
+export GC_BALLAST_GB="${GC_BALLAST_GB}"
+
 echo "Task \${SLURM_ARRAY_TASK_ID} / 20 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 # echo "Task \${SLURM_ARRAY_TASK_ID} / 37 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB"
 
-julia --project=. -t 1 --heap-size-hint=35G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=. -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 )
 

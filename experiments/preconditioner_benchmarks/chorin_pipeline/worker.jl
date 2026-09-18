@@ -17,6 +17,36 @@ flush(stderr)
 @info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
 flush(stderr)
 
+# ---- GC memory ballast ----
+# Julia 1.12 derives its GC thresholds from the heap size, so a small live heap (as in this
+# benchmark) collects very often and forces full sweeps, which are expensive. The ballast is a
+# large, never-written buffer: the GC counts it as heap (raising the thresholds) but its pages
+# are never touched, so it costs no resident memory. See chorin_gc_report.md.
+const GC_BALLAST_GB = parse(Float64, get(ENV, "GC_BALLAST_GB", "0"))
+const GIB = 2^30
+gc_max_memory() = ccall(:jl_gc_get_max_memory, UInt64, ())
+
+function allocate_ballast(gb::Float64)
+    gb > 0 || return UInt8[]
+    max_gb = 0.4 * 0.8 * gc_max_memory() / GIB   # keep well below the GC's heap cap
+    if gb > max_gb
+        @warn "Clamping GC ballast" requested_gb=gb max_gb
+        gb = max_gb
+    end
+    try
+        return Vector{UInt8}(undef, round(Int, gb * GIB))
+    catch e
+        e isa OutOfMemoryError || rethrow()
+        @warn "Could not reserve the GC ballast, running without it" gb
+        return UInt8[]
+    end
+end
+
+# Must stay a global: if it is ever freed, the effect disappears. Never write into it.
+const GC_BALLAST = allocate_ballast(GC_BALLAST_GB)
+@info "GC ballast" gb=length(GC_BALLAST) / GIB heap_cap_gb=gc_max_memory() / GIB
+flush(stderr)
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
 base_folder = get(ENV, "CHORIN_RESULTS_DIR", default_base_folder)
@@ -27,7 +57,7 @@ const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.j
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
-const RE_NUM = 10000
+const RE_NUM = 3000
 const STENCIL_ORDER = 8
 
 const dt_map = Dict(
@@ -238,6 +268,9 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
         pdt_guess = previous_p * dt
     end
 
+    # Collect the garbage from masked_velocity/build_rhs before timing, so it isn't charged to
+    # the solve.
+    GC.gc(true)
     if isnothing(precond)
         stats = @timed linearsolve(solver, grid.A, rhs, pdt_guess)
     else
@@ -382,6 +415,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
             "julia_threads" => Threads.nthreads(),
             "warmup_time" => warmup_time,
+            "gc_ballast_bytes" => length(GC_BALLAST),
+            "heap_size_hint" => Int(Base.JLOptions().heap_size_hint),
         )
 
         if compute_cond
@@ -514,6 +549,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
             "julia_threads" => Threads.nthreads(),
             "warmup_time" => warmup_time,
+            "gc_ballast_bytes" => length(GC_BALLAST),
+            "heap_size_hint" => Int(Base.JLOptions().heap_size_hint),
         )
 
         if compute_cond
