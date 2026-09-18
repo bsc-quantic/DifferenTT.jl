@@ -156,7 +156,7 @@ mps_vy = 0.0 * ones_mps(sites, 1)
 bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
 bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
-bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
+bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
 bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
 bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
