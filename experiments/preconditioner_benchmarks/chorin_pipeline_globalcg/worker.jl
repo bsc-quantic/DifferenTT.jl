@@ -89,11 +89,12 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = load(MASK_FILE, mask_key)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
-        object_mask = zeros_mps(sites)
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    mps_vx = tt_mul(object_mask, ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -109,7 +110,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes], max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
+    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
     experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -156,7 +157,7 @@ function chorin_step!(grid, global_updater_kwargs, precond=nothing)
     previous_p = last(experiment.p_field)
     if isnothing(previous_p)
         Random.seed!(grid.nodes[1] + grid.nodes[2])
-        pdt_guess = random_mps(siteinds(grid.A))
+        pdt_guess = random_mps(siteinds(rhs))
     else
         pdt_guess = previous_p * dt
     end
@@ -216,9 +217,6 @@ function run_task(task::TaskSpec)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
-        
-        # Warmup
-        chorin_step!(grid, global_updater_kwargs)
         
         solve_times = Float64[]
         global_iters = Int[]
@@ -300,9 +298,6 @@ function run_task(task::TaskSpec)
             precond = FactorizedPreconditioner(Gl)
         end
         
-        # Warmup
-        chorin_step!(grid, global_updater_kwargs, precond)
-        
         solve_times = Float64[]
         global_iters = Int[]
         residuals = Float64[]
@@ -358,10 +353,21 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
     cutoff = 1e-8,
     numiter_store = Ref{Int}(0)
 )
-dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
-dummy_als_solver = ALS(sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8))
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_als_solver = ALS(
+    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+)
+
+# Baseline path: unpreconditioned GlobalCG inside chorin_step!
 chorin_step!(dummy_grid, dummy_updater_kwargs)
+
+# FAI path: FactorizedPreconditioner + chorin_step!
+unscaledG, D = DifferenTT.fai_dg(
+    dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2);
+    preconditioning=false, residual_tol=1e-2
+)
+dummy_precond = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+chorin_step!(dummy_grid, dummy_updater_kwargs, dummy_precond)
 @info "JIT warmup complete."
 
 result = run_task(task)
