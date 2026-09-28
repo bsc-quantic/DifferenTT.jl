@@ -319,7 +319,7 @@ function chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolv
     length(experiment.p_field.u) > 0 && throw(ArgumentError("Pressure field must not be initialized."))
 
     time_evol_kwargs = stepper.time_evol_kwargs
-    check_cfl(experiment, time_evol_kwargs)
+    check_cfl(experiment, stepper)
 
     save_checkpoints = collect(1:save_every:time_evol_kwargs.nsteps)
     save_checkpoints = save_checkpoints[end] == time_evol_kwargs.nsteps ? save_checkpoints : push!(save_checkpoints, time_evol_kwargs.nsteps)
