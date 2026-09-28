@@ -181,6 +181,7 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
+
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
     
@@ -388,9 +389,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
     term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
     term3 = ITensorMPS.inner(rhs, rhs)
-    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+    rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
-    @info "Residual $rel_error"
+    @info "Residual $rel_residual"
     @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
     result_dict = Dict{String, Any}(
@@ -400,7 +401,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "precond_build_time" => t_build,
         "solve_time" => warm.time,
         "total_time" => t_build + warm.time,
-        "relative_error" => rel_error,
+        "relative_residual" => rel_residual,
         "iters_per_site" => warm.iters_per_site,
         "solution_maxdim" => maxlinkdim(out_mps),
 

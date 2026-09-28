@@ -17,7 +17,7 @@ function linearsolve(solver::ALS, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwarg
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
     updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
-    sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
+    sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kwargs)
     return alternating_update(reduced_problem, init; solver.updater, updater_kwargs, sweep_kwargs...)
 end
 
@@ -28,7 +28,8 @@ function linearsolve(solver::ALS,  A::MPO, b::MPS, M⁻¹::AbstractPreconditione
     updater_kwargs = (; coefficients = (false, true), preconditioner_sites = preconditioner_sites, NamedTuple(solver.updater_kwargs)...)
     kw = Dict(kwargs...)
     delete!(kw, :preconditioner_sites)
-    sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), (; kw...))
+    sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kw)
+    
     return alternating_update(reduced_precond_problem, init; solver.updater, updater_kwargs, sweep_kwargs...)
 end
 

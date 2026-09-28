@@ -199,6 +199,7 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
+
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
     
@@ -309,6 +310,7 @@ end
 function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     N = task.N
     Random.seed!(task.N)
+    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
 
@@ -326,8 +328,33 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     if method == "baseline"
         key = "baseline"
         @info "Running Baseline N=$N"
-
-    elseif method == "sinc"
+        
+        t_build = 0.0
+        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
+        
+        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
+        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
+        term3 = ITensorMPS.inner(rhs, rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        
+        @info "Residual $rel_residual"
+        @info "Max bond dimension = $(maxlinkdim(out_mps))"
+        
+        result_dict = Dict{String, Any}(
+            "key" => "baseline",
+            "N" => N,
+            "method" => "baseline",
+            "precond_build_time" => t_build,
+            "solve_time" => t_solve,
+            "total_time" => t_solve,
+            "relative_error" => rel_residual,
+            "global_iters" => global_updater_kwargs.numiter_store[],
+            "solution_maxdim" => maxlinkdim(out_mps)
+        )
+        
+        return result_dict
+        
+    elseif task.method == "sinc"
         M = Int(task.param1)
         key = "sinc_M_$(M)"
         @info "Running Sinc (M=$M) N=$N"
@@ -372,9 +399,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
     term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
     term3 = ITensorMPS.inner(rhs, rhs)
-    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+    rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
-    @info "Residual $rel_error"
+    @info "Residual $rel_residual"
     @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
     if cold.global_iters != warm.global_iters
@@ -388,7 +415,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "precond_build_time" => t_build,
         "solve_time" => warm.time,
         "total_time" => t_build + warm.time,
-        "relative_error" => rel_error,
+        "relative_error" => rel_residual,
         "global_iters" => warm.global_iters,
         "solution_maxdim" => maxlinkdim(out_mps),
 

@@ -3,11 +3,11 @@ abstract type INSExperimentBase end
 """
     struct INSExperiment{N} <: INSExperimentBase
 
-Defines an Incompressible Navier-Stokes experiment configuration and state.
+Defines an Incompressible Navier-Stokes experiment configuration and state. It describes the physical
+problem only: the time integrator and the Poisson solver are passed to the solving scheme (e.g. `chorin_evolve!`).
 
 # Fields
 - `grid::Grid{N}`: The spatial grid.
-- `time_evol_settings::TimeEvol`: Time evolution parameters.
 - `u_fields::VectorField{N}`: Velocity vector field.
 - `p_field::ScalarField{N}`: Pressure scalar field.
 - `Re::Number`: Reynolds number.
@@ -18,7 +18,6 @@ Defines an Incompressible Navier-Stokes experiment configuration and state.
 """
 struct INSExperiment{N} <: INSExperimentBase
     grid::Grid{N}
-    time_evol_settings::TimeEvol
     u_fields::VectorField{N}
     p_field::ScalarField{N}
     Re::Number
@@ -28,13 +27,12 @@ struct INSExperiment{N} <: INSExperimentBase
     cutoff::Float64
 
     """
-        INSExperiment(grid::Grid{N}, time_evol_settings::TimeEvol, u_fields::VectorField{N}, p_field::ScalarField{N}, Re::Number, object_mask::Union{MPS, Nothing}; stencil_order::Int = 8) where N
+        INSExperiment(grid::Grid{N}, u_fields::VectorField{N}, p_field::ScalarField{N}, Re::Number, object_mask::Union{MPS, Nothing}; stencil_order::Int = 8, maxdim::Int = 100, cutoff::Float64 = 1e-8) where N
 
     Construct an INSExperiment. Checks for consistency between field, grid, and mask indices.
 
     # Arguments
     - `grid::Grid{N}`: The spatial grid.
-    - `time_evol_settings::TimeEvol`: Time evolution settings.
     - `u_fields::VectorField{N}`: Initial velocity field.
     - `p_field::ScalarField{N}`: Initial pressure field (usually zero).
     - `Re::Number`: Reynolds number.
@@ -45,7 +43,6 @@ struct INSExperiment{N} <: INSExperimentBase
     """
     function INSExperiment(
         grid::Grid{N},
-        time_evol_settings::TimeEvol,
         u_fields::VectorField{N},
         p_field::ScalarField{N},
         Re::Number,
@@ -59,11 +56,10 @@ struct INSExperiment{N} <: INSExperimentBase
             throw(ArgumentError("Physical sites for velocity, pressure and mask fields do not match"))
         end
 
-        check_cfl(grid, time_evol_settings, Re)
         check_kolmogorov_scale(grid, Re)
 
         return new{N}(
-            grid, time_evol_settings,
+            grid,
             u_fields,
             p_field,
             Re,
@@ -79,6 +75,9 @@ end
 
 # """
 #     check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number)
+# TODO THIS SHOULD ALSO TAKE INTO ACCOUNT THE VELOCITY MAGNITUDES
+"""
+    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number)
 
 # Checks if the temporal and spatial dimensions of a given INSExperiment comply with the CFL condition for stability
 # """
@@ -107,19 +106,19 @@ end
 # end
 
 # function check_cfl(experiment::INSExperiment{N}) where N
-#     check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re)
+#     check_cfl(experiment.grid, experiment.time_evol_kwargs, experiment.Re)
 # end
 
 """
-    check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number;
+    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvol, Re::Number;
               stencil_order::Int=8, vmax::Float64=1.0) where N
 
 Checks RK4 stability for the actual finite-difference stencil in use, combining
 advection and diffusion contributions from all spatial dimensions.
 """
-function check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number;
+function check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvol, Re::Number;
                     stencil_order::Int=8, vmax::Float64=1.0) where N
-    dt = time_evol_settings.dt
+    dt = time_evol_kwargs.dt
 
     # Spectral radius bounds from the actual stencil coefficients (Gershgorin bound,
     # exact for these central-difference coefficient patterns).
@@ -151,8 +150,19 @@ function check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number;
     end
 end
 
-function check_cfl(experiment::INSExperiment{N}; stencil_order::Int=8, vmax::Float64=1.0) where N
-    check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re; stencil_order=stencil_order, vmax=vmax)
+"""
+    check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
+    check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
+
+Checks the CFL condition of `experiment` for the time step given by `time_evol_kwargs`, or by the
+`TimeEvolArgs` stored in `stepper`.
+"""
+function check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
+    check_cfl(experiment.grid, time_evol_kwargs, experiment.Re)
+end
+
+function check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
+    check_cfl(experiment, stepper.time_evol_kwargs)
 end
 
 function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N 

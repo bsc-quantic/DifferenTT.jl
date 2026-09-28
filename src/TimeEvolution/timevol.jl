@@ -1,38 +1,36 @@
 """
-    struct TimeEvol
+    struct TimeEvolArgs
 
-Configuration for time evolution parameters.
+Configuration for the time interval and step size. It is stored in an `AbstractTimeStepper`
+(`ExplicitEuler`, `RK4`, ...) as `time_evol_kwargs`, from which `timestep` reads the step size.
 
 # Fields
 - `ti::Float64`: Initial time.
 - `tf::Float64`: Final time.
 - `dt::Float64`: Time step.
-- `N::Int`: Number of steps.
-- `scheme::Symbol`: Time integration scheme (currently only :euler).
+- `nsteps::Int`: Number of steps.
 """
-struct TimeEvol
+struct TimeEvolArgs
     ti::Float64
     tf::Float64
     dt::Float64
     nsteps::Int
-    scheme::Symbol
 end
 
-function check_available_schemes(scheme::Symbol)
-    avail_schemes = (:euler, :rk4)
-    scheme ∉ avail_schemes && throw(ArgumentError("Only $(avail_schemes) schemes are implemented."))
-end
-
-function TimeEvol(ti::Float64, tf::Float64, nsteps::Int, scheme::Symbol=:euler)
+function TimeEvolArgs(ti::Float64, tf::Float64, nsteps::Int)
     dt = (tf - ti) / nsteps
-    check_available_schemes(scheme)
-    return TimeEvol(ti, tf, dt, nsteps, scheme)
+    return TimeEvolArgs(ti, tf, dt, nsteps)
 end
 
-function TimeEvol(ti::Float64, tf::Float64, dt::Float64, scheme::Symbol=:euler)
+function TimeEvolArgs(ti::Float64, tf::Float64, dt::Float64)
     nsteps = round(Int, (tf - ti) / dt)
-    check_available_schemes(scheme)
-    return TimeEvol(ti, tf, dt, nsteps, scheme)
+    return TimeEvolArgs(ti, tf, dt, nsteps)
 end
 
+"""
+    AbstractTimeStepper
+
+Supertype of all time integration schemes. Every concrete stepper stores its time interval
+configuration in a `time_evol_kwargs::TimeEvolArgs` field.
+"""
 abstract type AbstractTimeStepper end

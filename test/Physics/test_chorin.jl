@@ -59,13 +59,12 @@ using ITensorMPS
         uy = random_mps(sites)
 
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te = TimeEvol(0.0, 0.001, 0.0001)
         Re = 100.0
 
         u_fields = VectorField((ux, uy), TTArchitecture(arch_2d), (bc2d, bc2d))
         p_field = ScalarField(sites, TTArchitecture(arch_2d), bc2d)
 
-        experiment = INSExperiment(grid, te, u_fields, p_field, Re, nothing; stencil_order=2)
+        experiment = INSExperiment(grid, u_fields, p_field, Re, nothing; stencil_order=2)
 
         Δ = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=2)
 
@@ -82,13 +81,12 @@ using ITensorMPS
         uz = random_mps(sites)
 
         grid = Grid(TTArchitecture(arch_3d), (1.0, 1.0, 1.0))
-        te = TimeEvol(0.0, 0.001, 0.0001)
         Re = 100.0
 
         u_fields = VectorField((ux, uy, uz), TTArchitecture(arch_3d), (bc3d, bc3d, bc3d))
         p_field = ScalarField(sites, TTArchitecture(arch_3d), bc3d)
 
-        experiment = INSExperiment(grid, te, u_fields, p_field, Re, nothing; stencil_order=2)
+        experiment = INSExperiment(grid, u_fields, p_field, Re, nothing; stencil_order=2)
 
         Δ = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=2)
 
@@ -121,30 +119,29 @@ using ITensorMPS
         uy = random_mps(sites)
 
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te = TimeEvol(0.0, 0.001, 0.0001)
         Re = 100.0
 
         u_fields = VectorField((ux, uy), TTArchitecture(arch_2d), (bc2d, bc2d))
         p_field_periodic = ScalarField(TTArchitecture(arch_2d), bc2d)
 
-        exp_periodic = INSExperiment(grid, te, u_fields, p_field_periodic, Re, nothing; stencil_order=2)
+        exp_periodic = INSExperiment(grid, u_fields, p_field_periodic, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_periodic) == true
 
         dirichlet_bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
         dirichlet_bc2d = BoundaryConditions(dirichlet_bc1d, dirichlet_bc1d)
         p_field_dirichlet = ScalarField(TTArchitecture(arch_2d), dirichlet_bc2d)
 
-        exp_dirichlet = INSExperiment(grid, te, u_fields, p_field_dirichlet, Re, nothing; stencil_order=2)
+        exp_dirichlet = INSExperiment(grid, u_fields, p_field_dirichlet, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_dirichlet) == false
     end
 
     @testset "check_cfl 2D" begin
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te_ok = TimeEvol(0.0, 0.01, 0.001)
+        te_ok = TimeEvolArgs(0.0, 0.01, 0.001)
         Re = 100.0
         @test (check_cfl(grid, te_ok, Re); true)
 
-        te_bad = TimeEvol(0.0, 100.0, 1)
+        te_bad = TimeEvolArgs(0.0, 100.0, 1)
         @test (check_cfl(grid, te_bad, Re); true)
     end
 
@@ -155,13 +152,12 @@ using ITensorMPS
         uy = random_mps(sites)
 
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te = TimeEvol(0.0, 0.001, 0.0001)
         Re = 100.0
 
         u_fields = VectorField((ux, uy), TTArchitecture(arch_2d), (bc2d, bc2d))
         p_field = ScalarField(TTArchitecture(arch_2d), bc2d)
 
-        experiment = INSExperiment(grid, te, u_fields, p_field, Re, nothing; stencil_order=2)
+        experiment = INSExperiment(grid, u_fields, p_field, Re, nothing; stencil_order=2)
         @test experiment isa INSExperiment{2}
         @test experiment.Re == Re
         @test experiment.stencil_order == 2
@@ -175,13 +171,12 @@ using ITensorMPS
         uy = random_mps(sites)
 
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te = TimeEvol(0.0, 0.001, 0.0001)
         Re = 100.0
 
         u_fields = VectorField((ux, uy), TTArchitecture(arch_2d), (bc2d, bc2d))
         p_field = ScalarField(TTArchitecture(arch_2d), bc2d)
 
-        experiment = INSExperiment(grid, te, u_fields, p_field, Re, nothing; stencil_order=2)
+        experiment = INSExperiment(grid, u_fields, p_field, Re, nothing; stencil_order=2)
 
         u_diff_ops = DifferenTT.DifferentialOps(experiment.grid, experiment.u_fields; stencil_order=experiment.stencil_order)
         u_boundary_nullifier = DifferenTT.BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order)
@@ -193,6 +188,51 @@ using ITensorMPS
         @test rhs_out[1] isa MPS
         @test rhs_out[2] isa MPS
     end
+    @testset "Chorin building blocks" begin
+        qarch = QTTArchitecture((4, 4))
+        qsites = siteinds(qarch)
+        qgrid = Grid(qarch, (1.0, 1.0))
+        ux = random_mps(qsites)
+        uy = random_mps(qsites)
+
+        u_fields = VectorField((ux, uy), qarch, (bc2d, bc2d))
+        p_field = ScalarField(qsites, qarch, bc2d)
+        experiment = INSExperiment(qgrid, u_fields, p_field, 100.0, nothing; stencil_order=2, maxdim=20, cutoff=1e-12)
+        stepper = ExplicitEuler(time_evol_kwargs=TimeEvolArgs(0.0, 0.001, 1), cutoff=1e-12, maxdim=20)
+        dt = stepper.time_evol_kwargs.dt
+
+        cache = ChorinCache(experiment)
+        @test cache.regularize == DifferenTT.regularization_check(experiment) == true
+        @test cache.poisson_op isa MPO
+        @test first.(siteinds(cache.poisson_op; plev=0)) == qsites
+
+        rhs = DifferenTT.poisson_rhs(experiment, cache, (ux, uy), dt)
+        @test rhs isa MPS
+        @test siteinds(rhs) == qsites
+        # Periodic pressure: the mean divergence is removed from the RHS
+        @test abs(integrate(rhs)) < 1e-8 * norm(rhs) * sqrt(2^length(qsites))
+
+        p = random_mps(qsites)
+        u_proj = DifferenTT.∇p_correction((ux, uy), experiment, cache, p, dt)
+        @test length(u_proj) == 2
+        @test all(u -> siteinds(u) == qsites, u_proj)
+        # With dt = 0 the projection leaves the velocity unchanged
+        u_same = DifferenTT.∇p_correction((ux, uy), experiment, cache, p, 0.0)
+        @test norm(u_same[1] - ux) < 1e-8 * norm(ux)
+        @test norm(u_same[2] - uy) < 1e-8 * norm(uy)
+
+        solver = ALS(; sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=20), updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true))
+        n_u, n_p = length(experiment.u_fields), length(experiment.p_field)
+        u_next, p_next, linsolve_error = chorin_step(experiment, cache, last(experiment.u_fields), solver, stepper, 0.0)
+        @test length(u_next) == 2
+        @test all(u -> siteinds(u) == qsites, u_next)
+        @test p_next isa MPS
+        @test linsolve_error >= 0.0
+        # chorin_step leaves the experiment untouched
+        @test length(experiment.u_fields) == n_u
+        @test length(experiment.p_field) == n_p
+    end
+
     @testset "symmetrize_rhs" begin
         arch = TTArchitecture((4,))
         sites = siteinds(arch)
