@@ -75,9 +75,6 @@ end
 
 # """
 #     check_cfl(grid::Grid{N}, time_evol_settings::TimeEvol, Re::Number)
-# TODO THIS SHOULD ALSO TAKE INTO ACCOUNT THE VELOCITY MAGNITUDES
-"""
-    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number)
 
 # Checks if the temporal and spatial dimensions of a given INSExperiment comply with the CFL condition for stability
 # """
@@ -106,17 +103,17 @@ end
 # end
 
 # function check_cfl(experiment::INSExperiment{N}) where N
-#     check_cfl(experiment.grid, experiment.time_evol_kwargs, experiment.Re)
+#     check_cfl(experiment.grid, experiment.time_evol_settings, experiment.Re)
 # end
 
 """
-    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvol, Re::Number;
+    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number;
               stencil_order::Int=8, vmax::Float64=1.0) where N
 
 Checks RK4 stability for the actual finite-difference stencil in use, combining
 advection and diffusion contributions from all spatial dimensions.
 """
-function check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvol, Re::Number;
+function check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number;
                     stencil_order::Int=8, vmax::Float64=1.0) where N
     dt = time_evol_kwargs.dt
 
@@ -151,18 +148,18 @@ function check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvol, Re::Number;
 end
 
 """
-    check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
-    check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
+    check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs; vmax::Float64=1.0) where N
+    check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper; vmax::Float64=1.0) where N
 
 Checks the CFL condition of `experiment` for the time step given by `time_evol_kwargs`, or by the
-`TimeEvolArgs` stored in `stepper`.
+`TimeEvolArgs` stored in `stepper`, using the experiment's stencil order.
 """
-function check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
-    check_cfl(experiment.grid, time_evol_kwargs, experiment.Re)
+function check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs; vmax::Float64=1.0) where N
+    check_cfl(experiment.grid, time_evol_kwargs, experiment.Re; stencil_order=experiment.stencil_order, vmax=vmax)
 end
 
-function check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
-    check_cfl(experiment, stepper.time_evol_kwargs)
+function check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper; vmax::Float64=1.0) where N
+    check_cfl(experiment, stepper.time_evol_kwargs; vmax=vmax)
 end
 
 function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N 
