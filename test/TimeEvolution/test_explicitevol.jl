@@ -27,24 +27,24 @@ end
 @testset "Explicit Evolution Schemes" begin
 
     @testset "ExplicitEuler" begin
-        stepper = ExplicitEuler(cutoff=1e-8, maxdim=10)
+        dt = 0.1
+        stepper = ExplicitEuler(time_evol_kwargs=TimeEvolArgs(0.0, 1.0, dt), cutoff=1e-8, maxdim=10)
         u0 = (MockState(1.0),)
         rhs = MockRHS(1.0) # dy/dt = y
-        dt = 0.1
         
-        u1 = timestep(stepper, u0, dt, rhs, 0.0)
+        u1 = timestep(stepper, u0, rhs, 0.0)
         
         # Expected: 1.0 + 0.1 * 1.0 = 1.1
         @test isapprox(u1[1].val, 1.1, atol=1e-12)
     end
 
     @testset "RK4" begin
-        stepper = RK4(cutoff=1e-8, maxdim=10)
+        dt = 0.1
+        stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, 1.0, dt), cutoff=1e-8, maxdim=10)
         u0 = (MockState(1.0),)
         rhs = MockRHS(1.0)
-        dt = 0.1
         
-        u1 = timestep(stepper, u0, dt, rhs, 0.0)
+        u1 = timestep(stepper, u0, rhs, 0.0)
         
         # Expected manual RK4 step for dy/dt = y
         # k1 = 1.0
