@@ -262,6 +262,9 @@ function _apply_fai_operator(P::ReducedFactorizedPreconditioner, A, v)
     return ITensors.noprime(contract(P.reduced_op, Aw))
 end
 
+# A non-preconditioned problem has no κ_PC of its own. When `pc_cond_store` is given (a block of a preconditioned
+# solve that skips the preconditioner, see `preconditioner_sites`), κ(A) is recorded in it as well, so that
+# `pc_cond_store` holds an entry for every visited block and stays aligned with `cond_store`.
 function _compute_and_record_cond!(problem::ReducedLinearProblem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
     lpos = problem.reduced_operator.lpos
     if use_cg
@@ -271,9 +274,6 @@ function _compute_and_record_cond!(problem::ReducedLinearProblem, b_tensor, use_
         if compute_cond && verbosity > 0
             @info "local cond (CG/spectral)" lpos λmin_A λmax_A κ_A
         end
-        if !isnothing(cond_store) && isfinite(κ_A)
-            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
-        end
     else
         op = contract(operator(problem))
         A, = _local_dense_matrix(op, b_tensor)
@@ -282,9 +282,12 @@ function _compute_and_record_cond!(problem::ReducedLinearProblem, b_tensor, use_
         if compute_cond && verbosity > 0
             @info "local cond (GMRES/κ₂)" lpos σmin_A σmax_A κ_A
         end
-        if !isnothing(cond_store) && isfinite(κ_A)
-            record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
-        end
+    end
+    if !isnothing(cond_store) && isfinite(κ_A)
+        record_krylov_cond!(cond_store, _krylov_lpos(problem), κ_A)
+    end
+    if !isnothing(pc_cond_store) && isfinite(κ_A)
+        record_krylov_cond!(pc_cond_store, _krylov_lpos(problem), κ_A)
     end
 end
 
@@ -420,7 +423,8 @@ Local updater for linear problems. Passes the preconditioner `ProjMPO` to Krylov
 `linsolve` (PCG when `ishermitian && isposdef`, else preconditioned GMRES).
 
 If `preconditioner_sites` is given, the preconditioner is only applied to the blocks whose first site
-(`lpos + 1`) is in it; the other blocks are solved unpreconditioned.
+(`lpos + 1`) is in it; the other blocks are solved unpreconditioned. For those blocks, the condition number
+of the unpreconditioned local problem is recorded in both `cond_store` and `pc_cond_store`.
 
 Condition metrics:
 - CG/PCG: spectral κ(A) and κ_PCG from S = UAU' (Cholesky of P⁻¹).
@@ -503,7 +507,8 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
 
         if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
             b_tensor = constant_term(problem.linear_problem)
-            _compute_and_record_cond!(problem.linear_problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, nothing)
+            # The unpreconditioned κ(A) is also recorded as this block's κ_PC (the effective preconditioner is the identity)
+            _compute_and_record_cond!(problem.linear_problem, b_tensor, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
         end
     end
 
