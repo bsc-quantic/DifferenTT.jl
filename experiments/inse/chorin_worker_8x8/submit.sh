@@ -1,13 +1,14 @@
 #!/bin/bash
 #
-# Preconditioner Benchmark: Parallel Sweep for chorin_pipeline
+# Chorin worker (8x7 QTT grid): long unpreconditioned Chorin time evolution
 #
-# Submits a SLURM job array and a dependent collector job.
+# Submits a single-task SLURM job that runs worker.jl and then plots the saved snapshots
+# with plot_snapshots.jl.
 #
-# Usage: bash experiments/inse/chorin_worker_12x12/submit.sh [nocond]
+# Usage: bash experiments/inse/chorin_worker_8x8/submit.sh [nocond]
 #
-# By default, condition-number estimates are collected only for (8,8) and (10,10).
-# Pass "nocond" to skip condition-number estimates for all grid sizes.
+# By default, local condition-number estimates are collected during the evolution and results go
+# to results/. Pass "nocond" to skip them and write to results_nocond/ instead.
 #
 
 SCRIPT_DIR="experiments/inse/chorin_worker_8x8"
@@ -30,7 +31,7 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     --output="${LOGS_DIR}/task_%03a.out" \
     --error="${LOGS_DIR}/task_%03a.err" <<ARRAY_EOF
 #!/bin/bash
-#SBATCH --job-name=chorin_pipeline
+#SBATCH --job-name=chorin_worker_8x8
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 #SBATCH --array=1
@@ -53,7 +54,7 @@ ARRAY_EOF
 if [ -n "${NOCOND_ARG}" ]; then
     echo "Mode: nocond (no condition-number estimates)"
 else
-    echo "Mode: default (condition-number estimates on 8x8 and 10x10 only)"
+    echo "Mode: default (with condition-number estimates)"
 fi
 
 echo "Submitted array job: ${ARRAY_JOB_ID} (1 task)"
