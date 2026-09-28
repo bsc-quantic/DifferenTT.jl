@@ -69,7 +69,7 @@ include("Utils/visualization.jl")
 
 
 # Export types and functions from TimeEvolution
-export TimeEvol, AbstractTimeStepper, AbstractExplicitStepper
+export TimeEvolArgs, AbstractTimeStepper, AbstractExplicitStepper
 export AbstractRHS
 export ExplicitEuler, RK4, timestep
 # export AbstractImplicitStepper, AbstractImplicitSystem, ImplicitEuler, CrankNicolson # -> This is still a WIP
@@ -93,7 +93,7 @@ export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_
 # Export types and functions from Physics
 export advection, diffusion, divergence, gradient, symmetrized_laplacian
 export INSExperiment, check_cfl, check_kolmogorov_scale
-export chorin_evolve!, NavierStokesPredictorRHS
+export ChorinCache, chorin_step, chorin_evolve!, NavierStokesPredictorRHS
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
