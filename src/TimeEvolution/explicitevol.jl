@@ -34,62 +34,71 @@ abstract type AbstractRHS end
     ExplicitEuler{K} <: AbstractExplicitStepper
 
 Explicit Euler time integration scheme.
-Stores TT-related truncation keyword arguments (e.g., `cutoff`, `maxdim`) in `tt_kwargs`.
+
+# Fields
+- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+- `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
 """
 struct ExplicitEuler{K} <: AbstractExplicitStepper
+    time_evol_kwargs::TimeEvolArgs
     tt_kwargs::K
 end
-ExplicitEuler(; kwargs...) = ExplicitEuler(NamedTuple(kwargs))
+ExplicitEuler(; time_evol_kwargs::TimeEvolArgs, kwargs...) = ExplicitEuler(time_evol_kwargs, NamedTuple(kwargs))
 
 """
     RK4{K} <: AbstractExplicitStepper
 
 Explicit Runge-Kutta 4th order time integration scheme.
-Stores TT-related truncation keyword arguments (e.g., `cutoff`, `maxdim`) in `tt_kwargs`.
+
+# Fields
+- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+- `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
 """
 struct RK4{K} <: AbstractExplicitStepper
+    time_evol_kwargs::TimeEvolArgs
     tt_kwargs::K
 end
-RK4(; kwargs...) = RK4(NamedTuple(kwargs))
+RK4(; time_evol_kwargs::TimeEvolArgs, kwargs...) = RK4(time_evol_kwargs, NamedTuple(kwargs))
 
 """
-    timestep(scheme::AbstractExplicitStepper, u, dt, rhs_func, t=0.0)
+    timestep(stepper::AbstractExplicitStepper, u, rhs_func, t=0.0)
 
-Advances the state `u` by a time step `dt` using the specified explicit `scheme`.
+Advances the state `u` by one time step `stepper.time_evol_kwargs.dt` using the specified explicit `stepper`.
 
 # Arguments
-- `scheme`: The explicit time integration scheme (e.g., `ExplicitEuler`, `RK4`).
+- `stepper`: The explicit time integration scheme (e.g., `ExplicitEuler`, `RK4`).
 - `u`: The current state, typically a Tuple of `MPS` for vector fields.
-- `dt`: The time step size.
 - `rhs_func`: A function `rhs_func(u, t, stage)` that computes the time derivative `du/dt = F(u, t)`. 
   The `stage` argument allows `rhs_func` to know which internal RK stage is being evaluated,
   useful for debugging or intermediate outputs.
 - `t`: The current time.
 """
-function timestep(scheme::ExplicitEuler, u::Tuple, dt::Real, rhs_func::AbstractRHS, t::Real=0.0)
+function timestep(stepper::ExplicitEuler, u::Tuple, rhs_func::AbstractRHS, t::Real=0.0)
+    dt = stepper.time_evol_kwargs.dt
     k1 = rhs_func(u, t, 1)
     
     u_next = ntuple(length(u)) do i
-        +(u[i], dt * k1[i]; scheme.tt_kwargs...)
+        +(u[i], dt * k1[i]; stepper.tt_kwargs...)
     end
     
     return u_next
 end
 
-function timestep(scheme::RK4, u::Tuple, dt::Real, rhs_func::AbstractRHS, t::Real=0.0)
+function timestep(stepper::RK4, u::Tuple, rhs_func::AbstractRHS, t::Real=0.0)
+    dt = stepper.time_evol_kwargs.dt
     k1 = rhs_func(u, t, 1)
     
-    u2 = ntuple(i -> +(u[i], 0.5 * dt * k1[i]; scheme.tt_kwargs...), length(u))
+    u2 = ntuple(i -> +(u[i], 0.5 * dt * k1[i]; stepper.tt_kwargs...), length(u))
     k2 = rhs_func(u2, t + 0.5 * dt, 2)
     
-    u3 = ntuple(i -> +(u[i], 0.5 * dt * k2[i]; scheme.tt_kwargs...), length(u))
+    u3 = ntuple(i -> +(u[i], 0.5 * dt * k2[i]; stepper.tt_kwargs...), length(u))
     k3 = rhs_func(u3, t + 0.5 * dt, 3)
     
-    u4 = ntuple(i -> +(u[i], dt * k3[i]; scheme.tt_kwargs...), length(u))
+    u4 = ntuple(i -> +(u[i], dt * k3[i]; stepper.tt_kwargs...), length(u))
     k4 = rhs_func(u4, t + dt, 4)
     
     u_next = ntuple(length(u)) do i
-        +(u[i], (1/6) * dt * k1[i], (1/3) * dt * k2[i], (1/3) * dt * k3[i], (1/6) * dt * k4[i]; scheme.tt_kwargs...)
+        +(u[i], (1/6) * dt * k1[i], (1/3) * dt * k2[i], (1/3) * dt * k3[i], (1/6) * dt * k4[i]; stepper.tt_kwargs...)
     end
     
     return u_next
