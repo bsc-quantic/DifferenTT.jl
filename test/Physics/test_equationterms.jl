@@ -4,6 +4,11 @@ using ITensorMPS
 using LinearAlgebra
 using DifferenTT
 
+# Densely contracting 8-site MPOs yields tensors with up to 16 indices. Raise the ITensors
+# order warning threshold for this file only, restoring the previous value afterwards.
+previous_warn_order = ITensors.set_warn_order(17)
+
+try
 @testset "symmetrized_laplacian optimal MPO construction" begin
     # Helper to construct the exact dense matrix using directsum (the old inefficient way)
     # This serves as the ground truth to ensure the exact block MPO is mathematically identical.
@@ -108,4 +113,7 @@ using DifferenTT
         dense_direct = DifferenTT.contract_mpo(mpo_direct)
         @test norm(dense_optimal - dense_direct) < 1e-10
     end
+end
+finally
+    ITensors.set_warn_order(previous_warn_order)
 end
