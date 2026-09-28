@@ -120,13 +120,15 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         @warn "mask not found"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    mps_vx = tt_mul(object_mask, ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    bcsvyx = BoundaryCond1d(OpenBC(), OpenBC())
+
+    bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     
