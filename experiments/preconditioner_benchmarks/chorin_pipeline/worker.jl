@@ -126,8 +126,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, dt_map[nodes]*max_steps, max_steps)
-    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
+    experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -135,13 +135,17 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER)
     A = -1.0 * Δ_cache
     
+    # The pressure has a Dirichlet boundary, so A is not pinned and the RHS needs no mean removal
+    regularize = DifferenTT.regularization_check(experiment)
+    regularize && error("Benchmark operator A is not regularized; pressure BCs need a Dirichlet boundary")
+    cache = ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, A, regularize)
+    
     return (;
         nodes=nodes,
         A=A,
         experiment=experiment,
-        u_diff_ops=u_diff_ops,
-        u_boundary_null=u_boundary_null,
-        p_diff_ops=p_diff_ops,
+        time_stepper=time_stepper,
+        cache=cache,
         object_mask=object_mask
     )
 end
@@ -153,23 +157,8 @@ function masked_velocity(grid)
 end
 
 function build_rhs(grid, masked_u)
-    experiment = grid.experiment
-    u_diff_ops = grid.u_diff_ops
-    cutoff_val = experiment.cutoff
-    maxdim_val = experiment.maxdim
-    dt = experiment.time_evol_settings.dt
-
-    ∇u = divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
-    ∇u_correction = divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    Δp_correction_mpo = scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    
-    Δp_correction = isnothing(Δp_correction_mpo) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites); alg="naive", cutoff=cutoff_val, maxdim=maxdim_val)
-    
-    ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff_val, maxdim=maxdim_val)
-    ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff_val, maxdim=maxdim_val)
-
-    rhs_neumann = DifferenTT.neumann_symmetrization_correction_mps(experiment.p_field.arch, experiment.p_field.bcu, -1.0 * ∇u; cutoff=cutoff_val, maxdim=maxdim_val)
-    return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
+    dt = grid.time_stepper.time_evol_kwargs.dt
+    return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
 function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, precond=nothing)
@@ -191,7 +180,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
         pc_cond_store = pc_cond_store
     )
 
-    res_observer = ResidualObserver(grid.A, rhs, tol_val)
+    # A and b are bound by linearsolve to the system grid.A * pdt = rhs of this step
+    res_observer = ResidualObserver(rtol=tol_val)
     step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
     resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
     amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
@@ -199,7 +189,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
 
     solver = resals_solver
     
-    dt = experiment.time_evol_settings.dt
+    dt = grid.time_stepper.time_evol_kwargs.dt
     # previous_p = last(experiment.p_field)
     previous_p = nothing
     if isnothing(previous_p)
@@ -230,11 +220,10 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
-    div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
+    div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
     
-    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
-    timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
+    rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
+    timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
     
     experiment.u_fields[length(experiment.u_fields)] = timestepped_u
     

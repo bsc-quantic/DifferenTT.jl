@@ -133,9 +133,10 @@ end
 
 isnothing(object_mask) && @warn "Mask was not initialized."
 
-# time_evol_settings = TimeEvol(0.0, 2.0, 401)
-# time_evol_settings = TimeEvol(0.0, 1.0, 4001)
-time_evol_settings = TimeEvol(0.0, 0.001, 1)
+# time_evol_kwargs = TimeEvolArgs(0.0, 2.0, 401)
+# time_evol_kwargs = TimeEvolArgs(0.0, 1.0, 4001)
+time_evol_kwargs = TimeEvolArgs(0.0, 0.001, 1)
+time_stepper = RK4(; time_evol_kwargs=time_evol_kwargs, cutoff=1e-11, maxdim=150)
 
 Re = 3000
 
@@ -196,21 +197,22 @@ updater_kwargs = LocalUpdaterArgs(;
 sweep_kwargs = SweepingArgs(;
     nsweeps=5,
     maxdim=150,
-    cutoff=1e-11
+    cutoff=1e-11,
+    # observer! = ResidualObserver(rtol=1e-4) # Stop the sweeps once ||Ax-b||/||b|| < rtol; A and b are bound to each step's Poisson system
 )
 solver = ALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
-experiment = INSExperiment(grid, time_evol_settings, v_field, p_field, Re, object_mask;stencil_order=8, maxdim=150, cutoff=1e-11)
+experiment = INSExperiment(grid, v_field, p_field, Re, object_mask; stencil_order=8, maxdim=150, cutoff=1e-11)
 
 log_data(logger, destination_file, "experiment", experiment)
+log_data(logger, destination_file, "time_stepper", time_stepper)
 
 TimerOutputs.enable_debug_timings(DifferenTT)
 reset_timer!(timeit_to)
 
 save_step = 1
 plot_step = 1 #How many save steps to skip from plot to plot
-stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-chorin_evolve!(experiment, solver, stepper, save_step, logger, destination_file)
+chorin_evolve!(experiment, solver, time_stepper, save_step, logger, destination_file)
 display(timeit_to)
 TimerOutputs.disable_debug_timings(DifferenTT)
 
