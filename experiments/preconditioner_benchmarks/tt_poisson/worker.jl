@@ -306,6 +306,9 @@ function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
     for rep in 1:N_SOLVE_REPEATS
         solver, stores = make_outer_solver(A, rhs; nsweeps=nsweeps_map[N], maxdim=maxdims_map[N])
         x0 = copy(init_mps)
+        # Same RNG state before every timed solve (all methods and repeats), so no random choice
+        # inside the solver can differ between them.
+        Random.seed!(N)
         GC.gc(true)
         stats = @timed solve_fn(solver, x0)
         numiters = krylov_iters_summary(stores.numiter_store)
@@ -329,6 +332,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
 
     sites = siteinds(rhs)
+    # build_problem draws random TCI pivots: reseed so the initial guess only depends on N.
+    Random.seed!(task.N)
     init_mps = random_mps(sites)
 
     method = task.method
@@ -348,6 +353,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         key = "sinc_M_$(M)"
         @info "Running Sinc (M=$M) N=$N"
 
+        Random.seed!(task.N)
         GC.gc(true)
         b = @timed sincquadrature_preconditioner(arch, sites, A_list, M)
         pc = b.value
@@ -362,6 +368,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         key = "fai_mu_$(μ)_gdim_$(gdim)"
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
 
+        # The FAI build draws a randomized sketch: seed it so every FAI task of this N builds from
+        # the same RNG state.
+        Random.seed!(task.N)
         GC.gc(true)
         b = @timed build_fai(A, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N])
         pc = b.value
@@ -461,7 +470,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 end
 
 """
-    warmup()
+    warmup(N)
 
 JIT-warm every code path that a timed task will exercise, using the *same* solver/FAI-builder
 factories as the timed tasks (`make_outer_solver`, `build_fai`) so that argument-type-specific
@@ -469,8 +478,12 @@ compilation (e.g. `observer! = ResidualObserver`, `numiter_store::KrylovSweepSta
 rather than inside a timed solve. `dummy_N = 4` is the smallest chain with an interior 2-site
 bond (both left/right environments are real, non-trivial tensors), which is what N >= 3 problems
 actually hit.
+
+`sincquadrature_preconditioner` is additionally compiled for the task's dimension `N`: it is
+specialized on `TTArchitecture{N}`, so the `dummy_N` call does not cover it. `M` is only a value,
+so a single call with `M = 1` compiles it for every `M`.
 """
-function warmup()
+function warmup(N::Int)
     @info "Running JIT warmup..."
     t = @elapsed begin
         dummy_N = 4
@@ -494,6 +507,12 @@ function warmup()
 
         # Warm the residual-computation path used after every solve.
         ITensorMPS.inner(dA, dinit, dA, dinit)
+
+        # Sinc builder at the task's N. The builder only needs the architecture, sites and 1D
+        # operators, so the TCI solution of build_problem is not built here.
+        arch = TTArchitecture(ntuple(_ -> N_NODES_PER_DIM, N))
+        grid = Grid(arch, ntuple(_ -> 1.0, N))
+        sincquadrature_preconditioner(arch, siteinds(arch), [get_1d_A(i, grid, arch) for i in 1:N], 1)
     end
     @info "JIT warmup complete" seconds=t
     return t
@@ -509,7 +528,7 @@ function main()
 
     task = all_tasks[task_id]
 
-    warmup_time = warmup()
+    warmup_time = warmup(task.N)
 
     result = run_task(task; warmup_time=warmup_time)
 

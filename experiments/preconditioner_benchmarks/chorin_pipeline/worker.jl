@@ -257,6 +257,10 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
         pdt_guess = previous_p * dt
     end
 
+    # Same RNG state before every timed solve (baseline and preconditioned alike), so no random
+    # choice inside the solver can differ between methods.
+    Random.seed!(hash((grid.nodes, step_index)))
+
     # Collect the garbage from masked_velocity/build_rhs before timing, so it isn't charged to
     # the solve.
     GC.gc(true)
@@ -308,7 +312,6 @@ end
 function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     Random.seed!(task.nodes[1] + task.nodes[2])
     N_STEPS = n_steps_map[task.nodes]
-    Random.seed!(task.nodes[1] + task.nodes[2])
     compute_cond = should_compute_cond(task.nodes, use_nocond)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
@@ -322,19 +325,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
         flush(stderr)
-
-        # Warmup on a throwaway grid: compilation for this task's compute_cond-specific types
-        # happens here, without consuming one of the N_STEPS real, logged physics steps on `grid`.
-        GC.gc(true)
-        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
-        step0_res = chorin_step!(warmup_grid, sweep_kwargs, compute_cond, tol_val, 0)
-        step0_compile_time = step0_res.compile_t
-        step0_gc_time = step0_res.gc_t
-
-        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
-        # alongside `grid` for the whole task, roughly doubling resident memory.
-        warmup_grid = nothing
-        GC.gc(true)
 
         solve_times = Float64[]
         compile_times = Float64[]
@@ -388,12 +378,12 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "precond_build_time" => 0.0,
+            "precond_build_compile_time" => 0.0,
+            "precond_build_gc_time" => 0.0,
             "compile_times" => compile_times,
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
             "total_gc_time" => sum(gc_times),
-            "step0_compile_time" => step0_compile_time,
-            "step0_gc_time" => step0_gc_time,
             "hostname" => gethostname(),
             "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
             "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
@@ -447,27 +437,16 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
 
+        # The FAI build draws a randomized sketch: seed it so every task of this size builds from
+        # the same RNG state.
+        Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
-        t_build = @elapsed begin
+        build_stats = @timed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
-
-        # Warmup on a throwaway grid that shares `grid`'s site indices (via `shared_sites`), so
-        # `precond` — built from the real grid's A — is index-compatible with it too —
-        # compilation happens here without consuming one of the N_STEPS real, logged physics
-        # steps on `grid`.
-        GC.gc(true)
-        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
-        step0_res = chorin_step!(warmup_grid, sweep_kwargs, compute_cond, tol_val, 0, precond)
-        step0_compile_time = step0_res.compile_t
-        step0_gc_time = step0_res.gc_t
-
-        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
-        # alongside `grid` for the whole task, roughly doubling resident memory.
-        warmup_grid = nothing
-        GC.gc(true)
+        t_build = build_stats.time
 
         solve_times = Float64[]
         compile_times = Float64[]
@@ -516,6 +495,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "mu" => μ,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
+            "precond_build_compile_time" => build_stats.compile_time,
+            "precond_build_gc_time" => build_stats.gctime,
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
             "iters" => iters,
@@ -526,8 +507,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
             "total_gc_time" => sum(gc_times),
-            "step0_compile_time" => step0_compile_time,
-            "step0_gc_time" => step0_gc_time,
             "hostname" => gethostname(),
             "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
             "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
@@ -557,7 +536,9 @@ function warmup()
             sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
             updater_kwargs = dummy_updater_kwargs
         )
-        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+        # Pass residual_tol like the timed build does: it adds a ResidualObserver to the FAI solves,
+        # a different code path that would otherwise be compiled inside the timed build.
+        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false, residual_tol=fai_tol_map[(8, 8)])
         dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         # When running with condition numbers, compute time does not really count, so it is better to avoid

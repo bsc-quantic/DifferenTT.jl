@@ -298,6 +298,9 @@ function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
                                                      maxdim=maxdims_map[N], cutoff=1e-13,
                                                      orth_maxdim=maxdims_map[N], orth_cutoff=1e-14)
         x0 = copy(init_mps)
+        # Same RNG state before every timed solve (all methods and repeats), so no random choice
+        # inside the solver can differ between them.
+        Random.seed!(N)
         GC.gc(true)
         stats = @timed solve_fn(solver, x0)
         push!(runs, (; out_mps = stats.value, time = stats.time, compile_time = stats.compile_time,
@@ -310,11 +313,12 @@ end
 function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     N = task.N
     Random.seed!(task.N)
-    Random.seed!(task.N)
     @info "Building problem for N=$N..."
     A, rhs, sol_mps, A_list, grid, arch = build_problem(N)
 
     sites = siteinds(rhs)
+    # build_problem draws random TCI pivots: reseed so the initial guess only depends on N.
+    Random.seed!(task.N)
     init_mps = random_mps(sites)
 
     method = task.method
@@ -328,37 +332,15 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     if method == "baseline"
         key = "baseline"
         @info "Running Baseline N=$N"
-        
-        t_build = 0.0
-        t_solve = @elapsed out_mps = linearsolve(solver, A, rhs, init_mps)
-        
-        term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
-        term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
-        term3 = ITensorMPS.inner(rhs, rhs)
-        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
-        
-        @info "Residual $rel_residual"
-        @info "Max bond dimension = $(maxlinkdim(out_mps))"
-        
-        result_dict = Dict{String, Any}(
-            "key" => "baseline",
-            "N" => N,
-            "method" => "baseline",
-            "precond_build_time" => t_build,
-            "solve_time" => t_solve,
-            "total_time" => t_solve,
-            "relative_error" => rel_residual,
-            "global_iters" => global_updater_kwargs.numiter_store[],
-            "solution_maxdim" => maxlinkdim(out_mps)
-        )
-        
-        return result_dict
-        
+        # No preconditioner to build: the baseline is solved and timed below by repeated_solves,
+        # with the same solver settings, GC and repeats as the preconditioned methods.
+
     elseif task.method == "sinc"
         M = Int(task.param1)
         key = "sinc_M_$(M)"
         @info "Running Sinc (M=$M) N=$N"
 
+        Random.seed!(task.N)
         GC.gc(true)
         b = @timed sincquadrature_preconditioner(arch, sites, A_list, M)
         pc = b.value
@@ -373,6 +355,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         key = "fai_mu_$(μ)_gdim_$(gdim)"
         @info "Running FAI (μ=$μ, G_maxdim=$gdim) N=$N"
 
+        # The FAI build draws a randomized sketch: seed it so every FAI task of this N builds from
+        # the same RNG state.
+        Random.seed!(task.N)
         GC.gc(true)
         b = @timed build_fai(A, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N])
         pc = b.value
@@ -415,7 +400,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "precond_build_time" => t_build,
         "solve_time" => warm.time,
         "total_time" => t_build + warm.time,
-        "relative_error" => rel_residual,
+        "relative_residual" => rel_residual,
         "global_iters" => warm.global_iters,
         "solution_maxdim" => maxlinkdim(out_mps),
 
@@ -454,13 +439,17 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 end
 
 """
-    warmup()
+    warmup(N)
 
 JIT-warm every code path a timed task will exercise, using the *same* solver/FAI-builder
 factories as the timed tasks so argument-type-specific compilation happens here rather than
 inside a timed solve. `dummy_N = 4` is the smallest chain with an interior 2-site bond.
+
+`sincquadrature_preconditioner` is additionally compiled for the task's dimension `N`: it is
+specialized on `TTArchitecture{N}`, so the `dummy_N` call does not cover it. `M` is only a value,
+so a single call with `M = 1` compiles it for every `M`.
 """
-function warmup()
+function warmup(N::Int)
     @info "Running JIT warmup..."
     t = @elapsed begin
         dummy_N = 4
@@ -482,6 +471,12 @@ function warmup()
         end
 
         ITensorMPS.inner(dA, dinit, dA, dinit)
+
+        # Sinc builder at the task's N. The builder only needs the architecture, sites and 1D
+        # operators, so the TCI solution of build_problem is not built here.
+        arch = TTArchitecture(ntuple(_ -> N_NODES_PER_DIM, N))
+        grid = Grid(arch, ntuple(_ -> 1.0, N))
+        sincquadrature_preconditioner(arch, siteinds(arch), [get_1d_A(i, grid, arch) for i in 1:N], 1)
     end
     @info "JIT warmup complete" seconds=t
     return t
@@ -492,7 +487,7 @@ function main()
     all_tasks = build_task_list()
     (1 <= task_id <= length(all_tasks)) || error("Invalid task_id=$task_id")
 
-    warmup_time = warmup()
+    warmup_time = warmup(all_tasks[task_id].N)
     result = run_task(all_tasks[task_id]; warmup_time=warmup_time)
 
     mkpath(TASKS_DIR)

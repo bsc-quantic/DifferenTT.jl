@@ -231,6 +231,10 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
         pdt_guess = previous_p * dt
     end
 
+    # Same RNG state before every timed solve (baseline and preconditioned alike), so no random
+    # choice inside the solver can differ between methods.
+    Random.seed!(hash((grid.nodes, step_index)))
+
     # Collect the garbage from masked_velocity/build_rhs before timing, so it isn't charged to
     # the solve.
     GC.gc(true)
@@ -297,19 +301,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         @info "Running baseline for $(task.nodes)"
         flush(stderr)
 
-        # Warmup on a throwaway grid: compilation happens here, without consuming one of the
-        # N_STEPS real, logged physics steps on `grid`.
-        GC.gc(true)
-        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
-        step0_res = chorin_step!(warmup_grid, global_updater_kwargs, 0)
-        step0_compile_time = step0_res.compile_t
-        step0_gc_time = step0_res.gc_t
-
-        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
-        # alongside `grid` for the whole task, roughly doubling resident memory.
-        warmup_grid = nothing
-        GC.gc(true)
-
         solve_times = Float64[]
         compile_times = Float64[]
         gc_times = Float64[]
@@ -342,12 +333,12 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "precond_build_time" => 0.0,
+            "precond_build_compile_time" => 0.0,
+            "precond_build_gc_time" => 0.0,
             "compile_times" => compile_times,
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
             "total_gc_time" => sum(gc_times),
-            "step0_compile_time" => step0_compile_time,
-            "step0_gc_time" => step0_gc_time,
             "n_steps_run" => N_STEPS,
             "hostname" => gethostname(),
             "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
@@ -404,27 +395,16 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
 
+        # The FAI build draws a randomized sketch: seed it so every task of this size builds from
+        # the same RNG state.
+        Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
-        t_build = @elapsed begin
+        build_stats = @timed begin
             unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol)
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
-
-        # Warmup on a throwaway grid that shares `grid`'s site indices (via `shared_sites`), so
-        # `precond` — built from the real grid's A — is index-compatible with it too —
-        # compilation happens here without consuming one of the N_STEPS real, logged physics
-        # steps on `grid`.
-        GC.gc(true)
-        warmup_grid = build_grid(task.nodes, 1; shared_sites=grid.sites)
-        step0_res = chorin_step!(warmup_grid, global_updater_kwargs, 0, precond)
-        step0_compile_time = step0_res.compile_t
-        step0_gc_time = step0_res.gc_t
-
-        # Drop the throwaway grid before the real loop starts: otherwise it stays alive
-        # alongside `grid` for the whole task, roughly doubling resident memory.
-        warmup_grid = nothing
-        GC.gc(true)
+        t_build = build_stats.time
 
         solve_times = Float64[]
         compile_times = Float64[]
@@ -454,6 +434,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "mu" => μ,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
+            "precond_build_compile_time" => build_stats.compile_time,
+            "precond_build_gc_time" => build_stats.gctime,
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
             "global_iters" => global_iters,
@@ -464,8 +446,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
             "total_gc_time" => sum(gc_times),
-            "step0_compile_time" => step0_compile_time,
-            "step0_gc_time" => step0_gc_time,
             "n_steps_run" => N_STEPS,
             "hostname" => gethostname(),
             "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
