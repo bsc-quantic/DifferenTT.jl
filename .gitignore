@@ -14,3 +14,9 @@ experiments/**/tasks/
 !experiments/**/maskplots/*.png
 
 **/finaldata/
+
+# Throwaway statistics-run harnesses (code AND results)
+experiments/preconditioner_benchmarks/*_stats/
+experiments/preconditioner_benchmarks/stats_harness.jl
+experiments/preconditioner_benchmarks/stats_plot_utils.jl
+experiments/preconditioner_benchmarks/stats_utils.jl
