@@ -91,8 +91,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         r = +(r, -α * q; kwargs_tt...)
         normr = norm(r)
 
-        if true
-        # if normr <= tol # recompute to account for buildup of floating point errors
+        if normr <= tol # recompute to account for buildup of floating point errors
             r = copy(b)
             x_op = apply(operator, x; kwargs_tt...)
             q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
@@ -221,8 +220,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         z = apply(M⁻¹, r; kwargs_tt...)
         normr = norm(r)
 
-        if true
-        # if normr <= tol # recompute to account for buildup of floating point errors
+        if normr <= tol # recompute to account for buildup of floating point errors
             r = copy(b)
             x_op = apply(operator, x; kwargs_tt...)
             q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
