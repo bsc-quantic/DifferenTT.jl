@@ -240,7 +240,8 @@ dmrg(apply(transpose(fai_precond.operator), apply(fai_precond.operator, -1.0 * s
 vals_list = Dict()
 
 for i in 3:15
-    observer = LinsolveObserver()
+    # A and b are bound by linearsolve to the system built inside linsolve_preconditioner
+    observer = ResidualObserver()
     loop_prec_updater_kwargs = LocalUpdaterArgs(;
         ishermitian=true,
         isposdef=true,
@@ -256,7 +257,7 @@ for i in 3:15
         cutoff=1e-11,
         nsite=2,
         outputlevel=0,
-        observer!=observer
+        observer! = observer
     )
     loop_prec_solver = ALS(; sweep_kwargs=loop_prec_sweep_kwargs, updater_kwargs=loop_prec_updater_kwargs)
 
