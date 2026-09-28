@@ -38,11 +38,7 @@ end
 function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
-    preconditioner_sites = get(kwargs, :preconditioner_sites, nothing)
-    updater_kwargs = (; coefficients = (false, true), preconditioner_sites = preconditioner_sites, NamedTuple(solver.updater_kwargs)...)
-    kw = Dict(kwargs...)
-    delete!(kw, :preconditioner_sites)
-    sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kw)
+    updater_kwargs, sweep_kwargs = precond_linearsolve_kwargs(solver, A, b, kwargs)
     return alternating_update(reduced_precond_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...)
 end
 
