@@ -24,23 +24,23 @@ const MASK_FILE = "experiments/inse/chorin_worker_8x8/masks.jld2"
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
-const RE_NUM = 10000
+const RE_NUM = 3000
 const STENCIL_ORDER = 8
 
-const dt_map = Dict(
-    (9, 8) => 0.001,
-    (10, 10) => 0.0005,
-    (12, 12) => 0.00001
+const tf_map = Dict(
+    (8, 7) => 5.0,
+    (10, 10) => 1.0,
+    (12, 12) => 0.1
 )
 
 const n_steps_map = Dict(
-    (9, 8) => 3001,
+    (8, 7) => 2001,
     (10, 10) => 15,
     (12, 12) => 10
 )
 
-const system_sizes = [(9, 8), (10, 10), (12, 12)]
-const cond_nodes  = [(9, 8), (10, 10), (12, 12)]
+const system_sizes = [(8,7), (10, 10), (12, 12)]
+const cond_nodes  = [(8,7), (10, 10), (12, 12)]
 
 function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
@@ -50,28 +50,28 @@ const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (9, 8) => 250,
+    (8, 7) => 200,
     (10, 10) => 250,
     (12, 12) => 400
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
 const cutoff_map = Dict(
-    (9, 8) => 0.0,
-    (10, 10) => 0.0,
-    (12, 12) => 0.0
+    (8,7) => 1e-13,
+    (10, 10) => 1e-13,
+    (12, 12) => 1e-13
 )
 
 const nsweeps_map = Dict(
-    (9, 8) => 100,
+    (8,7) => 30,
     (10, 10) => 100,
     (12, 12) => 100
 )
 
 const tol_map = Dict(
-    (9, 8) => 1e-3,
-    (10, 10) => 1e-3,
-    (12, 12) => 1e-3
+    (8,7) => 1e-4,
+    (10, 10) => 1e-4,
+    (12, 12) => 1e-4
 )
 
 ITensors.disable_warn_order()
@@ -85,7 +85,7 @@ struct TaskSpec
 end
 
 function build_task_list()
-    return [TaskSpec((9, 8), true, 0.0, 0)]
+    return [TaskSpec((8,7), true, 0.0, 0)]
 end
 
 function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
@@ -125,8 +125,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, 4.0, max_steps, :rk4)
-    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    time_evol = TimeEvol(0.0, tf_map[nodes], max_steps, :rk4)
+    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-12)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -171,7 +171,7 @@ function build_rhs(grid, masked_u)
     return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
 end
 
-function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing)
+function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing; save_residual::Bool=false)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
@@ -196,7 +196,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
     als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
-    solver = resals_solver
+    solver = als_solver
     
     dt = experiment.time_evol_settings.dt
     previous_p = last(experiment.p_field)
@@ -221,9 +221,11 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     rel_res = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
 
     @info "Residual $rel_res"
-    
+
     sol_maxdim = maxlinkdim(pdt)
     @info "Sol_maxdim = $sol_maxdim"
+
+    residual_mps = save_residual ? +(apply(grid.A, pdt; alg="naive"), -rhs; alg="directsum") : nothing
     
     divfree_p = pdt * (1/dt)
     
@@ -244,14 +246,14 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     
     iters_per_site = DifferenTT.positions_sum(numiter_store)
     
-    res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
+    res_dict = (; t, rel_res, sol_maxdim, iters_per_site, residual_mps)
     
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
         local_cond_mean = isempty(local_conds) ? NaN : mean(local_conds)
         res_dict = merge(res_dict, (; local_conds, local_cond_mean))
     end
-    
+    flush(stderr)
     return res_dict
 end
 
@@ -315,13 +317,13 @@ function run_task(task::TaskSpec)
         
         for i in start_step:N_STEPS
             @info "Step $i / $N_STEPS"
-            
-            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i)
+
+            step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i; save_residual=(i % 200 == 0))
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(iters, step_res.iters_per_site)
-            
+
             if i % 200 == 0
                 @info "Saving fields for step $i"
                 jldopen(joinpath(base_folder, "snapshots.jld2"), "a+") do file
@@ -330,6 +332,7 @@ function run_task(task::TaskSpec)
                     end
                     file["u_fields_$i"] = grid.experiment.u_fields
                     file["p_field_$i"] = grid.experiment.p_field
+                    file["poisson_residual_$i"] = step_res.residual_mps
                 end
             end
             
@@ -491,7 +494,7 @@ end
 task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
-dummy_grid = build_grid((9, 8), 1)
+dummy_grid = build_grid((8,7), 1)
 dummy_solver = ResidualALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     residual_tol=1e-2

@@ -22,10 +22,15 @@ for i in 200:200:3000
         @info "Generating plots for step $i"
         u_fields = file["u_fields_$i"]
         p_field = file["p_field_$i"]
-        
-        visualize_vector(u_fields, length(u_fields), grid, joinpath(plot_dir, "vector_$(i).svg"); npoints=300, quiver_npoints=20, arrow_scale=0.05, aspect_ratio=:equal, size=fig_size)
-        visualize_vorticity(u_fields, length(u_fields), grid, joinpath(plot_dir, "vorticity_$(i).svg"); npoints=300, quiver_npoints=20, arrow_scale=0.0, aspect_ratio=:equal, size=fig_size)
-        visualize_scalar(p_field, length(p_field), grid, joinpath(plot_dir, "press_$(i).svg"); npoints=300, aspect_ratio=:equal, size=fig_size)
+
+        visualize_vector(u_fields, length(u_fields), grid, joinpath(plot_dir, "vector_$(i).svg"); npoints=256, quiver_npoints=16, arrow_scale=0.05, aspect_ratio=:equal, size=fig_size)
+        visualize_vorticity(u_fields, length(u_fields), grid, joinpath(plot_dir, "vorticity_$(i).svg"); npoints=256, quiver_npoints=16, arrow_scale=0.0, aspect_ratio=:equal, size=fig_size)
+        visualize_scalar(p_field, length(p_field), grid, joinpath(plot_dir, "press_$(i).svg"); npoints=256, aspect_ratio=:equal, size=fig_size)
+
+        if haskey(file, "poisson_residual_$i")
+            poisson_residual = file["poisson_residual_$i"]
+            visualize_scalar(poisson_residual, grid, p_field.arch, joinpath(plot_dir, "poisson_residual_$(i).svg"); npoints=256, aspect_ratio=:equal, size=fig_size)
+        end
     else
         @warn "Snapshots for step $i not found in the file."
     end
