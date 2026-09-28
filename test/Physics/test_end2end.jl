@@ -14,7 +14,7 @@ using LinearAlgebra
     sites = siteinds(2, sum(abs, nodes))
     
     # 1 step RK4 to check pipeline works
-    time_evol_settings = TimeEvol(0.0, 0.001, 1)
+    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, 0.001, 1), cutoff=1e-8, maxdim=10)
     Re = 100
     
     # Initialization
@@ -39,7 +39,7 @@ using LinearAlgebra
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(sites, arch, bcsp)
     
-    experiment = DifferenTT.INSExperiment(grid, time_evol_settings, v_field, p_field, Re, nothing; stencil_order=2, maxdim=10, cutoff=1e-8)
+    experiment = DifferenTT.INSExperiment(grid, v_field, p_field, Re, nothing; stencil_order=2, maxdim=10, cutoff=1e-8)
     
     updater_kwargs = DifferenTT.LocalUpdaterArgs(; ishermitian=true, isposdef=true)
     sweep_kwargs = DifferenTT.SweepingArgs(; nsweeps=1, maxdim=10)
@@ -47,8 +47,7 @@ using LinearAlgebra
     
     @testset "Chorin Step Execution" begin
         # Do not save or log to file
-        stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-        DifferenTT.chorin_evolve!(experiment, solver, stepper, 1, nothing, "")
+        DifferenTT.chorin_evolve!(experiment, solver, time_stepper, 1, nothing, "")
         
         # Verify that fields have been updated
         @test length(experiment.u_fields) == 2
@@ -72,5 +71,24 @@ using LinearAlgebra
         # Due to small sizes and only 1 sweep in ALS, divergence might not be exactly zero, 
         # but the pipeline should have run and produced valid MPS
         @test norm(∇u) >= 0.0
+    end
+
+    @testset "Checkpoints and residual observer" begin
+        # 3 steps saved every 2 -> checkpoints at steps 1 and 3
+        stepper3 = RK4(time_evol_kwargs=TimeEvolArgs(0.0, 0.003, 3), cutoff=1e-8, maxdim=10)
+        v_field3 = VectorField((v0 * ones_mps(sites, 1), 0.0 * ones_mps(sites, 1)), arch, (bcsvx, bcsvy))
+        p_field3 = ScalarField(sites, arch, bcsp)
+        experiment3 = DifferenTT.INSExperiment(grid, v_field3, p_field3, Re, nothing; stencil_order=2, maxdim=10, cutoff=1e-8)
+
+        observed_sweep_kwargs = DifferenTT.SweepingArgs(; nsweeps=3, maxdim=10, observer! = ResidualObserver(rtol=1e-2))
+        observed_solver = DifferenTT.ALS(; sweep_kwargs=observed_sweep_kwargs, updater_kwargs=updater_kwargs)
+
+        DifferenTT.chorin_evolve!(experiment3, observed_solver, stepper3, 2, nothing, "")
+
+        @test length(experiment3.u_fields) == 3
+        @test length(experiment3.p_field) == 2
+        # The observer in the solver was bound per step, never stored
+        @test isnothing(observed_solver.sweep_kwargs.observer!.A)
+        @test isnothing(observed_solver.sweep_kwargs.observer!.b)
     end
 end
