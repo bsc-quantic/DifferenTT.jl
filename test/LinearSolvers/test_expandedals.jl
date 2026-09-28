@@ -94,8 +94,13 @@ using DifferenTT: ExpandedALS, NullExpansion, RandomSPSDexpansion, RandomLTexpan
         )
         
         x_sol = linearsolve(solver, A, b, x0)
-        
+
         @test x_sol isa MPS
         @test length(x_sol) == length(s)
+
+        # Preconditioned path
+        x_precond = linearsolve(solver, A, b, DifferenTT.rank1_preconditioner(A), x0)
+        @test x_precond isa MPS
+        @test length(x_precond) == length(s)
     end
 end
