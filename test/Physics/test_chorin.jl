@@ -136,13 +136,26 @@ using ITensorMPS
     end
 
     @testset "check_cfl 2D" begin
+        sites = siteinds(TTArchitecture(arch_2d))
         grid = Grid(TTArchitecture(arch_2d), (1.0, 1.0))
-        te_ok = TimeEvolArgs(0.0, 0.01, 0.001)
         Re = 100.0
-        @test (check_cfl(grid, te_ok, Re); true)
+        u_fields = VectorField((random_mps(sites), random_mps(sites)), TTArchitecture(arch_2d), (bc2d, bc2d))
+        p_field = ScalarField(TTArchitecture(arch_2d), bc2d)
+        experiment = INSExperiment(grid, u_fields, p_field, Re, nothing; stencil_order=2)
 
+        te_ok = TimeEvolArgs(0.0, 0.01, 0.001)
         te_bad = TimeEvolArgs(0.0, 100.0, 1)
-        @test (check_cfl(grid, te_bad, Re); true)
+        # Stable for RK4, but beyond the forward Euler advection-diffusion limit 2 / (diff_eig + N vmax² Re) ≈ 0.01
+        te_rk4_only = TimeEvolArgs(0.0, 0.05, 1)
+
+        @test_logs min_level=Base.CoreLogging.Warn check_cfl(experiment, RK4(time_evol_kwargs=te_ok))
+        @test_logs min_level=Base.CoreLogging.Warn check_cfl(experiment, ExplicitEuler(time_evol_kwargs=te_ok))
+
+        @test_logs (:warn,) match_mode=:any check_cfl(experiment, RK4(time_evol_kwargs=te_bad))
+        @test_logs (:warn,) match_mode=:any check_cfl(experiment, ExplicitEuler(time_evol_kwargs=te_bad))
+
+        @test_logs min_level=Base.CoreLogging.Warn check_cfl(experiment, RK4(time_evol_kwargs=te_rk4_only))
+        @test_logs (:warn,) match_mode=:any check_cfl(experiment, ExplicitEuler(time_evol_kwargs=te_rk4_only))
     end
 
     @testset "INSExperiment construction 2D" begin
