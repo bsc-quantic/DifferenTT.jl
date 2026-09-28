@@ -171,14 +171,47 @@ abstract type AbstractUpdater end
 
 An observer that computes the relative global residual norm `||A * x - b||/||b||` 
 and terminates the DMRG/ALS sweeps early if the residual falls below a given tolerance.
+
+`A` and `b` can be left as `nothing`: the sweep-based `linearsolve` methods then bind them to the
+operator and right-hand side of that call (always the unpreconditioned ones, never `M⁻¹`), so one
+observer stored in `SweepingArgs` can be reused across solves with different right-hand sides.
+Global solvers (`GlobalCG`, `GlobalGMRES`) do not use observers; they stop on their own `rtol`.
 """
 Base.@kwdef struct ResidualObserver <: AbstractObserver
-    A::Any
-    b::MPS
+    A::Any = nothing
+    b::Union{MPS, Nothing} = nothing
     rtol::Float64 = 1e-8
 end
 
+"""
+    bind_observer(observer, A, b)
+
+Return `observer` with any unset operator / right-hand side filled in from `A` and `b`. Observers
+without such fields are returned unchanged. The input observer is never mutated.
+"""
+bind_observer(observer, A, b) = observer
+
+function bind_observer(o::ResidualObserver, A, b)
+    return ResidualObserver(isnothing(o.A) ? A : o.A, isnothing(o.b) ? b : o.b, o.rtol)
+end
+
+"""
+    linearsolve_sweep_kwargs(solver, A, b, kwargs)
+
+Merge the solver's `SweepingArgs` with the call-time `kwargs` and bind the observers to the
+system `A x = b` of this call.
+"""
+function linearsolve_sweep_kwargs(solver, A, b, kwargs)
+    sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
+    return merge(sweep_kwargs, (;
+        observer! = bind_observer(sweep_kwargs.observer!, A, b),
+        sweep_observer! = bind_observer(sweep_kwargs.sweep_observer!, A, b)
+    ))
+end
+
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
+    (isnothing(o.A) || isnothing(o.b)) && throw(ArgumentError("ResidualObserver has no operator or right-hand side bound; pass A and b explicitly or use it through a sweep-based `linearsolve`."))
+
     term1 = inner(o.A, state, o.A, state)
     term2 = -2.0 * real(inner(o.b', o.A, state))
     term3 = inner(o.b, o.b)

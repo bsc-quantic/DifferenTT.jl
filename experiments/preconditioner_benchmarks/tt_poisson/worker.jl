@@ -402,14 +402,24 @@ dummy_N = 2
 dummy_A, dummy_rhs, dummy_sol, dummy_A_list, dummy_grid, dummy_arch = build_problem(dummy_N)
 dummy_sites = siteinds(dummy_rhs)
 dummy_init = random_mps(dummy_sites)
+dummy_sweep = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8)
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_solver = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+dummy_builder = ALS(
+    sweep_kwargs = dummy_sweep,
     updater_kwargs = dummy_updater_kwargs
 )
-sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
-fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_solver = ResidualALS(
+    sweep_kwargs = dummy_sweep,
+    updater_kwargs = dummy_updater_kwargs,
+    residual_tol = 1e-2
+)
+dummy_sinc = sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
+dummy_fai = fai_preconditioner(dummy_A, 1.0, dummy_builder, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+# Baseline path
 linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
+# Sinc (Preconditioner) and FAI (FactorizedPreconditioner) are separate methods
+linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_sinc, dummy_init)
+linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_fai, dummy_init)
 @info "JIT warmup complete."
 
 result = run_task(task)

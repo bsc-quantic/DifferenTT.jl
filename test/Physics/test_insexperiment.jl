@@ -7,7 +7,8 @@ using ITensorMPS
     n = 3
     tt_arch = TTArchitecture((2^n, 2^n))
     grid = Grid(tt_arch, (1.0, 1.0))
-    time_evol = TimeEvol(0.1, 1.0, 10)
+    time_evol_kwargs = TimeEvolArgs(0.1, 1.0, 10)
+    time_stepper = RK4(time_evol_kwargs=time_evol_kwargs, cutoff=1e-5, maxdim=10)
     
     sites = [Index(2, "Site,n=$i") for i in 1:2]
     u_mps = random_mps(sites)
@@ -19,15 +20,17 @@ using ITensorMPS
     vfield = VectorField((sfield, sfield))
     
     @testset "INSExperiment instantiation" begin
-        exp = DifferenTT.INSExperiment(grid, time_evol, vfield, sfield, 100.0, nothing; stencil_order=2, maxdim=10, cutoff=1e-5)
+        exp = DifferenTT.INSExperiment(grid, vfield, sfield, 100.0, nothing; stencil_order=2, maxdim=10, cutoff=1e-5)
         @test exp.Re == 100.0
+        @test !hasfield(DifferenTT.INSExperiment, :time_stepper)
         @test exp.stencil_order == 2
         @test exp.maxdim == 10
         @test exp.cutoff == 1e-5
         @test isnothing(exp.object_mask)
         
         # Test checks
-        DifferenTT.check_cfl(exp)
+        @test (DifferenTT.check_cfl(exp, time_evol_kwargs); true)
+        @test (DifferenTT.check_cfl(exp, time_stepper); true)
         DifferenTT.check_kolmogorov_scale(exp)
     end
     
@@ -36,6 +39,6 @@ using ITensorMPS
         mask = random_mps(siteinds("S=1/2", 3)) # wrong sites
         @show !isnothing(mask)        
         @show vfield.usites != sfield.usites != siteinds(mask)
-        @test_throws ArgumentError DifferenTT.INSExperiment(grid, time_evol, vfield, sfield, 100.0, mask)
+        @test_throws ArgumentError DifferenTT.INSExperiment(grid, vfield, sfield, 100.0, mask)
     end
 end

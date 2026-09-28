@@ -224,9 +224,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
         
         result_dict = Dict{String, Any}(
@@ -236,7 +236,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "global_iters" => global_updater_kwargs.numiter_store[],
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -256,9 +256,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
         
         result_dict = Dict{String, Any}(
@@ -269,7 +269,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "global_iters" => global_updater_kwargs.numiter_store[],
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -334,9 +334,9 @@ function run_task(task::TaskSpec)
         term1 = ITensorMPS.inner(A, out_mps, A, out_mps)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, out_mps))
         term3 = ITensorMPS.inner(rhs, rhs)
-        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
+        rel_residual = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         
-        @info "Residual $rel_error"
+        @info "Residual $rel_residual"
         @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
         result_dict = Dict{String, Any}(
@@ -348,7 +348,7 @@ function run_task(task::TaskSpec)
             "precond_build_time" => t_build,
             "solve_time" => t_solve,
             "total_time" => t_build + t_solve,
-            "relative_error" => rel_error,
+            "relative_residual" => rel_residual,
             "global_iters" => global_updater_kwargs.numiter_store[],
             "solution_maxdim" => maxlinkdim(out_mps)
         )
@@ -383,9 +383,13 @@ dummy_updater_kwargs = GlobalUpdaterArgs(
     numiter_store = Ref{Int}(0)
 )
 dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
-sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
-fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+dummy_sinc = sincquadrature_preconditioner(dummy_arch, dummy_sites, dummy_A_list, 2)
+dummy_fai = fai_preconditioner(dummy_A, 1.0, dummy_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+# Baseline path
 linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_init)
+# Sinc (Preconditioner) and FAI (FactorizedPreconditioner) are separate methods
+linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_sinc, dummy_init)
+linearsolve(dummy_solver, dummy_A, dummy_rhs, dummy_fai, dummy_init)
 @info "JIT warmup complete."
 
 result = run_task(task)

@@ -11,7 +11,6 @@ Contracts the projected operator and constant term into dense matrices, forms th
 # Returns
 - `(x::ITensor, (; residual))`: The solution tensor and a named tuple with residual info.
 """
-
 struct QRUpdater <: AbstractUpdater end
 
 function (up::QRUpdater)(

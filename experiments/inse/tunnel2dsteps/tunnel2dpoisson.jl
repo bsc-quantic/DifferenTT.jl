@@ -141,9 +141,10 @@ p_field = ScalarField(sites, arch, bcsp)
 # 6. Set up the time evolution settings, the Reynolds number and the experiment object  
 
 ############################################################
-time_evol_settings = TimeEvol(0.0, 0.00005, 4, :euler)
+time_stepper = ExplicitEuler(; time_evol_kwargs=TimeEvolArgs(0.0, 0.00005, 4), cutoff=1e-11, maxdim=150)
 Re = 3000
-experiment = INSExperiment(grid, time_evol_settings, v_field, p_field, Re, object_mask; stencil_order=8, maxdim=150, cutoff=1e-11)
+experiment = INSExperiment(grid, v_field, p_field, Re, object_mask; stencil_order=8, maxdim=150, cutoff=1e-11)
+check_cfl(experiment, time_stepper)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -310,7 +311,7 @@ global_updater_kwargs = GlobalUpdaterArgs(;
 
 ttcg_solver = GlobalCG(; updater_kwargs = global_updater_kwargs)
 
-dt = experiment.time_evol_settings.dt
+dt = time_stepper.time_evol_kwargs.dt
 cutoff = experiment.cutoff
 maxdim = experiment.maxdim
 
@@ -433,9 +434,7 @@ divfree_diffusion_terms = diffusion(div_free_u_mpss, u_diff_ops; cutoff=cutoff, 
 visualize_vector((1 / Re) .* divfree_diffusion_terms, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_divfree_diffusion.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-5, 5))
 
 NSrhs = NavierStokesPredictorRHS(experiment, u_diff_ops, u_boundary_null)
-stepper = ExplicitEuler(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-
-timestepped_u_mpss = timestep(stepper, div_free_u_mpss, experiment.time_evol_settings.dt, NSrhs, 1.0 * experiment.time_evol_settings.dt)
+timestepped_u_mpss = timestep(time_stepper, div_free_u_mpss, NSrhs, 1.0 * time_stepper.time_evol_kwargs.dt)
 
 
 #---------------------------------------------------

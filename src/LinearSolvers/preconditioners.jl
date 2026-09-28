@@ -408,7 +408,6 @@ Construct the exact explicit QTT representation of the -1.0 * 1D inverse Laplaci
 Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
 Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
 """
-# TODO Understand what is going on with reversal
 function inverse_laplacian_preconditioner(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
     if isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)
         mpo = _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)

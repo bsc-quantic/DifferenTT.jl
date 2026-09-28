@@ -105,12 +105,12 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = load(MASK_FILE, mask_key)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
-        object_mask = zeros_mps(sites)
-        @warn "mask not found"
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
     end
     
-    mps_vy = tt_mul(object_mask, ones_mps(sites))
-    mps_vx = 0.0 * ones_mps(sites)
+    mps_vx = tt_mul(object_mask, ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
     
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -126,8 +126,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     
-    time_evol = TimeEvol(0.0, dt_map[nodes]*max_steps, max_steps, :euler)
-    experiment = INSExperiment(grid, time_evol, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
+    experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -135,13 +135,17 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER)
     A = -1.0 * Δ_cache
     
+    # The pressure has a Dirichlet boundary, so A is not pinned and the RHS needs no mean removal
+    regularize = DifferenTT.regularization_check(experiment)
+    regularize && error("Benchmark operator A is not regularized; pressure BCs need a Dirichlet boundary")
+    cache = ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, A, regularize)
+    
     return (;
         nodes=nodes,
         A=A,
         experiment=experiment,
-        u_diff_ops=u_diff_ops,
-        u_boundary_null=u_boundary_null,
-        p_diff_ops=p_diff_ops,
+        time_stepper=time_stepper,
+        cache=cache,
         object_mask=object_mask
     )
 end
@@ -153,23 +157,8 @@ function masked_velocity(grid)
 end
 
 function build_rhs(grid, masked_u)
-    experiment = grid.experiment
-    u_diff_ops = grid.u_diff_ops
-    cutoff_val = experiment.cutoff
-    maxdim_val = experiment.maxdim
-    dt = experiment.time_evol_settings.dt
-
-    ∇u = divergence(masked_u, u_diff_ops; cutoff=cutoff_val, maxdim=maxdim_val)
-    ∇u_correction = divergence_dirichlet_correction(experiment.u_fields; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    Δp_correction_mpo = scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=STENCIL_ORDER, cutoff=cutoff_val, maxdim=maxdim_val)
-    
-    Δp_correction = isnothing(Δp_correction_mpo) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites); alg="naive", cutoff=cutoff_val, maxdim=maxdim_val)
-    
-    ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff_val, maxdim=maxdim_val)
-    ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff_val, maxdim=maxdim_val)
-
-    rhs_neumann = DifferenTT.neumann_symmetrization_correction_mps(experiment.p_field.arch, experiment.p_field.bcu, -1.0 * ∇u; cutoff=cutoff_val, maxdim=maxdim_val)
-    return isnothing(rhs_neumann) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann; cutoff=cutoff_val, maxdim=maxdim_val)
+    dt = grid.time_stepper.time_evol_kwargs.dt
+    return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
 function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, precond=nothing)
@@ -191,7 +180,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
         pc_cond_store = pc_cond_store
     )
 
-    res_observer = ResidualObserver(grid.A, rhs, tol_val)
+    # A and b are bound by linearsolve to the system grid.A * pdt = rhs of this step
+    res_observer = ResidualObserver(rtol=tol_val)
     step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
     resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
     amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
@@ -199,12 +189,12 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
 
     solver = resals_solver
     
-    dt = experiment.time_evol_settings.dt
+    dt = grid.time_stepper.time_evol_kwargs.dt
     # previous_p = last(experiment.p_field)
     previous_p = nothing
     if isnothing(previous_p)
         Random.seed!(grid.nodes[1] + grid.nodes[2])
-        pdt_guess = random_mps(siteinds(grid.A))
+        pdt_guess = random_mps(siteinds(rhs))
     else
         pdt_guess = previous_p * dt
     end
@@ -230,11 +220,10 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
-    div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.p_diff_ops, grid.u_boundary_null)
+    div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
     
-    stepper = RK4(cutoff=experiment.cutoff, maxdim=experiment.maxdim)
-    rhs_func = NavierStokesPredictorRHS(experiment, grid.u_diff_ops, grid.u_boundary_null)
-    timestepped_u = timestep(stepper, div_free_u, dt, rhs_func, 0.0)
+    rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
+    timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
     
     experiment.u_fields[length(experiment.u_fields)] = timestepped_u
     
@@ -253,7 +242,7 @@ end
 
 function run_task(task::TaskSpec)
     N_STEPS = n_steps_map[task.nodes]
-    Random.seed!(task.nodes)
+    Random.seed!(task.nodes[1] + task.nodes[2])
     compute_cond = should_compute_cond(task.nodes, use_nocond)
     grid = build_grid(task.nodes, N_STEPS)
     maxdim_val = maxdims_map[task.nodes]
@@ -265,9 +254,6 @@ function run_task(task::TaskSpec)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
-        
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val)
         
         solve_times = Float64[]
         iters = Vector{Float64}[]
@@ -367,9 +353,6 @@ function run_task(task::TaskSpec)
             precond = FactorizedPreconditioner(Gl)
         end
         
-        # Warmup
-        chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, precond)
-        
         solve_times = Float64[]
         iters = Vector{Float64}[]
         residuals = Float64[]
@@ -441,20 +424,23 @@ task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
 dummy_grid = build_grid((8, 8), 1)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
-)
+dummy_sweep = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8)
 dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
 dummy_als_solver = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
+    sweep_kwargs = dummy_sweep,
     updater_kwargs = dummy_updater_kwargs
 )
-DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 
-# When running with condition numbers, compute time does not really count, so it is better to avoid
-# crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3)
+# Baseline path: unpreconditioned ResidualALS inside chorin_step!
+chorin_step!(dummy_grid, dummy_sweep, false, 1e-3)
+
+# FAI path: FactorizedPreconditioner + chorin_step!
+unscaledG, D = DifferenTT.fai_dg(
+    dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2);
+    preconditioning=false, residual_tol=1e-2
+)
+dummy_precond = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
+chorin_step!(dummy_grid, dummy_sweep, false, 1e-3, dummy_precond)
 @info "JIT warmup complete."
 
 result = run_task(task)
