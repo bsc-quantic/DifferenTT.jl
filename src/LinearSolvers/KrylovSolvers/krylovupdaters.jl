@@ -419,6 +419,9 @@ end
 Local updater for linear problems. Passes the preconditioner `ProjMPO` to KrylovKit's
 `linsolve` (PCG when `ishermitian && isposdef`, else preconditioned GMRES).
 
+If `preconditioner_sites` is given, the preconditioner is only applied to the blocks whose first site
+(`lpos + 1`) is in it; the other blocks are solved unpreconditioned.
+
 Condition metrics:
 - CG/PCG: spectral κ(A) and κ_PCG from S = UAU' (Cholesky of P⁻¹).
 - GMRES: κ₂(A) and κ₂(P⁻¹ A) from extremal singular values (no SPD requirement on P⁻¹).
