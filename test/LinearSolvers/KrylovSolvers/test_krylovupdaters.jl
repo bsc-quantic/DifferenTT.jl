@@ -4,7 +4,6 @@ using ITensorMPS
 using KrylovKit
 using LinearAlgebra
 using DifferenTT
-# We are testing unexported internal utilities
 using DifferenTT: _uses_cg_metric, _eig_condition, _warn_if_not_spd, _local_dense_matrix
 
 @testset "KrylovUpdater instantiation" begin
