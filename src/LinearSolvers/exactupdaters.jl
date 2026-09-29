@@ -41,20 +41,13 @@ function (up::QRUpdater)(
     verbosity > 0 && @info "Qr updater got relative residual norm = $(rel_residual)"
 
     if compute_cond || !isnothing(cond_store)
-        eigs_op = eigvals(Amat)
-        minimum_eigval = minimum(real.(eigs_op))
-        maximum_eigval = maximum(real.(eigs_op))
-
-        if minimum_eigval < 0
-            @error "OPERATOR IS NOT SPD!" minimum_eigval pos = problem.reduced_operator.lpos
-        end
+        # Same metric as KrylovUpdater: κ_λ = max|λ| / min|λ| of the dense local operator
+        cond_val, eigs_op = _eig_condition(Amat)
         if compute_cond
-            @show problem.reduced_operator.lpos, minimum_eigval, maximum_eigval
+            _warn_if_not_spd(eigs_op, "Operator A", problem.reduced_operator.lpos)
+            verbosity > 0 && @info "local cond" lpos = problem.reduced_operator.lpos cond_val
         end
-        if !isnothing(cond_store)
-            cond_val = abs(maximum_eigval) / max(abs(minimum_eigval), 1e-16)
-            record_krylov_cond!(cond_store, _krylov_lpos(problem), cond_val)
-        end
+        _record_cond!(cond_store, problem, cond_val)
     end
 
     if !isnothing(numiter_store)
