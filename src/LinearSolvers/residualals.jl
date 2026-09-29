@@ -83,9 +83,6 @@ function residual_replacebond!(
     end
     U_full, S_full, V_full = svd(phi, indsMb; alg="recursive")
 
-    bond_ind = commoninds(U_full, S_full)
-    full_rank = dim(bond_ind[1])
-
     # ── 2. Compute RHS (projected constant term) ─────────────────────
     rhs = _local_rhs(reduced_operator)
     norm_rhs = norm(rhs)
@@ -96,63 +93,17 @@ function residual_replacebond!(
         return spec
     end
 
-    # ── 3. Residual of the untruncated solution ──────────────────────
-    res_exact = _local_residual_norm(reduced_operator, phi, rhs) / norm_rhs
-
-    # ── 4. Residual-based rank selection ─────────────────────────────
-    # Walk from full rank downward; stop when residual exceeds threshold
-    threshold = max(resid_tol * resid_damp, res_exact * resid_damp)
-
-    # Extract singular values as a vector for fast iteration
-    s_inds = inds(S_full)
-    s_dim = dim(s_inds[1])
-    svals = [S_full[s_inds[1] => k, s_inds[2] => k] for k in 1:s_dim]
-
-    low = max(1, mindim)
-    high = full_rank - 1
-    chosen_rank = full_rank
-
-    # Binary search of required χ
-    while low <= high
-        mid = (low + high) ÷ 2
-        # Reconstruct truncated phi
-        phi_trunc = _truncated_phi(U_full, S_full, V_full, mid)
-        res_trunc = _local_residual_norm(reduced_operator, phi_trunc, rhs) / norm_rhs
-        
-        if res_trunc <= threshold
-            chosen_rank = mid
-            high = mid - 1
-        else
-            low = mid + 1
-        end
-    end
-
-    # Clamp
-    chosen_rank = clamp(chosen_rank, mindim, min(maxdim, full_rank))
-
-    # ── 5. Also apply Frobenius cutoff as a floor ────────────────────
-    # (in case the user still wants a minimum spectral cutoff)
-    total_weight = sum(abs2, svals)
-    if cutoff > 0 && total_weight > 0
-        frob_rank = full_rank
-        cumulative = 0.0
-        for k in full_rank:-1:2
-            cumulative += abs2(svals[k])
-            if cumulative / total_weight > cutoff^2
-                frob_rank = k
-                break
-            end
-            frob_rank = k - 1
-        end
-        frob_rank = max(frob_rank, mindim)
-        # Take the more conservative (larger) rank
-        chosen_rank = max(chosen_rank, frob_rank)
-    end
-    chosen_rank = min(chosen_rank, maxdim)
+    # ── 3–5. Residual-based rank selection, with the Frobenius cutoff as a floor ──
+    # NOTE: the floor compares the discarded relative weight Σσ² with `cutoff^2`, whereas ITensors
+    # compares it with `cutoff`. This is kept as is so that ResidualALS results do not change (with
+    # the usual cutoff = 1e-10 the floor is effectively inactive). Decide which convention is
+    # intended; AMEn uses the ITensors one.
+    chosen_rank, truncerr, res_exact = _residual_rank(
+        reduced_operator, phi, rhs, U_full, S_full, V_full;
+        resid_tol, resid_damp, frob_weight = cutoff^2, mindim, maxdim,
+    )
 
     # ── 6. Perform the actual truncation ─────────────────────────────
-    truncerr = total_weight > 0 ? sqrt(sum(abs2, svals[(chosen_rank + 1):end]) / total_weight) : 0.0
-
     spec = replacebond!(
         state, b, phi;
         maxdim = chosen_rank,
@@ -165,6 +116,116 @@ function residual_replacebond!(
     return (; truncerr, chosen_rank, res_exact, spec)
 end
 
+
+"""
+    _frobenius_rank(svals, frob_weight, mindim)
+
+Smallest rank (never below `mindim`) whose discarded weight `Σ_{k>r} σ_k² / Σ σ_k²` does not exceed
+`frob_weight`. `svals` must be sorted in decreasing order.
+"""
+function _frobenius_rank(svals::AbstractVector, frob_weight::Real, mindim::Int)
+    full_rank = length(svals)
+    total_weight = sum(abs2, svals)
+    frob_rank = full_rank
+    cumulative = 0.0
+    for k in full_rank:-1:2
+        cumulative += abs2(svals[k])
+        if cumulative / total_weight > frob_weight
+            frob_rank = k
+            break
+        end
+        frob_rank = k - 1
+    end
+    return max(frob_rank, mindim)
+end
+
+"""
+    _residual_rank(reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp,
+                   frob_weight = 0.0, mindim = 1, maxdim = typemax(Int))
+
+Smallest rank `r` such that truncating the SVD `phi = U_full * S_full * V_full` to its `r` largest
+singular values keeps the relative local residual `‖A_loc φ_r - rhs‖ / ‖rhs‖` below
+`max(resid_tol, res_exact) * resid_damp`, where `res_exact` is the relative local residual of `phi`.
+The reduced operator must be positioned at the site(s) of `phi`, and `rhs` must be its local
+right-hand side (`_local_rhs`), with `norm(rhs) > 0`.
+
+On top of that, a Frobenius floor keeps every rank whose discarded weight `Σ_{k>r} σ_k² / Σ σ_k²`
+would exceed `frob_weight` (`0.0` disables it). The result is clamped to `[mindim, maxdim]`.
+
+# Returns
+- `(chosen_rank, truncerr, res_exact)`, with `truncerr = sqrt(discarded weight / total weight)`.
+"""
+function _residual_rank(
+    reduced_operator,
+    phi::ITensor,
+    rhs::ITensor,
+    U_full::ITensor,
+    S_full::ITensor,
+    V_full::ITensor;
+    resid_tol::Real,
+    resid_damp::Real,
+    frob_weight::Real = 0.0,
+    mindim::Int = 1,
+    maxdim::Int = typemax(Int),
+)
+    norm_rhs = norm(rhs)
+    bond_ind = commoninds(U_full, S_full)
+    full_rank = dim(bond_ind[1])
+
+    # Residual of the untruncated solution
+    res_exact = _local_residual_norm(reduced_operator, phi, rhs) / norm_rhs
+
+    # Residual-based rank selection: walk from full rank downward; stop when residual exceeds threshold
+    threshold = max(resid_tol * resid_damp, res_exact * resid_damp)
+
+    # Extract singular values as a vector for fast iteration
+    svals = _singular_values(S_full)
+
+    low = max(1, mindim)
+    high = full_rank - 1
+    chosen_rank = full_rank
+
+    # Binary search of required χ
+    while low <= high
+        mid = (low + high) ÷ 2
+        # Reconstruct truncated phi
+        phi_trunc = _truncated_phi(U_full, S_full, V_full, mid)
+        res_trunc = _local_residual_norm(reduced_operator, phi_trunc, rhs) / norm_rhs
+
+        if res_trunc <= threshold
+            chosen_rank = mid
+            high = mid - 1
+        else
+            low = mid + 1
+        end
+    end
+
+    # Clamp
+    chosen_rank = clamp(chosen_rank, mindim, min(maxdim, full_rank))
+
+    # Also apply the Frobenius cutoff as a floor (in case the user still wants a minimum spectral cutoff)
+    total_weight = sum(abs2, svals)
+    if frob_weight > 0 && total_weight > 0
+        frob_rank = _frobenius_rank(svals, frob_weight, mindim)
+        # Take the more conservative (larger) rank
+        chosen_rank = max(chosen_rank, frob_rank)
+    end
+    chosen_rank = min(chosen_rank, maxdim)
+
+    return chosen_rank, _truncation_error(svals, chosen_rank), res_exact
+end
+
+"""Singular values stored in the diagonal ITensor `S` (as returned by `svd`), as a vector."""
+function _singular_values(S::ITensor)
+    s_inds = inds(S)
+    return [S[s_inds[1] => k, s_inds[2] => k] for k in 1:dim(s_inds[1])]
+end
+
+"""Relative truncation error `sqrt(Σ_{k>r} σ_k² / Σ σ_k²)` of keeping the `r` largest singular values."""
+function _truncation_error(svals::AbstractVector, r::Int)
+    total_weight = sum(abs2, svals)
+    return total_weight > 0 ? sqrt(sum(abs2, svals[(r + 1):end]) / total_weight) : 0.0
+end
 
 """Compute the projected RHS b_local from the reduced operator."""
 function _local_rhs(reduced_operator)
@@ -189,6 +250,16 @@ function _local_residual_norm(reduced_operator::Union{ReducedPrecondLinearProble
     Aphi = ITensors.contract(reduced_operator.linear_problem, phi)
     Aphi_unprimed = noprime(Aphi)
     return norm(Aphi_unprimed - rhs)
+end
+
+"""Compute the local residual tensor b_local - A_local * phi."""
+function _local_residual(reduced_operator::ReducedLinearProblem, phi::ITensor, rhs::ITensor)
+    return rhs - noprime(ITensors.contract(reduced_operator, phi))
+end
+
+"""Compute the local residual tensor b_local - A_local * phi (with the unpreconditioned operator)."""
+function _local_residual(reduced_operator::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor)
+    return rhs - noprime(ITensors.contract(reduced_operator.linear_problem, phi))
 end
 
 """Reconstruct a rank-r truncated version of U * S * V†."""
@@ -427,7 +498,7 @@ function residual_sub_sweep_update(
 
         if outputlevel >= 2
             if nsite == 2
-                @printf("Sweep %d, direction %s, bond (%d,%d)\\n", sweep, direction, b, b + 1)
+                @printf("Sweep %d, direction %s, bond (%d,%d)\n", sweep, direction, b, b + 1)
             end
             flush(stdout)
         end
