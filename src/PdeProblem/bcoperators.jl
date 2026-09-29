@@ -374,15 +374,5 @@ function onedim_right_dirichlet_correction(derivative_order::Int, arch::TTArchit
 end
 
 function corner_pick_matrix(coefficients::Vector{<:AbstractFloat}, flag::Symbol=:upper)
-    mat = zeros(Float64, 4, 4)
-    if flag == :upper
-        for (i, c) in enumerate(coefficients)
-            mat[i, 1] = c
-        end
-    elseif flag == :lower
-        for (i, c) in enumerate(coefficients)
-            mat[end-i+1, end] = c
-        end
-    end
-    return mat
+    return flag == :upper ? upper_toeplitz_matrix(coefficients) : lower_toeplitz_matrix(coefficients)
 end

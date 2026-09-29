@@ -43,6 +43,80 @@ function cond_improvement_factor(cond_v::AbstractDict; baseline_avg::Float64=NaN
     return Float64(κA_use) / Float64(κPC)
 end
 
+function mean_finite(xs)::Float64
+    f = filter(isfinite, xs)
+    isempty(f) && return NaN
+    return mean(f)
+end
+
+function avg_site_speedup(base_per_site, v_per_site)::Float64
+    (nonempty_numeric_vec(base_per_site) && nonempty_numeric_vec(v_per_site)) || return NaN
+    n = min(length(base_per_site), length(v_per_site))
+    ratios = Float64[]
+    for i in 1:n
+        b, s = base_per_site[i], v_per_site[i]
+        if b isa Number && s isa Number && isfinite(Float64(b)) && isfinite(Float64(s)) && Float64(b) > 0 && Float64(s) > 0
+            push!(ratios, Float64(b) / Float64(s))
+        end
+    end
+    isempty(ratios) && return NaN
+    return mean(ratios)
+end
+
+"""
+    site_speedup_over_time(base_matrix, v_matrix) -> Vector{Float64}
+
+For time-evolution data where iteration counts are recorded per step *and* per site
+(`base_matrix`/`v_matrix` are `Vector{Vector{Float64}}`, outer index = time step, inner
+index = MPS site), returns, for each site, the average across time steps of the per-step
+speedup ratio `base_iters[t][site] / v_iters[site]`. This averages ratios over time first
+(one value per step) rather than summing iteration counts over time and then taking a
+single ratio, so a handful of high-iteration outlier steps cannot dominate the result.
+"""
+function site_speedup_over_time(base_matrix, v_matrix)::Vector{Float64}
+    (base_matrix === nothing || v_matrix === nothing || isempty(base_matrix) || isempty(v_matrix)) && return Float64[]
+    n_steps = min(length(base_matrix), length(v_matrix))
+    n_steps == 0 && return Float64[]
+
+    n_sites = minimum(length(base_matrix[t]) for t in 1:n_steps)
+    n_sites = min(n_sites, minimum(length(v_matrix[t]) for t in 1:n_steps))
+    n_sites == 0 && return Float64[]
+
+    result = fill(NaN, n_sites)
+    for s in 1:n_sites
+        ratios = Float64[]
+        for t in 1:n_steps
+            b, v = base_matrix[t][s], v_matrix[t][s]
+            if b isa Number && v isa Number && isfinite(Float64(b)) && isfinite(Float64(v)) && Float64(b) > 0 && Float64(v) > 0
+                push!(ratios, Float64(b) / Float64(v))
+            end
+        end
+        isempty(ratios) || (result[s] = mean(ratios))
+    end
+    return result
+end
+
+"""
+    site_speedup_ratio(base_per_site, v_per_site) -> Vector{Float64}
+
+Elementwise per-site speedup `base_per_site[i] / v_per_site[i]`, for data with no time
+dimension (a single solve per configuration). Invalid entries (non-finite or non-positive)
+become `NaN`, and the result keeps every site's position so it can be plotted against the
+MPS site index like `iters_per_site`.
+"""
+function site_speedup_ratio(base_per_site, v_per_site)::Vector{Float64}
+    (nonempty_numeric_vec(base_per_site) && nonempty_numeric_vec(v_per_site)) || return Float64[]
+    n = min(length(base_per_site), length(v_per_site))
+    result = fill(NaN, n)
+    for i in 1:n
+        b, s = base_per_site[i], v_per_site[i]
+        if b isa Number && s isa Number && isfinite(Float64(b)) && isfinite(Float64(s)) && Float64(b) > 0 && Float64(s) > 0
+            result[i] = Float64(b) / Float64(s)
+        end
+    end
+    return result
+end
+
 function match_cond(grid_data_cond::AbstractDict, v::AbstractDict)
     k = get(v, "key", "")
     if k != "" && haskey(grid_data_cond, k)

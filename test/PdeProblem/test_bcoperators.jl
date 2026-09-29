@@ -67,4 +67,104 @@ end
             end
         end
     end
+
+    @testset "corner_pick_matrix / corner_pick_mpo contents" begin
+        # A simple, hand-checkable coefficient vector so the expected matrices can be written
+        # out literally rather than re-derived from the code under test.
+        coeffs = [1.0, 2.0, 3.0, 4.0]
+        expected_upper = [1.0 2.0 3.0 4.0
+                           0.0 1.0 2.0 3.0
+                           0.0 0.0 1.0 2.0
+                           0.0 0.0 0.0 1.0]
+        expected_lower = [1.0 0.0 0.0 0.0
+                           2.0 1.0 0.0 0.0
+                           3.0 2.0 1.0 0.0
+                           4.0 3.0 2.0 1.0]
+
+        @testset "corner_pick_matrix (TT, dense)" begin
+            @test DifferenTT.corner_pick_matrix(coeffs, :upper) == expected_upper
+            @test DifferenTT.corner_pick_matrix(coeffs, :lower) == expected_lower
+        end
+
+        @testset "corner_pick_mpo (QTT) matches the dense block, and is zero elsewhere" begin
+            nsite = 5
+            N = 2^nsite
+            sites = siteinds(2, nsite)
+
+            full_upper = DifferenTT.contract_mpo(DifferenTT.corner_pick_mpo(coeffs, sites, :upper))
+            @test full_upper[1:4, 1:4] ≈ expected_upper atol=1e-12
+            @test all(iszero, full_upper[1:4, 5:N])   # no coupling into non-boundary columns
+            @test all(iszero, full_upper[5:N, :])     # no coupling out of the corner block at all
+
+            full_lower = DifferenTT.contract_mpo(DifferenTT.corner_pick_mpo(coeffs, sites, :lower))
+            @test full_lower[N-3:N, N-3:N] ≈ expected_lower atol=1e-12
+            @test all(iszero, full_lower[N-3:N, 1:N-4])
+            @test all(iszero, full_lower[1:N-4, :])
+        end
+    end
+
+    @testset "Dirichlet ghost-correction identity: (D_trunc + C) * ones == 0" begin
+        # This is the identity every Dirichlet ghost correction must satisfy: truncating the
+        # stencil at a non-periodic boundary is elimination of the exterior ghost points at value
+        # 0 (`onedim_differential_operator`, diffoperators.jl), so the correction `C` that moves a
+        # nonzero ghost value to the RHS must, on the constant field, supply exactly what
+        # truncation removed. Concretely, on the row at distance `m` from the edge, `C * ones`
+        # must equal the cumulative tail sum of dropped coefficients `sum(c_k for k in (m+1):w)`
+        # (right) or `sum(c_k for k in -w:-(m+1))` (left). This is computed independently of
+        # `onedim_{left,right}_dirichlet_correction` itself, so it catches sign, ordering, and
+        # summation bugs rather than merely re-deriving what the code already computes.
+        nsite = 5
+        N = 2^nsite
+        qtt_arch = QTTArchitecture((nsite,); interleaved=false)
+        tt_arch = TTArchitecture((N,))
+        ones_vec = ones(N)
+
+        bc_right = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
+        bc_left = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
+
+        for stencil_order in (2, 8), derivative_order in (1, 2)
+            coeffs = DifferenTT.derivative_coefficients(derivative_order; stencil_order=stencil_order)
+            required_right = [sum(coeffs[k] for k in (m + 1):4) for m in 3:-1:0]
+            required_left = [sum(coeffs[k] for k in -4:-(m + 1)) for m in 0:3]
+
+            @testset "stencil_order=$stencil_order, derivative_order=$derivative_order" begin
+                # -- TT (dense) path --
+                D_right = DifferenTT.onedim_differential_operator(derivative_order, tt_arch, 1, bc_right, Array; stencil_order=stencil_order)
+                C_right = DifferenTT.onedim_right_dirichlet_correction(derivative_order, tt_arch, 1, Array; stencil_order=stencil_order)
+                @test (C_right * ones_vec)[end-3:end] ≈ required_right atol=1e-10
+                @test (D_right * ones_vec .+ C_right * ones_vec)[end-3:end] ≈ zeros(4) atol=1e-10
+
+                D_left = DifferenTT.onedim_differential_operator(derivative_order, tt_arch, 1, bc_left, Array; stencil_order=stencil_order)
+                C_left = DifferenTT.onedim_left_dirichlet_correction(derivative_order, tt_arch, 1, Array; stencil_order=stencil_order)
+                @test (C_left * ones_vec)[1:4] ≈ required_left atol=1e-10
+                @test (D_left * ones_vec .+ C_left * ones_vec)[1:4] ≈ zeros(4) atol=1e-10
+
+                # -- QTT path, contracted to dense --
+                D_right_q = DifferenTT.contract_mpo(DifferenTT.onedim_differential_operator(derivative_order, qtt_arch, 1, bc_right, Array; stencil_order=stencil_order))
+                C_right_q = DifferenTT.contract_mpo(DifferenTT.onedim_right_dirichlet_correction(derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order))
+                @test (C_right_q * ones_vec)[end-3:end] ≈ required_right atol=1e-10
+                @test (D_right_q * ones_vec .+ C_right_q * ones_vec)[end-3:end] ≈ zeros(4) atol=1e-10
+
+                D_left_q = DifferenTT.contract_mpo(DifferenTT.onedim_differential_operator(derivative_order, qtt_arch, 1, bc_left, Array; stencil_order=stencil_order))
+                C_left_q = DifferenTT.contract_mpo(DifferenTT.onedim_left_dirichlet_correction(derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order))
+                @test (C_left_q * ones_vec)[1:4] ≈ required_left atol=1e-10
+                @test (D_left_q * ones_vec .+ C_left_q * ones_vec)[1:4] ≈ zeros(4) atol=1e-10
+
+                # -- QTT and TT must agree exactly: this is the invariant that was broken before
+                # the fix (the QTT and TT corrections were two different, independently wrong,
+                # computations) and must hold going forward. --
+                @test C_right_q ≈ Array(C_right) atol=1e-10
+                @test C_left_q ≈ Array(C_left) atol=1e-10
+            end
+        end
+
+        @testset "literal anchor values (stencil_order=8, derivative_order=1, right)" begin
+            # Hardcoded against exact fractions of the known 8th-order stencil weights
+            # (c1=4/5, c2=-1/5, c3=4/105, c4=-1/280), independent of `derivative_coefficients`,
+            # so a future change to the coefficient table can't silently break this test too.
+            C_right = DifferenTT.onedim_right_dirichlet_correction(1, tt_arch, 1, Array; stencil_order=8)
+            expected = [-1 / 280, 4 / 105 - 1 / 280, -1 / 5 + 4 / 105 - 1 / 280, 4 / 5 - 1 / 5 + 4 / 105 - 1 / 280]
+            @test (C_right * ones_vec)[end-3:end] ≈ expected atol=1e-12
+        end
+    end
 end

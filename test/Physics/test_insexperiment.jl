@@ -29,8 +29,8 @@ using ITensorMPS
         @test isnothing(exp.object_mask)
         
         # Test checks
-        @test (DifferenTT.check_cfl(exp, time_evol_kwargs); true)
         @test (DifferenTT.check_cfl(exp, time_stepper); true)
+        @test (DifferenTT.check_cfl(exp, ExplicitEuler(time_evol_kwargs=time_evol_kwargs, cutoff=1e-5, maxdim=10)); true)
         DifferenTT.check_kolmogorov_scale(exp)
     end
     

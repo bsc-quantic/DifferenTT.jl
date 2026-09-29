@@ -209,6 +209,29 @@ function linearsolve_sweep_kwargs(solver, A, b, kwargs)
     ))
 end
 
+"""
+    precond_linearsolve_kwargs(solver, A, b, kwargs)
+
+Split the call-time `kwargs` of a preconditioned sweep-based `linearsolve` into the local updater and
+sweep keyword arguments.
+
+The optional `preconditioner_sites` (default `nothing`: precondition every block) goes to the local
+updater, which only applies `M⁻¹` to the blocks whose first site is in `preconditioner_sites`; the other
+blocks are solved unpreconditioned. The remaining `kwargs` are merged with the solver's `SweepingArgs`
+by `linearsolve_sweep_kwargs`.
+
+# Returns
+- `(updater_kwargs, sweep_kwargs)`
+"""
+function precond_linearsolve_kwargs(solver, A, b, kwargs)
+    preconditioner_sites = get(kwargs, :preconditioner_sites, nothing)
+    updater_kwargs = (; coefficients = (false, true), preconditioner_sites = preconditioner_sites, NamedTuple(solver.updater_kwargs)...)
+    kw = Dict(kwargs...)
+    delete!(kw, :preconditioner_sites)
+    sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, pairs((; kw...)))
+    return updater_kwargs, sweep_kwargs
+end
+
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     (isnothing(o.A) || isnothing(o.b)) && throw(ArgumentError("ResidualObserver has no operator or right-hand side bound; pass A and b explicitly or use it through a sweep-based `linearsolve`."))
 

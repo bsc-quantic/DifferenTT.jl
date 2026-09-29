@@ -5,10 +5,11 @@
     visualizations using Plots.jl, including:
     1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
     2. Pareto fronts of Build Time vs Total Solve Time
-    3. Step-by-step Iteration profiles
+    3. Step-by-step Iteration profiles (total Krylov iterations)
     4. Step-by-step Speedup profiles
     5. Site-by-site condition-number profiles (κ absolute, not a ratio)
-    6. Scaling behavior across system sizes
+    6. Site-by-site iteration profiles (sum across full time evolution)
+    7. Scaling behavior across system sizes
     Uses nocond results for accurate timings, and cond results for
     condition-number profiles.
 
@@ -62,8 +63,10 @@ for row in eachrow(df_nocond)
         "precond_build_time" => row.precond_build_time,
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
-        "iters" => [mean(step_iters) for step_iters in row.iters],
-        "iters_per_site" => hasproperty(row, :iters_per_site) ? row.iters_per_site : nothing,
+        "iters" => [sum(step_iters) for step_iters in row.iters],
+        "iters_per_site" => hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site) ?
+                            row.iters_per_site :
+                            (hasproperty(row, :iters) ? sum(row.iters) : Float64[]),
         "n_steps" => length(row.solve_times)
     )
     results_nocond[nodes][k] = d
@@ -112,6 +115,7 @@ for nodes in system_sizes
     base_iters = base["iters"]
     base_solve_times = base["solve_times"]
     n_steps = base["n_steps"]
+    base_iters_per_site = get(base, "iters_per_site", Float64[])
 
     base_conds = nothing
     base_avg_cond = NaN
@@ -232,16 +236,26 @@ for nodes in system_sizes
     # 2. Per-Bond Profiles and Combined Overlays
     # ---------------------------------------------------------
     steps_range = 1:n_steps
+    sites_range_iters = nonempty_numeric_vec(base_iters_per_site) ? (1:length(base_iters_per_site)) : []
     sites_range_cond = nonempty_numeric_vec(base_conds) ? (1:length(base_conds)) : []
     base_conds_clean = nonempty_numeric_vec(base_conds) ? clean_kappa(base_conds) : nothing
 
     p_iters_combined = plot(
-        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Chorin Time Step", ylabel="Avg Krylov Iterations", legend=:outertopright
+        title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="Chorin Time Step", ylabel="Total Krylov Iterations", legend=:outertopright
     )
     p_sp_combined = plot(
         title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
         xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright
+    )
+    p_site_combined = plot(
+        title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright
+    )
+    p_site_all_combined = plot(
+        title="Site-by-Site Sum of Iterations ($nodes)\nAll Preconditioner Setups",
+        xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright,
+        size=(1050, 600), legendfont=font(8, "Computer Modern")
     )
     p_conds_combined = plot(
         yaxis=:log, title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$"),
@@ -254,6 +268,10 @@ for nodes in system_sizes
 
     plot!(p_iters_combined, steps_range, base_iters, label="Baseline", color=:black, lw=3, marker=:circle)
     hline!(p_sp_combined, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+    if !isempty(sites_range_iters)
+        plot!(p_site_combined, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
+        plot!(p_site_all_combined, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
+    end
     if !isnothing(base_conds_clean)
         plot!(p_conds_combined, sites_range_cond, base_conds_clean, label="Baseline", color=:black, lw=3, marker=:circle)
         hline!(p_cond_imp_combined, [1.0], color=:black, lw=3, ls=:dash, label="No improvement")
@@ -281,10 +299,10 @@ for nodes in system_sizes
 
         p_iters = plot(steps_range, base_iters,
             label="Baseline", color=:red, lw=2, marker=:circle,
-            title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
+            title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Chorin Time Step",
-            ylabel="Avg Krylov Iterations",
-            legend=:outertopright)
+            ylabel="Total Krylov Iterations"
+        )
         plot!(p_iters, steps_range, best_v["iters"],
             label="FAI", color=:blue, lw=2, marker=:square)
         plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
@@ -301,11 +319,45 @@ for nodes in system_sizes
         hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
         savefig(p_sp, joinpath(out_dir, "step_speedup.png"))
 
+        if !isempty(sites_range_iters)
+            gdim_indices = findall(==(gdim), gdims)
+            sort!(gdim_indices, by=idx -> mus[idx])
+            p_site = plot(sites_range_iters, base_iters_per_site,
+                label="Baseline", color=:black, lw=2.5, marker=:circle,
+                title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"),
+                xlabel="MPS Site Index",
+                ylabel="Total Krylov Iterations",
+                legend=:outertopright)
+
+            sub_colors = palette(:tab10)
+            for (j, idx) in enumerate(gdim_indices)
+                v = grid_data_nocond[keys_list[idx]]
+                v_iters_site = get(v, "iters_per_site", nothing)
+                if nonempty_numeric_vec(v_iters_site)
+                    is_best = (idx == best_idx)
+                    lbl = latexstring("FAI \$\\mu=$(v["mu"])\$" * (is_best ? " (best)" : ""))
+                    c_j = sub_colors[mod1(j, length(sub_colors))]
+                    plot!(p_site, sites_range_iters, v_iters_site,
+                        label=lbl, lw=is_best ? 2.5 : 1.5, ls=is_best ? :solid : :dash,
+                        marker=is_best ? :square : :diamond, color=c_j)
+                end
+            end
+            savefig(p_site, joinpath(out_dir, "site_iterations.png"))
+        end
+
         c_color = colors[mod1(i, length(colors))]
         plot!(p_iters_combined, steps_range, best_v["iters"],
             label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
         plot!(p_sp_combined, steps_range, per_step_speedup,
             label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:diamond)
+
+        if !isempty(sites_range_iters)
+            best_v_iters_site = get(best_v, "iters_per_site", nothing)
+            if nonempty_numeric_vec(best_v_iters_site)
+                plot!(p_site_combined, sites_range_iters, best_v_iters_site,
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+            end
+        end
 
         if !isnothing(base_conds_clean)
             p_conds = plot(sites_range_cond, base_conds_clean,
@@ -338,10 +390,29 @@ for nodes in system_sizes
         end
     end
 
+    if !isempty(sites_range_iters)
+        all_keys = sort([k for k in keys_list], by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
+        palette_all = palette(:tab20)
+        for (j, k) in enumerate(all_keys)
+            v = grid_data_nocond[k]
+            v_iters_site = get(v, "iters_per_site", nothing)
+            if nonempty_numeric_vec(v_iters_site)
+                c_k = palette_all[mod1(j, length(palette_all))]
+                lbl = latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$")
+                plot!(p_site_all_combined, sites_range_iters, v_iters_site,
+                    label=lbl, lw=1.5, color=c_k)
+            end
+        end
+    end
+
     out_dir_combined = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])")
     mkpath(out_dir_combined)
     savefig(p_iters_combined, joinpath(out_dir_combined, "combined_step_iterations.png"))
     savefig(p_sp_combined, joinpath(out_dir_combined, "combined_step_speedup.png"))
+    if !isempty(sites_range_iters)
+        savefig(p_site_combined, joinpath(out_dir_combined, "combined_site_iterations.png"))
+        savefig(p_site_all_combined, joinpath(out_dir_combined, "combined_site_iterations_all_setups.png"))
+    end
     if !isnothing(base_conds_clean)
         savefig(p_conds_combined, joinpath(out_dir_combined, "combined_site_condition.png"))
         savefig(p_cond_imp_combined, joinpath(out_dir_combined, "combined_site_cond_improvement.png"))

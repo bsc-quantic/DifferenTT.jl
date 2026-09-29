@@ -37,4 +37,15 @@ using LinearAlgebra
         @test x isa MPS
         @test norm(apply(A, x) - b) < 1e-6
     end
+
+    @testset "Local Preconditioned linearsolve" begin
+        solver = ResidualALS(
+            sweep_kwargs = DifferenTT.SweepingArgs(nsweeps=2, maxdim=4, cutoff=1e-8),
+            residual_tol = 1e-8,
+        )
+        M_prec = rank1_preconditioner(A)
+        x = linearsolve(solver, A, b, M_prec, nothing; preconditioner_sites=2:3)
+        @test x isa MPS
+        @test norm(apply(A, x) - b) < 1e-6
+    end
 end

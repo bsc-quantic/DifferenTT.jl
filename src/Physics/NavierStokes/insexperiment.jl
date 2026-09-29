@@ -71,49 +71,85 @@ struct INSExperiment{N} <: INSExperimentBase
     end
 end
 
-# TODO THIS SHOULD ALSO TAKE INTO ACCOUNT THE VELOCITY MAGNITUDES
 """
-    check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number)
+    cfl_spectral_radii(experiment::INSExperiment{N}; vmax::Real=1.0) where N
 
-Checks if the temporal and spatial dimensions of a given INSExperiment comply with the CFL condition for stability
+Upper bounds on the spectral radii of the discretized advection and diffusion operators of `experiment`,
+built from the coefficients of its finite-difference stencils (Gershgorin bound). Contributions from all
+spatial dimensions add, since the time stepper advances the full combined RHS.
+
+The bound is exact for diffusion (the second-derivative coefficients alternate in sign, so it is attained at
+the highest wavenumber) and conservative for advection.
+
+# Returns
+- `(adv_eig, diff_eig)`: bounds for the advection term (with velocity magnitude `vmax`) and the diffusion term.
 """
-function check_cfl(grid::Grid{N}, time_evol_kwargs::TimeEvolArgs, Re::Number) where N
-    dt = time_evol_kwargs.dt
-    max_dt = typemax(Float64)
-    for i in 1:N
-        max_advection_dt = grid.dx[i] # Velocity is assumed to be always u ~ 1.0
-        if dt > max_advection_dt
-            @warn "CFL condition violated for advection term in dimension $i"
-            max_dt = max_advection_dt
-        end
+function cfl_spectral_radii(experiment::INSExperiment{N}; vmax::Real=1.0) where N
+    grid = experiment.grid
+    s1 = sum(abs, values(derivative_coefficients(1; stencil_order=experiment.stencil_order)))  # advection
+    s2 = sum(abs, values(derivative_coefficients(2; stencil_order=experiment.stencil_order)))  # diffusion
 
-        max_diffusion_dt = Re * grid.dx[i]^2
-        if dt > max_diffusion_dt
-            @warn "CFL condition violated for diffusion term in dimension $i"
-            max_dt = min(max_dt, max_diffusion_dt)
-        end
-    end
+    adv_eig  = sum(vmax * s1 / grid.dx[i]                for i in 1:N)
+    diff_eig = sum((1/experiment.Re) * s2 / grid.dx[i]^2 for i in 1:N)
+    return adv_eig, diff_eig
+end
 
-    if dt > max_dt
-        @info "CFL condition violated, must set dt<=$max_dt"
+function _report_cfl(dt, dt_max)
+    if dt > dt_max
+        @info "CFL condition violated, must set dt<=$dt_max"
     else
-        @info "CFL condition satisfied"
+        @info "CFL condition satisfied" dt dt_max
     end
 end
 
 """
-    check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
-    check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
+    check_cfl(experiment::INSExperiment{N}, stepper::RK4; vmax::Real=1.0) where N
+    check_cfl(experiment::INSExperiment{N}, stepper::ExplicitEuler; vmax::Real=1.0) where N
 
-Checks the CFL condition of `experiment` for the time step given by `time_evol_kwargs`, or by the
-`TimeEvolArgs` stored in `stepper`.
+Checks the linear stability (CFL) condition of `experiment` for the time step stored in `stepper`, using the
+stability region of the given time integration scheme and the experiment's finite-difference stencils.
+`vmax` is the assumed maximum velocity magnitude of the flow.
 """
-function check_cfl(experiment::INSExperiment{N}, time_evol_kwargs::TimeEvolArgs) where N
-    check_cfl(experiment.grid, time_evol_kwargs, experiment.Re)
+function check_cfl(experiment::INSExperiment{N}, stepper::RK4; vmax::Real=1.0) where N
+    dt = stepper.time_evol_kwargs.dt
+    adv_eig, diff_eig = cfl_spectral_radii(experiment; vmax=vmax)
+
+    # RK4 stability boundaries: |z|<=2√2 on the imaginary axis (advection is skew-symmetric),
+    # |z|<=2.785 on the negative real axis (diffusion is symmetric negative-definite).
+    dt_adv_max  = 2*sqrt(2) / adv_eig
+    dt_diff_max = 2.785 / diff_eig
+    dt_max = min(dt_adv_max, dt_diff_max)
+
+    if dt > dt_adv_max
+        @warn "CFL condition violated for advection term" dt dt_adv_max
+    end
+    if dt > dt_diff_max
+        @warn "CFL condition violated for diffusion term" dt dt_diff_max
+    end
+    _report_cfl(dt, dt_max)
 end
 
-function check_cfl(experiment::INSExperiment{N}, stepper::AbstractTimeStepper) where N
-    check_cfl(experiment, stepper.time_evol_kwargs)
+function check_cfl(experiment::INSExperiment{N}, stepper::ExplicitEuler; vmax::Real=1.0) where N
+    dt = stepper.time_evol_kwargs.dt
+    _, diff_eig = cfl_spectral_radii(experiment; vmax=vmax)
+
+    # Forward Euler is stable iff |1 + z| <= 1, a disk that only touches the imaginary axis at the origin, so
+    # central-difference advection is never stable on its own: it must be damped by diffusion. On the negative
+    # real axis the boundary is |z| <= 2, which gives the pure diffusion limit.
+    dt_diff_max = 2 / diff_eig
+
+    # For a Fourier mode with advection symbol a and diffusion symbol d, |1 + dt(-d + ia)| <= 1 iff
+    # dt <= 2d / (d² + a²). The stencils in use satisfy κ₂(θ) >= κ₁(θ)² for the modified wavenumbers of the
+    # second and first derivatives, so a² <= N vmax² Re d, and dt <= 2 / (diff_eig + N vmax² Re) is sufficient.
+    dt_max = 2 / (diff_eig + N * vmax^2 * experiment.Re)
+
+    if dt > dt_diff_max
+        @warn "CFL condition violated for diffusion term" dt dt_diff_max
+    end
+    if dt > dt_max
+        @warn "CFL condition violated for the combined advection-diffusion term" dt dt_max
+    end
+    _report_cfl(dt, dt_max)
 end
 
 function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N 

@@ -40,8 +40,7 @@ end
 function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
-    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
-    sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kwargs)
+    updater_kwargs, sweep_kwargs = precond_linearsolve_kwargs(solver, A, b, kwargs)
     
     return amen_alternating_update(
         reduced_precond_problem, init;
