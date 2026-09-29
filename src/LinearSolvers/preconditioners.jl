@@ -156,7 +156,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     projector_complement = +(identity_mpo(combiner_inds, array_type), -1.0 * projector; alg="directsum")
 
     linsolve_b = identity_mpo(sites, backend_type(operator))
-    linsolve_x0 = lower_triang_mpo(sites, true; array_type=array_type)
+    linsolve_x0 = 1e-3 * lower_triang_mpo(sites, true; array_type=array_type)
 
     for i in 1:n
         A[i] = A[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
@@ -171,7 +171,7 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
 
     projected_A = +(apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum")
     projected_b = MPS([linsolve_b...])
-    # projected_x0 = apply(projector, 1e-10 * adapt(array_type, ones_mps(combiner_inds, 1)); alg="naive")
+
     projected_x0 = MPS([linsolve_x0...])
     ls_kwargs = Dict{Symbol, Any}(kwargs)
     if !isnothing(residual_tol)
