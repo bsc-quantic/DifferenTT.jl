@@ -115,6 +115,70 @@ try
         @test norm(dense_optimal - dense_direct) < 1e-10
     end
 end
+
+@testset "ndim_operator_sum_mpo pairwise FSM" begin
+    # Non-trivial variable -> site mapping: variable 2 on site 1, 3 on site 2, 1 on site 3
+    arch = TTArchitecture((3, 4, 5), Dict(2 => 1, 3 => 2, 1 => 3))
+    sites = [Index(arch.var_dims[arch.site_map[i]], "Site,n=$i") for i in 1:3]
+
+    O = ntuple(c -> randn(arch.var_dims[c], arch.var_dims[c]), 3)
+    P = ntuple(c -> randn(arch.var_dims[c], arch.var_dims[c]), 3)
+    Q = ntuple(c -> randn(arch.var_dims[c], arch.var_dims[c]), 3)
+
+    # Reference: explicit sum of lifted operators and products over physical site pairs i < j
+    terms = MPO[ndim_operator_mpo(O[c], c, sites, arch) for c in 1:3]
+    for i in 1:3, j in i+1:3
+        ci, cj = arch.site_map[i], arch.site_map[j]
+        push!(terms, apply(ndim_operator_mpo(P[ci], ci, sites, arch), ndim_operator_mpo(Q[cj], cj, sites, arch); alg="naive", truncate=false))
+    end
+    reference = DifferenTT.contract_mpo(sum(terms; alg="directsum"))
+
+    mpo_pairs = DifferenTT.ndim_operator_sum_mpo(O, sites, arch; pair_ops=(P, Q))
+    @test maxlinkdim(mpo_pairs) == 3
+    @test norm(DifferenTT.contract_mpo(mpo_pairs) - reference) < 1e-10 * norm(reference)
+
+    # Without pairs the Kronecker-sum FSM keeps bond dimension 2
+    mpo_sum = DifferenTT.ndim_operator_sum_mpo(O, sites, arch)
+    sum_reference = DifferenTT.contract_mpo(sum(terms[1:3]; alg="directsum"))
+    @test maxlinkdim(mpo_sum) == 2
+    @test norm(DifferenTT.contract_mpo(mpo_sum) - sum_reference) < 1e-10 * norm(sum_reference)
+end
+
+@testset "equicorrelated_laplacian" begin
+    N = 3
+    arch = TTArchitecture((6, 6, 6))
+    grid = Grid(arch, (1.0, 1.0, 1.0))
+    sites = siteinds(arch)
+    dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    field = ScalarField(sites, arch, BoundaryConditions(dirichlet, dirichlet, dirichlet))
+
+    laplacian = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=2))
+
+    for ρ in (0.0, 0.3, 0.9)
+        mpo = equicorrelated_laplacian(field, grid; correlation=ρ, stencil_order=2)
+        @test maxlinkdim(mpo) == (iszero(ρ) ? 2 : 3)
+
+        L = DifferenTT.contract_mpo(mpo)
+        @test norm(L - L') < 1e-10 * norm(L)
+
+        if iszero(ρ)
+            @test norm(L - laplacian) < 1e-10 * norm(laplacian)
+        end
+
+        # Spectral floor: λ_min(K) (-Δ) ⪯ -L ⪯ λ_max(K) (-Δ)
+        λ = eigvals(Symmetric(-L), Symmetric(-laplacian))
+        @test minimum(λ) >= (1 - ρ) - 1e-10
+        @test maximum(λ) <= (1 + (N - 1) * ρ) + 1e-10
+    end
+
+    neumann = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+    neumann_field = ScalarField(sites, arch, BoundaryConditions(neumann, dirichlet, dirichlet))
+    @test_throws ArgumentError equicorrelated_laplacian(neumann_field, grid; correlation=0.5, stencil_order=2)
+
+    qtt_arch = QTTArchitecture((3, 3); interleaved=false)
+    qtt_field = ScalarField(siteinds(2, 6), qtt_arch, BoundaryConditions(dirichlet, dirichlet))
+    @test_throws ArgumentError equicorrelated_laplacian(qtt_field, Grid(qtt_arch, (1.0, 1.0)); correlation=0.5)
+end
 finally
     ITensors.set_warn_order(previous_warn_order)
 end

@@ -96,3 +96,45 @@ function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::
 
     return ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
 end
+
+"""
+    equicorrelated_laplacian(field::ScalarField{N}, grid::Grid{N}; correlation::Float64, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=0.0) where N
+
+Construct the anisotropic diffusion operator `∇⋅(K∇)` with the equicorrelated diffusion tensor
+`K = (1-ρ) I + ρ 𝟏𝟏ᵀ`, `ρ = correlation`. Since `diag(K) = 1`, the operator is discretized as
+`Σ_ℓ d²_ℓ + 2ρ Σ_{ℓ<m} d_ℓ d_m`, with centered first derivatives in the mixed term. The MPO is built
+directly with the pairwise finite-state machine of `ndim_operator_sum_mpo`, so its bond dimension is
+exactly 3 (2 for `correlation == 0`, where it reduces to the Laplacian).
+
+`K` is SPD for `-1/(N-1) < ρ < 1`. Only TT architectures are supported. Neumann BCs are not supported,
+since the symmetrization of the mixed term is not defined, and `scalar_dirichlet_correction` only covers
+the second-derivative part, so inhomogeneous Dirichlet BCs are not fully supported either.
+
+# Returns
+- `MPO`: The equicorrelated diffusion operator.
+"""
+function equicorrelated_laplacian(field::ScalarField{N}, grid::Grid{N}; correlation::Float64, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=0.0) where N
+    field.arch isa TTArchitecture || throw(ArgumentError("equicorrelated_laplacian only supports TT architectures"))
+    for i in 1:N
+        if field.bcu[i].left isa NeumannBC || field.bcu[i].right isa NeumannBC
+            throw(ArgumentError("equicorrelated_laplacian does not support Neumann boundary conditions (dimension $i)"))
+        end
+    end
+
+    d2_ops = ntuple(i -> begin
+            onedim_op = onedim_differential_operator(2, field.arch, i, field.bcu[i], backend_type(field); stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
+            return onedim_op .* (1/grid.dx[i]^2)
+        end, N)
+
+    if iszero(correlation)
+        return ndim_operator_sum_mpo(d2_ops, field.usites, field.arch)
+    end
+
+    d1_ops = ntuple(i -> begin
+            onedim_op = onedim_differential_operator(1, field.arch, i, field.bcu[i], backend_type(field); stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
+            return onedim_op .* (1/grid.dx[i])
+        end, N)
+    scaled_d1_ops = ntuple(i -> (2 * correlation) .* d1_ops[i], N)
+
+    return ndim_operator_sum_mpo(d2_ops, field.usites, field.arch; pair_ops=(d1_ops, scaled_d1_ops))
+end

@@ -91,7 +91,7 @@ export BoundaryNullScalar, BoundaryNull
 export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs
 
 # Export types and functions from Physics
-export advection, diffusion, divergence, gradient, symmetrized_laplacian
+export advection, diffusion, divergence, gradient, symmetrized_laplacian, equicorrelated_laplacian
 export INSExperiment, check_cfl, check_kolmogorov_scale
 export ChorinCache, chorin_step, chorin_evolve!, NavierStokesPredictorRHS
 

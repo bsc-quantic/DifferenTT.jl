@@ -344,23 +344,32 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
 end
 
 """
-    ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+    ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}; pair_ops=nothing) where N
 
 Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting on a TT architecture.
 This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension of 2.
+
+If `pair_ops = (P, Q)` is given, the pairwise term `Σ_{i<j} P_{c(i)} ⊗ Q_{c(j)}` is added, where `i < j`
+runs over physical sites and `c = arch.site_map`. A third FSM state ("P placed, waiting for Q") is used,
+so the bond dimension is exactly 3. `P` and `Q` are indexed by variable, like `onedim_ops`: the `P` of the
+variable on the last site and the `Q` of the variable on the first site are never used.
 
 # Arguments
 - `onedim_ops::NTuple{N, AbstractMatrix}`: The 1D operator matrices for each dimension.
 - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
 - `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
+- `pair_ops`: Optional tuple `(P, Q)` of N 1D operator matrices each, defining the pairwise term.
 """
-function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N};
+                               pair_ops::Union{Nothing, Tuple{NTuple{N, AbstractMatrix}, NTuple{N, AbstractMatrix}}}=nothing) where N
     @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
-    
+
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
-    
-    links = [Index(2, "Link,l=$i") for i in 1:total_sites-1]
+
+    # States: 1 = nothing placed, 2 = term complete, 3 = P placed and waiting for Q (only with pair_ops)
+    has_pairs = !isnothing(pair_ops) && total_sites > 1
+    links = [Index(has_pairs ? 3 : 2, "Link,l=$i") for i in 1:total_sites-1]
 
     # Determine array type from the matrix type
     array_type = Base.typename(typeof(onedim_ops[1])).wrapper
@@ -388,6 +397,21 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds:
             end
         else
             T = T_Oc
+        end
+
+        if has_pairs
+            T_P = ITensor(array_type(pair_ops[1][c]), s', s)
+            T_Q = ITensor(array_type(pair_ops[2][c]), s', s)
+
+            if i == 1
+                T += T_P * adapt(array_type, onehot(links[1] => 3))
+            elseif i == total_sites
+                T += T_Q * adapt(array_type, onehot(links[end] => 3))
+            else
+                T += T_P * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 3)) +
+                     T_I * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 3)) +
+                     T_Q * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 2))
+            end
         end
         mpo_tensors[i] = adapt(array_type, T)
     end
