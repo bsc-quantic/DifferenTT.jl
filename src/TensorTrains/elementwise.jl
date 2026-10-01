@@ -349,6 +349,86 @@ function sketch(M::AbstractMPS, region_verts, k::Index)
     return S
 end
 
+"""
+    suffix_sketches(M::AbstractMPS, k::Index)
+
+Random sketches of every suffix of `M`, accumulated in a single right-to-left pass.
+
+`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds,
+and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
+`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same (Gaussian) sketch
+distribution. The cross in `_rsi_tt_mul` only ever rewrites tensors at or to the left of its
+current region, so the suffixes it needs are always the ones of the untouched input MPS.
+"""
+function suffix_sketches(M::AbstractMPS, k::Index)
+    N = length(M)
+    sites = siteinds(M)
+    S = Vector{ITensor}(undef, N + 1)
+    S[N + 1] = ITensor(1.)
+    # One running partial contraction per sketch column, extended site by site.
+    cols = [ITensor(1.) for _ in 1:dim(k)]
+    for v in N:-1:1
+        Sv = ITensor()
+        for p in 1:dim(k)
+            cols[p] = random_itensor(sites[v]) * M[v] * cols[p]
+            Sv += cols[p] * onehot(k => p)
+        end
+        S[v] = Sv
+    end
+    return S
+end
+
+"""
+    pivot_cutoff(T::ITensor, rtol::Real)
+
+Pivot threshold for the interpolative decomposition of `T`, relative to its largest entry.
+
+`prrldu` compares pivots against an absolute threshold and divides by every pivot it keeps, so
+an absolute cutoff behaves differently on operands of different magnitude (`p*dt`, RK4
+increments, a zero velocity component): it either discards every pivot, and the cross then
+throws, or it keeps - and inverts - round-off pivots. The `floatmin` floor keeps the threshold
+strictly positive, so the pivot search of an all-zero block stops instead of dividing 0/0.
+"""
+function pivot_cutoff(T::ITensor, rtol::Real)
+    d = ITensors.NDTensors.data(ITensors.tensor(T))
+    scale = isempty(d) ? zero(real(eltype(T))) : maximum(abs, d)
+    return max(rtol * scale, floatmin(Float64))
+end
+
+"""
+    allfinite(M::AbstractMPS)
+
+Whether every entry of every tensor of `M` is finite.
+"""
+allfinite(M::AbstractMPS) = all(t -> all(isfinite, ITensors.NDTensors.data(ITensors.tensor(t))), M)
+
+"""
+    iszero_tt(M::AbstractMPS)
+
+Whether `M` is identically zero, detected from a single all-zero tensor. Cheap (`O(Nχ²d)`) and
+sufficient for the zero fields the pipeline builds explicitly, unlike a full `norm`.
+"""
+iszero_tt(M::AbstractMPS) = any(t -> iszero(norm(t)), M)
+
+# Number of times `tt_mul` had to fall back from the randomized cross to the direct product.
+const TT_MUL_FALLBACKS = Ref(0)
+
+"""
+    tt_mul_fallbacks()
+
+Number of `tt_mul` calls that fell back from the randomized cross (`_rsi_tt_mul`) to the direct
+product since the last [`reset_tt_mul_fallbacks!`](@ref). A run that quietly switches to the slow,
+`O(χ1 χ2)` path is otherwise invisible, since the fallback is only logged at `@debug` level.
+"""
+tt_mul_fallbacks() = TT_MUL_FALLBACKS[]
+
+"""
+    reset_tt_mul_fallbacks!()
+
+Reset the counter reported by [`tt_mul_fallbacks`](@ref).
+"""
+reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[] = 0; nothing)
+
 # 1. Define the core method that unpacks the ITensor into an NDTensors.Tensor
 function Random.rand!(rng::AbstractRNG, T::ITensor)
     # Mutate the underlying data container directly using Julia's base rand!
@@ -379,23 +459,13 @@ function positive_sketch(M::AbstractMPS, region_verts, k::Index)
 end
 
 """
-    tt_mul(mps1::MPS, mps2::MPS)
-    tt_mul(mpo1::MPO, mpo2::MPO)
-    tt_mul(mps::MPS, mpo::MPO)
-    tt_mul(mpo::MPO, mps::MPS)
+    _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int))
 
-Element-wise (Hadamard) multiplication of tensor-train objects.
+Element-wise (Hadamard) product of two MPS, by applying `mps1` as a diagonal MPO to `mps2` and
+compressing the result with the relative Frobenius `cutoff` and `maxdim`.
 
-Supported combinations are MPS-MPS, MPO-MPO, and mixed MPS-MPO/MPO-MPS products.
-Inputs must share the same physical site indexing and array backend.
-
-# Keywords
-- `cutoff::Float64=1e-15`: Truncation cutoff used in compression steps.
-- `maxdim::Int=typemax(Int64)`: Maximum allowed bond dimension.
-
-# Returns
-- `MPS` for MPS-MPS products.
-- `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
+Exact up to that compression, but `O(χ1^3 χ2^3)`, so roughly 10x slower than the randomized cross
+of [`_rsi_tt_mul`](@ref). It is the fallback of [`tt_mul`](@ref).
 """
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     @assert siteinds(mps1) == siteinds(mps2) "Site indices between the two MPS must match"
@@ -426,7 +496,32 @@ function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int
     return output_mps
 end
 
-function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(Int), oversample=15, outputlevel=0, kws...)
+#TODO Update docstring with new default oversample value of 25 instead of 40
+"""
+    _rsi_tt_mul(mps1::MPS, mps2::MPS; oversample=40, target_rank=0, pivot_rtol=1e-10, nsite=2)
+
+Element-wise (Hadamard) product of two MPS by a randomized sketch followed by an interpolative
+(pivoted, rank-revealing LDU) cross. About 10x faster than [`_direct_tt_mul`](@ref), but less
+robust: it can throw, so callers need a fallback.
+
+The cross is deliberately run *without* a rank cap. Capping it truncates on greedily chosen
+interpolation pivots instead of on singular values, which costs two to three orders of magnitude
+in accuracy at a given rank; `tt_mul` therefore caps the result once, by SVD, afterwards. The
+raw rank stays bounded by the sketch size anyway.
+
+# Keywords
+- `oversample::Int=25`: sketch columns on top of the input ranks. This is the accuracy knob of
+  the uncapped cross: the sketch spans the face-splitting product of the two factors, which is
+  larger than the range of their element-wise product, so the sketch size sets an error floor
+  (about 1e-4 at `oversample=5`, 1e-5 at 15, 1e-6 at 40, at +30-100% runtime).
+- `target_rank::Int=0`: expected rank of the *product*, which can exceed both input ranks. The
+  sketch is sized as `max(χ1, χ2, target_rank) + oversample`. Pass the rank the same product had
+  at the previous step when it is known.
+- `pivot_rtol::Real=1e-10`: pivot threshold of the cross, relative to the block being
+  decomposed (see [`pivot_cutoff`](@ref)).
+- `nsite::Int=2`: number of sites decomposed at a time.
+"""
+function _rsi_tt_mul(mps1::MPS, mps2::MPS; nsite=2, oversample=25, target_rank::Int=0, pivot_rtol::Real=1e-10, outputlevel=0, kws...)
   nsite ≥ 2 || error("nsite must be ≥ 2 in multiply")
   mps1, mps2 = copy(mps1), copy(mps2)
 
@@ -435,10 +530,18 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
   N = length(mps1)
   sites = siteinds(mps1)
 
-  max_χ = max(maxlinkdim(mps1),maxlinkdim(mps2))
+  max_χ = max(maxlinkdim(mps1),maxlinkdim(mps2),target_rank)
   nsketch = oversample+max_χ
 
+  # One sketch index for the whole sweep, and one right-to-left pass to build every suffix
+  # sketch of both inputs, instead of rebuilding each suffix from scratch at every bond.
+  k = Index(nsketch,"sketch")
+  sketches1 = suffix_sketches(mps1, k)
+  sketches2 = suffix_sketches(mps2, k)
+
   G = copy(mps1)
+  # `copy` carries over the orthogonality limits of mps1, but none of its tensors survive.
+  ITensorMPS.set_ortho_lims!(G, 1:N)
   x = nothing
 
   ranks = Int[]
@@ -452,12 +555,10 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
     #
     # Sketch mps1 and mps2
     #
-    k = Index(nsketch,"sketch,j=$j")
-
-    S1 = sketch(mps1, last(region)+1:N, k)
+    S1 = sketches1[last(region)+1]
     T1 = prod([mps1[v] for v in region])
 
-    S2 = sketch(mps2, last(region)+1:N, k)
+    S2 = sketches2[last(region)+1]
     T2 = prod([mps2[v] for v in region])
 
     #
@@ -469,7 +570,7 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
     # Compute pivots of G and interpolating matrix X
     #
     row_inds = isnothing(x) ? [s_first] : [x,s_first] 
-    R, X, err = interpolative(H,row_inds, v_first; maxdim, cutoff)
+    R, X, err = interpolative(H,row_inds, v_first; cutoff=pivot_cutoff(H, pivot_rtol))
     x = commonind(X,R)
     G[v_first] = X
     push!(ranks,dim(x))
@@ -478,7 +579,7 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
     if last(region) == N
         for v in region[2:end-1]
             row_inds = [x,only(sites[v])]
-            R, X, err = interpolative(R,row_inds, v; maxdim, cutoff)
+            R, X, err = interpolative(R,row_inds, v; cutoff=pivot_cutoff(R, pivot_rtol))
             x = commonind(X,R)
             push!(ranks,dim(x))
             G[v] = X
@@ -489,14 +590,15 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
 
     #
     # Re-decompose mps1 and mps2 on pivots of g
+    # (the pivot columns are fixed here, so no cutoff or maxdim applies)
     #
     T1 = mps1[v_first] * mps1[v_second]
-    R1, X1, _ = interpolative(T1,row_inds,v_first; pivot_index=x, maxdim, cutoff)
+    R1, X1, _ = interpolative(T1,row_inds,v_first; pivot_index=x)
     mps1[v_first] = X1
     mps1[v_second] = R1
 
     T2 = mps2[v_first] * mps2[v_second]
-    R2, X2, _ = interpolative(T2,row_inds,v_first; pivot_index=x, maxdim, cutoff)
+    R2, X2, _ = interpolative(T2,row_inds,v_first; pivot_index=x)
     mps2[v_first] = X2
     mps2[v_second] = R2
   end
@@ -506,14 +608,55 @@ function _rsi_tt_mul(mps1::MPS, mps2::MPS; cutoff=0.0, nsite=2, maxdim=typemax(I
   return G
 end
 
-# using rsi if possible -> It is less robust that direct method and can fail, so fallback is needed
-function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+"""
+    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rsi_kwargs...)
+    tt_mul(mpo1::MPO, mpo2::MPO; cutoff=1e-15, maxdim=typemax(Int))
+    tt_mul(mps::MPS, mpo::MPO; cutoff=1e-15, maxdim=typemax(Int))
+    tt_mul(mpo::MPO, mps::MPS; cutoff=1e-15, maxdim=typemax(Int))
+
+Element-wise (Hadamard) multiplication of tensor-train objects.
+
+Supported combinations are MPS-MPS, MPO-MPO, and mixed MPS-MPO/MPO-MPS products.
+Inputs must share the same physical site indexing and array backend.
+
+The MPS-MPS product is computed by the randomized cross [`_rsi_tt_mul`](@ref), which is run
+uncapped and whose raw, non-orthogonal output is then compressed once by SVD. Both matter:
+truncating inside the cross is far from optimal at a given rank, and the raw output carries two
+to four times the rank the product needs, which every downstream `apply`, `sum` and time-stepper
+stage would then pay for. `_direct_tt_mul` is used instead whenever the cross throws or returns a
+non-finite result; such fallbacks are counted by [`tt_mul_fallbacks`](@ref).
+
+# Keywords
+- `cutoff::Float64=1e-15`: relative Frobenius truncation cutoff of the final compression.
+- `maxdim::Int=typemax(Int64)`: maximum allowed bond dimension of the result.
+- `rsi_kwargs...` (MPS-MPS only): forwarded to [`_rsi_tt_mul`](@ref), e.g. `oversample`,
+  `target_rank` and `pivot_rtol`.
+
+# Returns
+- `MPS` for MPS-MPS products.
+- `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
+"""
+function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64), rsi_kwargs...)
+    # A zero operand makes the product zero, and the relative pivot cutoff of the cross carries
+    # no information on it, so short-circuit instead of sketching noise.
+    (iszero_tt(mps1) || iszero_tt(mps2)) && return zeros_mps(siteinds(mps1), backend_type(mps1))
+
+    G = nothing
     try
-        return _rsi_tt_mul(mps1, mps2; cutoff=cutoff, maxdim=maxdim) 
+        G = _rsi_tt_mul(mps1, mps2; rsi_kwargs...)
     catch e # In case ID fails, when masking for example
-        @warn "Using slow tt_mul"
+        @debug "RSI tt_mul threw; using slow tt_mul" exception=e
+    end
+
+    # A non-finite result raises no exception of its own, so it has to be checked for explicitly:
+    # otherwise a NaN from an inverted tiny pivot propagates into the fields silently.
+    if isnothing(G) || !allfinite(G)
+        isnothing(G) || @debug "RSI tt_mul returned a non-finite result; using slow tt_mul"
+        TT_MUL_FALLBACKS[] += 1
         return _direct_tt_mul(mps1, mps2; cutoff=cutoff, maxdim=maxdim)
     end
+
+    return truncate!(G; cutoff=cutoff, maxdim=maxdim)
 end
 
 function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))

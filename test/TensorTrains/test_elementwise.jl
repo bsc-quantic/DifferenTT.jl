@@ -60,6 +60,73 @@ using Random
         @test mpo_prod2 isa MPO
     end
     
+    @testset "tt_mul MPS-MPS truncation and guards" begin
+        # Smooth QTT operands, so that the exact product has a decaying spectrum and a rank cap
+        # is a meaningful test of *how* the product truncates.
+        nq = 10
+        qsites = siteinds(2, nq)
+        xs = range(0, 1; length=2^nq)
+        m1 = vec2mps(collect(@. exp(-3xs) * sin(7xs) + 0.3), qsites; cutoff=1e-14)
+        m2 = vec2mps(collect(@. cos(5xs) / (1 + xs^2)), qsites; cutoff=1e-14)
+
+        exact = DifferenTT._direct_tt_mul(m1, m2; cutoff=0.0)
+        A_exact = contract_mps(exact)
+        relerr(m) = norm(contract_mps(m) - A_exact) / norm(A_exact)
+
+        # The cross must not truncate internally: capping it afterwards by SVD has to land within
+        # a small factor of the optimal rank-r truncation of the exact product.
+        for r in (4, 6)
+            capped = tt_mul(m1, m2; maxdim=r)
+            optimal = truncate!(copy(exact); maxdim=r, cutoff=0.0)
+            @test maxlinkdim(capped) <= r
+            @test relerr(capped) <= 1.5 * relerr(optimal) + 1e-9
+        end
+
+        # The output is recompressed: finite, orthogonal, and no larger than the exact product.
+        prod_mps = tt_mul(m1, m2)
+        @test DifferenTT.allfinite(prod_mps)
+        @test ITensorMPS.ortho_lims(prod_mps) == 1:1
+        @test maxlinkdim(prod_mps) <= maxlinkdim(exact)
+        @test relerr(prod_mps) < 1e-6
+
+        # A relative pivot cutoff makes the product invariant under a rescaling of a factor.
+        scaled = tt_mul(1e-8 * m1, m2; maxdim=6)
+        reference = 1e-8 * contract_mps(tt_mul(m1, m2; maxdim=6))
+        @test norm(contract_mps(scaled) - reference) / norm(reference) < 1e-6
+
+        # A zero operand short-circuits instead of sketching a zero block.
+        @test norm(tt_mul(0.0 * m1, m2)) == 0.0
+
+        # A non-finite cross output triggers the fallback, which is counted.
+        reset_tt_mul_fallbacks!()
+        @test tt_mul_fallbacks() == 0
+        nan_mps = copy(m1)
+        nan_mps[3] = ITensor(fill(NaN, size(array(nan_mps[3]))), inds(nan_mps[3]))
+        try
+            tt_mul(nan_mps, m2)
+        catch
+            # `_direct_tt_mul` is free to throw on NaN input; only the fallback matters here.
+        end
+        @test tt_mul_fallbacks() == 1
+        reset_tt_mul_fallbacks!()
+    end
+
+    @testset "suffix_sketches" begin
+        Random.seed!(1234)
+        mps = random_mps(sites; linkdims=3)
+        k = Index(5, "sketch")
+        sketches = DifferenTT.suffix_sketches(mps, k)
+
+        @test length(sketches) == n + 1
+        @test sketches[n + 1] == ITensor(1.)
+        # Every cached suffix carries the sketch index and the link index at its left edge, i.e.
+        # exactly the indices `sketch` returns for the same region.
+        for v in 2:n
+            @test issetequal(inds(sketches[v]), (k, linkind(mps, v - 1)))
+            @test issetequal(inds(sketches[v]), inds(DifferenTT.sketch(mps, v:n, k)))
+        end
+    end
+
     @testset "elementwise_function" begin
         Random.seed!(1234)
         mps = random_mps(sites; linkdims=2)

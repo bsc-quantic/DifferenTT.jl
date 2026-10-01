@@ -82,6 +82,7 @@ export ndim_operator_mpo, diagmpo, diagmps
 export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps, mat2tensor, mat2mpo
 export contract_mps, contract_mpo
 export tt_mul, elementwise_function, sample, samples, integrate
+export tt_mul_fallbacks, reset_tt_mul_fallbacks!
 
 # Export types and functions from PdeProblem
 export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
