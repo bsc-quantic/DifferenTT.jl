@@ -62,6 +62,7 @@ include("LinearSolvers/KrylovSolvers/ttgmres.jl")
 # Include Navier Stokes
 include("Physics/NavierStokes/insexperiment.jl")
 include("Physics/NavierStokes/chorin.jl")
+include("Physics/NavierStokes/vorticity.jl")
 
 # Include Utils
 include("Utils/logging.jl")
@@ -86,7 +87,7 @@ export tt_mul_fallbacks, reset_tt_mul_fallbacks!
 
 # Export types and functions from PdeProblem
 export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
-export ScalarField, VectorField, Grid
+export ScalarField, VectorField, Grid, interior_grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
 export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs
@@ -95,6 +96,8 @@ export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_
 export advection, diffusion, divergence, gradient, symmetrized_laplacian, equicorrelated_laplacian
 export INSExperiment, check_cfl, check_kolmogorov_scale
 export ChorinCache, chorin_step, chorin_evolve!, NavierStokesPredictorRHS
+export INSVorticityExperiment, VorticityCache, VorticityTransportRHS, vorticity_step, vorticity_evolve!
+export poisson_streamfunction, streamfunction_velocity
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
