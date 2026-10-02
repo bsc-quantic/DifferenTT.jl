@@ -282,11 +282,11 @@ using ITensorMPS
         sym_rhs_2d = symmetrize_rhs(p_field_2d, rhs_2d)
         dense_sym_rhs_2d = reshape(contract_mps(sym_rhs_2d), 4, 4)
         
-        # Corners have 2 boundaries, so 1.0 - 0.5 - 0.5 = 0.0
-        @test isapprox(dense_sym_rhs_2d[1, 1], 0.0; atol=1e-14)
-        @test isapprox(dense_sym_rhs_2d[1, end], 0.0; atol=1e-14)
-        @test isapprox(dense_sym_rhs_2d[end, 1], 0.0; atol=1e-14)
-        @test isapprox(dense_sym_rhs_2d[end, end], 0.0; atol=1e-14)
+        # Corners have 2 boundaries, so the weights multiply: 0.5 * 0.5 = 0.25
+        @test isapprox(dense_sym_rhs_2d[1, 1], 0.25; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[1, end], 0.25; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[end, 1], 0.25; atol=1e-14)
+        @test isapprox(dense_sym_rhs_2d[end, end], 0.25; atol=1e-14)
         
         # Edges have 1 boundary, so 1.0 - 0.5 = 0.5
         @test isapprox(dense_sym_rhs_2d[2, 1], 0.5; atol=1e-14)
