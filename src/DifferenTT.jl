@@ -90,7 +90,7 @@ export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d,
 export ScalarField, VectorField, Grid, interior_grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
-export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs
+export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs, neumann_weight_mpo
 
 # Export types and functions from Physics
 export advection, diffusion, divergence, gradient, symmetrized_laplacian, equicorrelated_laplacian
