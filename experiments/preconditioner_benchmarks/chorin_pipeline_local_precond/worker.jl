@@ -116,8 +116,8 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = load(MASK_FILE, mask_key)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
-        object_mask = zeros_mps(sites)
-        @warn "mask not found"
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
     end
     
     mps_vx = tt_mul(object_mask, ones_mps(sites))
@@ -174,6 +174,17 @@ function build_rhs(grid, masked_u)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
+# l2 norm of the discrete divergence of `u`, measured like the divergence in `poisson_rhs`: the rows
+# next to Dirichlet velocity boundaries are removed, since the projection does not act on them.
+function velocity_divergence_norm(grid, u)
+    experiment = grid.experiment
+    cutoff, maxdim = experiment.cutoff, experiment.maxdim
+    ∇u = DifferenTT.divergence(u, grid.cache.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+    ∇u = isnothing(correction) ? ∇u : apply(correction, ∇u; cutoff=cutoff, maxdim=maxdim)
+    return norm(∇u)
+end
+
 function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing, precond_mode="baseline")
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
@@ -193,7 +204,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
         pc_cond_store = pc_cond_store
     )
 
-    res_observer = ResidualObserver(grid.A, rhs, tol_val)
+    # A and b are bound by linearsolve to the system grid.A * pdt = rhs of this step
+    res_observer = ResidualObserver(rtol=tol_val)
     step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
     resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
     amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
@@ -235,6 +247,13 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
 
+    # How much the pressure correction reduces the divergence (outside the timed solve)
+    div_norm_before = velocity_divergence_norm(grid, masked_u)
+    div_norm_after = velocity_divergence_norm(grid, div_free_u)
+    div_ratio = div_norm_after / div_norm_before
+    @info "Divergence norm ratio (after / before) $div_ratio"
+    flush(stderr)
+
     rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
     timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
     
@@ -242,7 +261,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     
     iters_per_site = DifferenTT.positions_sum(numiter_store)
     
-    res_dict = (; t, rel_res, sol_maxdim, iters_per_site)
+    res_dict = (; t, rel_res, sol_maxdim, iters_per_site, div_norm_before, div_norm_after, div_ratio)
     
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
@@ -275,6 +294,9 @@ function run_task(task::TaskSpec)
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
         iters_per_site = Float64[]
         conds_per_site = Float64[]
         avg_conds = Float64[]
@@ -286,6 +308,9 @@ function run_task(task::TaskSpec)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(iters, step_res.iters_per_site)
             
             if isempty(iters_per_site)
@@ -318,6 +343,9 @@ function run_task(task::TaskSpec)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios,
             "precond_build_time" => 0.0
         )
         
@@ -377,6 +405,9 @@ function run_task(task::TaskSpec)
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
         iters_per_site = Float64[]
         pc_conds_per_site = Float64[]
         avg_pc_conds = Float64[]
@@ -388,6 +419,9 @@ function run_task(task::TaskSpec)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(iters, step_res.iters_per_site)
             
             if isempty(iters_per_site)
@@ -421,7 +455,10 @@ function run_task(task::TaskSpec)
             "iters" => iters,
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
-            "solution_maxdims" => solution_maxdims
+            "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios
         )
         
         if compute_cond
@@ -450,7 +487,7 @@ dummy_als_solver = ALS(
     sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
     updater_kwargs = dummy_updater_kwargs
 )
-unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false, residual_tol=1e-2)
 dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
 # When running with condition numbers, compute time does not really count, so it is better to avoid

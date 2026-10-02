@@ -6,7 +6,9 @@
     2. Step-by-step Iteration profiles (total Krylov iterations)
     3. Step-by-step Speedup profiles
     4. Site-by-site iteration profiles (sum of iterations across full evolution)
-    5. Scaling behavior across system sizes
+    5. Step-by-step relative residual of every configuration
+    6. Step-by-step divergence norm ratio (after / before the pressure correction) of every configuration
+    7. Scaling behavior across system sizes
 """
 
 using JLD2
@@ -64,6 +66,8 @@ for row in eachrow(df_nocond)
         "iters_per_site" => hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site) ?
                             row.iters_per_site :
                             (hasproperty(row, :iters) ? sum(row.iters) : Float64[]),
+        "residuals" => row_vec(row, :residuals),
+        "div_ratios" => row_vec(row, :div_ratios),
         "n_steps" => length(row.solve_times)
     )
     results_nocond[nodes][k] = d
@@ -206,6 +210,28 @@ for nodes in system_sizes
         savefig(p_site_comb, joinpath(out_dir, "combined_site_iterations.png"))
         savefig(p_site_all_comb, joinpath(out_dir, "combined_site_iterations_all_setups.png"))
     end
+
+    # Per-step residual and divergence reduction of every configuration
+    function step_series(metric)
+        series = Any[(; label="Baseline", values=base[metric], color=:black, lw=3)]
+        for (i, gdim) in enumerate(gdims), mode in ["precond_all", "precond_local"]
+            matching_keys = [k for (k, val) in grid_data if val["mode"] == mode && val["G_maxdim"] == gdim]
+            isempty(matching_keys) && continue
+            v = grid_data[matching_keys[1]]
+            mode_label = mode == "precond_all" ? "All" : "Local"
+            push!(series, (; label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ ($mode_label)"), values=v[metric],
+                color=colors[mod1(i, length(colors))], lw=1.5, ls=mode == "precond_all" ? :solid : :dash))
+        end
+        return series
+    end
+    p_res_all = step_profile_plot(step_series("residuals");
+        title="Relative Residual vs Time Step ($nodes)\nAll Preconditioner Setups",
+        ylabel="Relative Residual")
+    p_div_all = step_profile_plot(step_series("div_ratios");
+        title="Divergence Reduction by the Pressure Correction ($nodes)\nAll Preconditioner Setups",
+        ylabel="Divergence Norm Ratio (after / before)")
+    isnothing(p_res_all) || savefig(p_res_all, joinpath(out_dir, "combined_step_residuals_all_setups.png"))
+    isnothing(p_div_all) || savefig(p_div_all, joinpath(out_dir, "combined_step_div_ratio_all_setups.png"))
     
     # Site-by-Site Iterations, Step Iterations, & Step Speedup per gdim
     for (i, gdim) in enumerate(gdims)
