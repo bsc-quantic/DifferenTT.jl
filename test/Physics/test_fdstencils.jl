@@ -50,4 +50,22 @@ using Test
         
         @test_throws ArgumentError DifferenTT.derivative_coefficients(3; stencil_order=2)
     end
+
+    @testset "Wall Vorticity Coefficients" begin
+        @test DifferenTT.wall_vorticity_coefficients(:jensen) == (-4.0, 0.5, -3.0)
+        @test DifferenTT.wall_vorticity_coefficients(:thom) == (-2.0, 0.0, -2.0)
+        @test_throws ArgumentError DifferenTT.wall_vorticity_coefficients(:unknown)
+
+        # Independent check on a lid (top wall) with ψ = 0 and ψ_y = U on the wall: with s the distance from the
+        # wall, ψ = -U s + a s² + b s³, so the exact wall vorticity is ω = -ψ_yy = -2a. Jensen's formula is exact
+        # for cubics; Thom's formula has the first-order error -2b h.
+        U, a, b, h = 1.3, 0.7, -2.1, 0.05
+        ψ(s) = -U * s + a * s^2 + b * s^3
+        function wall_vorticity(formula)
+            c1, c2, cU = DifferenTT.wall_vorticity_coefficients(formula)
+            return (c1 * ψ(h) + c2 * ψ(2h)) / h^2 + cU * U / h
+        end
+        @test wall_vorticity(:jensen) ≈ -2a
+        @test wall_vorticity(:thom) ≈ -2a - 2b * h
+    end
 end

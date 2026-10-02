@@ -120,3 +120,28 @@ function derivative_coefficients(derivative_order::Int; stencil_order::Int=8)
         throw(ArgumentError("Given derivative order = $derivative_order not implemented"))
     end
 end
+
+"""
+    wall_vorticity_coefficients(formula::Symbol)
+
+Coefficients `(c₁, c₂, c_U)` of a wall vorticity formula for no-slip walls placed at ghost nodes,
+
+    ω_wall = (c₁ ψ₁ + c₂ ψ₂) / h² + c_U U / h,
+
+where `ψ₁` and `ψ₂` are the stream function at the first and second nodes away from the wall (`ψ_wall = 0`)
+and `U` is the tangential velocity of a moving wall, with `c_U` taken for a top lid moving in `+x`.
+
+# Arguments
+- `formula::Symbol`: `:jensen` for Jensen's second-order formula (used by Kiffner & Jaksch, arXiv:2303.03010,
+  eq. 7, and identical to eqs. 3.4–3.5 of Ghia, Ghia & Shin, J. Comput. Phys. 48, 1982) or `:thom` for Thom's
+  first-order formula.
+"""
+function wall_vorticity_coefficients(formula::Symbol)
+    if formula == :jensen
+        return (-4.0, 0.5, -3.0)
+    elseif formula == :thom
+        return (-2.0, 0.0, -2.0)
+    else
+        throw(ArgumentError("Unknown wall vorticity formula $formula; use :jensen or :thom"))
+    end
+end
