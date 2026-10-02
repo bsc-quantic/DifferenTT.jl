@@ -66,35 +66,40 @@ function gradient(field::MPS, diff_ops::DifferentialOpsScalar{N}; cutoff::Float6
 end
 
 """
-    symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=0.0) where N
+    symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=1e-15) where N
 
-Construct the full Laplacian operator for a scalar field with Neumann symmetrization corrections applied.
-Builds 1D d²/dx² operators per dimension, applies Neumann symmetrization, scales by grid spacing, and lifts to N-dimensions.
+Construct the full Laplacian operator for a scalar field, symmetrized for `NeumannBC` faces.
+Builds the 1D d²/dx² operators per dimension (with the mirrored Neumann closures), scales them by the grid
+spacing and sums them into the N-dimensional Kronecker sum `Δ`. If the field has a `NeumannBC` face, the
+whole operator is then multiplied by the Neumann weight `W` (see [`neumann_weight_mpo`](@ref)), which gives
+the symmetric finite volume half-cell operator `W Δ`. Use it with [`symmetrize_rhs`](@ref) on the right-hand
+side. `cutoff` and `maxdim` truncate that product; the default `cutoff` keeps the operator exact (see
+`neumann_weight_mpo`).
 
 # Returns
 - `MPO`: The symmetrized Laplacian operator.
 """
-function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=0.0) where N
+function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=1e-15) where N
 
     # helper for loop to create raw 1D d2x, d2y, d2z...
     raw_onedim_ops = ntuple(i -> begin
             onedim_op = onedim_differential_operator(2, field.arch, i, field.bcu[i], backend_type(field); stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
-            neumann_symmetrization = onedim_neumann_symmetrization_correction(onedim_op, field.arch, i, field.bcu[i]; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
-            
-            if !isnothing(neumann_symmetrization)
-                onedim_op = _nothing_sum_handler(onedim_op, neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
-            end
 
             if onedim_op isa MPO
                 onedim_op = onedim_op * (1/grid.dx[i]^2)
             else
                 onedim_op = onedim_op .* (1/grid.dx[i]^2)
             end
-            
+
             return i == 1 ? asymmetry * onedim_op : onedim_op
         end, N)
 
-    return ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
+    laplacian = ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
+
+    # Symmetrize the whole rows, not each 1D operator: halving only the 1D boundary row of each axis
+    # leaves the tangential derivatives of a Neumann row with double weight
+    weight = neumann_weight_mpo(field; cutoff=cutoff, maxdim=maxdim)
+    return isnothing(weight) ? laplacian : apply(weight, laplacian; cutoff=cutoff, maxdim=maxdim)
 end
 
 """

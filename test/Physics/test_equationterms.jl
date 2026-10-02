@@ -13,15 +13,11 @@ try
     ITensors.set_warn_order(17)
     # Helper to construct the exact dense matrix using directsum (the old inefficient way)
     # This serves as the ground truth to ensure the exact block MPO is mathematically identical.
+    # Neumann faces are weighted with the whole-row weight W (tested separately below)
     function directsum_symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8) where N
         d2_ops = ntuple(i -> begin
                 onedim_op = DifferenTT.onedim_differential_operator(2, field.arch, i, field.bcu[i], DifferenTT.backend_type(field); stencil_order=stencil_order, cutoff=0.0, maxdim=100)
-                neumann_symmetrization = DifferenTT.onedim_neumann_symmetrization_correction(onedim_op, field.arch, i, field.bcu[i]; stencil_order=stencil_order, cutoff=0.0, maxdim=100)
-                
-                if !isnothing(neumann_symmetrization)
-                    onedim_op = DifferenTT._nothing_sum_handler(onedim_op, neumann_symmetrization; cutoff=0.0, maxdim=100)
-                end
-    
+
                 if onedim_op isa MPO
                     onedim_op = onedim_op * (1/grid.dx[i]^2)
                 else
@@ -32,8 +28,10 @@ try
                 stacked_op = i == 1 ? asymmetry * stacked_op : stacked_op
                 return stacked_op
             end, N)
-    
-        return sum([d2_ops...]; alg="directsum")
+
+        laplacian = sum([d2_ops...]; alg="directsum")
+        weight = neumann_weight_mpo(field)
+        return isnothing(weight) ? laplacian : apply(weight, laplacian; alg="naive", truncate=false)
     end
 
     @testset "TT Architecture" begin
@@ -113,6 +111,68 @@ try
         dense_optimal = DifferenTT.contract_mpo(mpo_optimal)
         dense_direct = DifferenTT.contract_mpo(mpo_direct)
         @test norm(dense_optimal - dense_direct) < 1e-10
+    end
+end
+
+@testset "symmetrized_laplacian with Neumann faces" begin
+    # Mirrored (unsymmetrized) Kronecker sum, built term by term as in the directsum reference above
+    function mirrored_laplacian_dense(field::ScalarField{N}, grid::Grid{N}) where N
+        terms = ntuple(i -> begin
+                onedim_op = DifferenTT.onedim_differential_operator(2, field.arch, i, field.bcu[i], DifferenTT.backend_type(field); stencil_order=2, cutoff=0.0, maxdim=100)
+                onedim_op = onedim_op isa MPO ? onedim_op * (1 / grid.dx[i]^2) : onedim_op .* (1 / grid.dx[i]^2)
+                return DifferenTT.ndim_operator_mpo(onedim_op, i, field.usites, field.arch)
+            end, N)
+        return DifferenTT.contract_mpo(sum([terms...]; alg="directsum"))
+    end
+
+    # Dirichlet-Neumann along x, Neumann on both sides along y
+    neumann_bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0)))
+
+    # toeplitz_mpo needs at least 4 qubits per axis
+    @testset "Whole rows weighted ($label)" for (label, arch) in (
+        ("QTT sequential", QTTArchitecture((4, 4))),
+        ("QTT reversed", QTTArchitecture((4, -4))),
+        ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+        ("TT", TTArchitecture((16, 16)))
+    )
+        grid = Grid(arch, (1.0, 1.0))
+        field = ScalarField(siteinds(arch), arch, neumann_bcs)
+
+        Δ = symmetrized_laplacian(field, grid; stencil_order=2)
+        Δ_dense = DifferenTT.contract_mpo(Δ)
+        W_dense = DifferenTT.contract_mpo(neumann_weight_mpo(field))
+        A_dense = mirrored_laplacian_dense(field, grid)
+
+        # The weight multiplies the whole mirrored operator, so the system keeps its solution
+        @test norm(Δ_dense - W_dense * A_dense) < 1e-10 * norm(A_dense)
+        @test norm(Δ_dense - Δ_dense') < 1e-10 * norm(Δ_dense)
+        # The weight is diagonal and positive, so W*A is invertible exactly when A is
+        @test all(>(0), diag(W_dense))
+        # TT: W has bond dimension 1, so the Kronecker-sum bond dimension 2 is kept
+        arch isa TTArchitecture && @test maxlinkdim(Δ) == 2
+    end
+
+    @testset "Second-order consistency on Neumann rows (TT)" begin
+        # p = cos(πx)cos(πy) has zero normal derivative on every face of [0,1]² and Δp = -2π²p. Its odd
+        # derivatives vanish on the boundary, so the half-cell rows W*A are O(h²) accurate like the
+        # interior. Weighting only the 1D boundary rows leaves an O(1) error ½∂²p/∂y² on the Neumann rows.
+        all_neumann = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+        errors = Float64[]
+        for n in (8, 16)
+            arch = TTArchitecture((n, n))
+            grid = Grid(arch, (1.0, 1.0))
+            s = siteinds(arch)
+            field = ScalarField(s, arch, BoundaryConditions(all_neumann, all_neumann))
+
+            P = [cos(π * x) * cos(π * y) for x in grid.points[1], y in grid.points[2]]
+            p = MPS(ITensor(P, s[1], s[2]), s)
+
+            Δp = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=2)) * DifferenTT.contract_mps(p)
+            W_dense = DifferenTT.contract_mpo(neumann_weight_mpo(field))
+            push!(errors, maximum(abs, Δp - W_dense * (-2π^2 .* DifferenTT.contract_mps(p))))
+        end
+        @test errors[1] < 1.0
+        @test errors[2] < errors[1] / 3.5 # h = 1/7 → 1/15: second order gives a ratio ≈ 4.6
     end
 end
 
