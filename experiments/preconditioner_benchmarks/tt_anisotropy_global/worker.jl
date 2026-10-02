@@ -76,43 +76,29 @@ const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
 const system_dims = [5, 10]
 const floor_values = [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
 const N_NODES_PER_DIM = 15
+const residual_tol = 1e-3
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
 const maxdims_map = Dict(
-    5 => 100,
-    10 => 25,
-    15 => 25,
-    20 => 30
-)
-
-const nsweeps_map = Dict(
-    5 => 50,
-    10 => 50,
-    15 => 50,
-    20 => 60
-)
-
-# Unpreconditioned κ grows like κ(-Δ) * F, so the baseline needs many iterations at large F.
-const rtol_map = Dict(
-    5 => 1e-4,
-    10 => 1e-4,
-    15 => 1e-4,
-    20 => 1e-4
+    5 => 80,
+    10 => 100,
+    15 => 150,
+    20 => 200
 )
 
 const maxiter_map = Dict(
-    5 => 5000,
-    10 => 5000,
-    15 => 5000,
-    20 => 5000
+    5 => 1000,
+    10 => 1000,
+    15 => 1000,
+    20 => 1000
 )
 
 const pc_tol_map = Dict(
     5 => 1e-3,
     10 => 1e-3,
     15 => 1e-3,
-    20 => 1e-2
+    20 => 1e-3
 )
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
@@ -217,7 +203,7 @@ Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and 
 function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
     runs = NamedTuple[]
     for rep in 1:N_SOLVE_REPEATS
-        solver, numiter_store = make_global_solver(; rtol=rtol_map[N], maxiter=maxiter_map[N],
+        solver, numiter_store = make_global_solver(; rtol=residual_tol, maxiter=maxiter_map[N],
                                                      maxdim=maxdims_map[N], cutoff=1e-13,
                                                      orth_maxdim=maxdims_map[N], orth_cutoff=1e-14)
         x0 = copy(init_mps)

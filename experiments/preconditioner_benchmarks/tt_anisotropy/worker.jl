@@ -77,7 +77,7 @@ const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
 const system_dims = [5, 10]
 const floor_values = [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
 const N_NODES_PER_DIM = 15
-const residual_tol = 1e-4
+const residual_tol = 1e-3
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
