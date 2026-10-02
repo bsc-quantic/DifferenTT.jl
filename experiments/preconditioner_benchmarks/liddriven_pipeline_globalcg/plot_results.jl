@@ -7,7 +7,9 @@
     2. Pareto fronts of Build Time vs Total Solve Time
     3. Step-by-step Iteration profiles
     4. Step-by-step Speedup profiles
-    5. Scaling behavior across system sizes
+    5. Step-by-step relative residual of every configuration
+    6. Step-by-step divergence norm ratio of the stream function velocity of every configuration
+    7. Scaling behavior across system sizes
 
     Global CG does not record local Krylov condition numbers.
 """
@@ -30,6 +32,8 @@ base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
+include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+
 results_file = joinpath(base_folder, "collected_results.jld2")
 @info "Loading dataframe from $results_file"
 df = load(results_file, "df")
@@ -49,6 +53,7 @@ for row in eachrow(df)
         "solve_times" => row.solve_times,
         "iters" => row.global_iters,
         "residuals" => row.residuals,
+        "div_ratios" => row_vec(row, :div_ratios),
         "n_steps" => length(row.solve_times)
     )
     results[nodes][k] = d
@@ -276,6 +281,27 @@ for nodes in system_sizes
     savefig(p_iters, joinpath(plots_dir, "step_iterations_$(nodes[1])x$(nodes[2]).png"))
     savefig(p_sp, joinpath(plots_dir, "step_speedup_$(nodes[1])x$(nodes[2]).png"))
     savefig(p_res, joinpath(plots_dir, "step_residuals_$(nodes[1])x$(nodes[2]).png"))
+
+    # Per-step residual and incompressibility of every configuration
+    step_keys = sort(keys_list, by=k -> (grid_data[k]["G_maxdim"], grid_data[k]["mu"]))
+    function step_series(metric)
+        series = Any[]
+        has_baseline && push!(series, (; label="Baseline", values=grid_data["baseline"][metric], color=:black, lw=3))
+        for (j, k) in enumerate(step_keys)
+            v = grid_data[k]
+            push!(series, (; label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
+                values=v[metric], color=colors[mod1(j, length(colors))], lw=1.5))
+        end
+        return series
+    end
+    p_res_all = step_profile_plot(step_series("residuals");
+        title="Relative Residual vs Time Step ($nodes)\nAll Preconditioner Setups",
+        ylabel="Relative Residual")
+    p_div_all = step_profile_plot(step_series("div_ratios");
+        title="Incompressibility of the Stream Function Velocity ($nodes)\nAll Preconditioner Setups",
+        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖")
+    isnothing(p_res_all) || savefig(p_res_all, joinpath(plots_dir, "step_residuals_all_setups_$(nodes[1])x$(nodes[2]).png"))
+    isnothing(p_div_all) || savefig(p_div_all, joinpath(plots_dir, "step_div_ratio_all_setups_$(nodes[1])x$(nodes[2]).png"))
 
 end
 

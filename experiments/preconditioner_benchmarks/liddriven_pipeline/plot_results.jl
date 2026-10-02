@@ -9,7 +9,9 @@
     4. Step-by-step Speedup profiles
     5. Site-by-site condition-number profiles (κ absolute, not a ratio)
     6. Site-by-site iteration profiles (sum across full time evolution)
-    7. Scaling behavior across system sizes
+    7. Step-by-step relative residual of every configuration
+    8. Step-by-step divergence norm ratio of the stream function velocity of every configuration
+    9. Scaling behavior across system sizes
     Uses nocond results for accurate timings, and cond results for
     condition-number profiles.
 
@@ -67,6 +69,8 @@ for row in eachrow(df_nocond)
         "iters_per_site" => hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site) ?
                             row.iters_per_site :
                             (hasproperty(row, :iters) ? sum(row.iters) : Float64[]),
+        "residuals" => row_vec(row, :residuals),
+        "div_ratios" => row_vec(row, :div_ratios),
         "n_steps" => length(row.solve_times)
     )
     results_nocond[nodes][k] = d
@@ -405,8 +409,29 @@ for nodes in system_sizes
         end
     end
 
+    # Per-step residual and incompressibility of every configuration
+    step_keys = sort(keys_list, by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
+    step_colors = palette(:tab20)
+    function step_series(metric)
+        series = Any[(; label="Baseline", values=base[metric], color=:black, lw=3)]
+        for (j, k) in enumerate(step_keys)
+            v = grid_data_nocond[k]
+            push!(series, (; label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
+                values=v[metric], color=step_colors[mod1(j, length(step_colors))], lw=1.5))
+        end
+        return series
+    end
+    p_res_all = step_profile_plot(step_series("residuals");
+        title="Relative Residual vs Time Step ($nodes)\nAll Preconditioner Setups",
+        ylabel="Relative Residual")
+    p_div_all = step_profile_plot(step_series("div_ratios");
+        title="Incompressibility of the Stream Function Velocity ($nodes)\nAll Preconditioner Setups",
+        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖")
+
     out_dir_combined = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])")
     mkpath(out_dir_combined)
+    isnothing(p_res_all) || savefig(p_res_all, joinpath(out_dir_combined, "combined_step_residuals_all_setups.png"))
+    isnothing(p_div_all) || savefig(p_div_all, joinpath(out_dir_combined, "combined_step_div_ratio_all_setups.png"))
     savefig(p_iters_combined, joinpath(out_dir_combined, "combined_step_iterations.png"))
     savefig(p_sp_combined, joinpath(out_dir_combined, "combined_step_speedup.png"))
     if !isempty(sites_range_iters)

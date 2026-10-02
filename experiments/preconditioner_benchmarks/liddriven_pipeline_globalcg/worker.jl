@@ -189,6 +189,22 @@ function build_rhs(grid, omega)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, omega)
 end
 
+# Incompressibility of the velocity (u, v) = (∂ᵧψ, -∂ₓψ) that the vorticity transport uses. The ψ–ω scheme has
+# no pressure correction: the divergence ∂ₓu + ∂ᵧv cancels exactly in exact arithmetic, so its norm relative to
+# the norm of the two terms measures the TT truncation of the velocity. The sum is a direct sum, so that no
+# truncation hides the cancellation.
+function velocity_divergence_norms(grid, psi)
+    experiment = grid.experiment
+    cutoff, maxdim = experiment.cutoff, experiment.maxdim
+    d_ops = grid.cache.diff_ops.d_ops
+    u, v = DifferenTT.streamfunction_velocity(grid.cache, psi; cutoff=cutoff, maxdim=maxdim)
+    ∂ₓu = apply(d_ops[1], u; cutoff=cutoff, maxdim=maxdim)
+    ∂ᵧv = apply(d_ops[2], v; cutoff=cutoff, maxdim=maxdim)
+    div_norm = norm(+(∂ₓu, ∂ᵧv; alg="directsum"))
+    div_scale = sqrt(norm(∂ₓu)^2 + norm(∂ᵧv)^2)
+    return div_norm, div_scale
+end
+
 function liddriven_step!(grid, global_updater_kwargs, step_index::Int, precond=nothing)
     global_updater_kwargs.numiter_store[] = 0
     experiment = grid.experiment
@@ -238,9 +254,16 @@ function liddriven_step!(grid, global_updater_kwargs, step_index::Int, precond=n
     experiment.omega_field[length(experiment.omega_field)] = omega_next
 
     omega_maxdim = maxlinkdim(omega_next)
+
+    # Incompressibility of the velocity of this step (outside the timed solve)
+    div_norm, div_scale = velocity_divergence_norms(grid, psi)
+    div_ratio = div_norm / div_scale
+    @info "Divergence norm ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖ $div_ratio"
+    flush(stderr)
     global_iters = global_updater_kwargs.numiter_store[]
 
-    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, omega_maxdim, global_iters)
+    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, omega_maxdim, global_iters,
+                  div_norm, div_scale, div_ratio)
     
     return res_dict
 end
@@ -278,6 +301,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         residuals = Float64[]
         solution_maxdims = Int[]
         omega_maxdims = Int[]
+        div_norms = Float64[]
+        div_scales = Float64[]
+        div_ratios = Float64[]
 
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -290,6 +316,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(omega_maxdims, step_res.omega_maxdim)
+            push!(div_norms, step_res.div_norm)
+            push!(div_scales, step_res.div_scale)
+            push!(div_ratios, step_res.div_ratio)
             push!(global_iters, step_res.global_iters)
 
             GC.gc(true)
@@ -305,6 +334,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "omega_maxdims" => omega_maxdims,
+            "div_norms" => div_norms,
+            "div_scales" => div_scales,
+            "div_ratios" => div_ratios,
             "precond_build_time" => 0.0,
             "precond_build_compile_time" => 0.0,
             "precond_build_gc_time" => 0.0,
@@ -386,6 +418,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         residuals = Float64[]
         solution_maxdims = Int[]
         omega_maxdims = Int[]
+        div_norms = Float64[]
+        div_scales = Float64[]
+        div_ratios = Float64[]
 
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -398,6 +433,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(omega_maxdims, step_res.omega_maxdim)
+            push!(div_norms, step_res.div_norm)
+            push!(div_scales, step_res.div_scale)
+            push!(div_ratios, step_res.div_ratio)
             push!(global_iters, step_res.global_iters)
 
             GC.gc(true)
@@ -418,6 +456,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "omega_maxdims" => omega_maxdims,
+            "div_norms" => div_norms,
+            "div_scales" => div_scales,
+            "div_ratios" => div_ratios,
             "compile_times" => compile_times,
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
