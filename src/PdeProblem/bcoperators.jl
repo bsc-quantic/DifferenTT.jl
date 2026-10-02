@@ -376,3 +376,71 @@ end
 function corner_pick_matrix(coefficients::Vector{<:AbstractFloat}, flag::Symbol=:upper)
     return flag == :upper ? upper_toeplitz_matrix(coefficients) : lower_toeplitz_matrix(coefficients)
 end
+
+# -------------------------------------------------------------------------------------------------
+# Wall vorticity corrections -> Ghost contribution of no-slip walls to the Laplacian of the vorticity in
+# the vorticity-streamfunction formulation, where the walls are ghost nodes one spacing outside the grid
+# -------------------------------------------------------------------------------------------------
+
+"""
+    onedim_entry_operator(arch::QTTArchitecture, axis::Int, entries::Vector{Tuple{Int,Int,Float64}}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+
+Create the 1D MPO `Σ value |row⟩⟨column|` over the given `(row, column, value)` entries (1-based), built from
+[`entry_mpo`](@ref). Returns `nothing` if `entries` is empty.
+"""
+function onedim_entry_operator(arch::QTTArchitecture, axis::Int, entries::Vector{Tuple{Int,Int,Float64}}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    isempty(entries) && return nothing
+    sites = siteinds(2, abs(arch.var_nsites[axis]))
+    terms = [value * entry_mpo(sites, row, column, array_type) for (row, column, value) in entries]
+    return _nothing_sum_handler(terms...; cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    onedim_entry_operator(arch::TTArchitecture, axis::Int, entries::Vector{Tuple{Int,Int,Float64}}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+
+Dense matrix version of [`onedim_entry_operator`](@ref) for TTArchitecture. Returns `nothing` if `entries` is empty.
+"""
+function onedim_entry_operator(arch::TTArchitecture, axis::Int, entries::Vector{Tuple{Int,Int,Float64}}, array_type::Type{<:AbstractArray}=Array; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    isempty(entries) && return nothing
+    dim = arch.var_dims[axis]
+    mat = zeros(Float64, dim, dim)
+    for (row, column, value) in entries
+        mat[row, column] += value
+    end
+    return adapt(array_type, mat)
+end
+
+"""
+    onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen)
+
+Nonzero entries `(row, column, value)` of the unscaled (h = 1) 1D wall vorticity correction on `n` nodes: for each
+`DirichletBC` side, `c₁ ψ₁ + c₂ ψ₂` (see [`wall_vorticity_coefficients`](@ref)) placed on the node next to the wall.
+"""
+function onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen)
+    c1, c2, _ = wall_vorticity_coefficients(formula)
+    entries = Tuple{Int,Int,Float64}[]
+    if bcs.left isa DirichletBC
+        push!(entries, (1, 1, c1))
+        iszero(c2) || push!(entries, (1, 2, c2))
+    end
+    if bcs.right isa DirichletBC
+        push!(entries, (n, n, c1))
+        iszero(c2) || push!(entries, (n, n - 1, c2))
+    end
+    return entries
+end
+
+"""
+    onedim_wall_vorticity_correction(arch::Architecture, axis::Int, bcs::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+
+Create the unscaled (h = 1) 1D operator `W` (MPO for QTTArchitecture, dense matrix for TTArchitecture) such that
+`W ψ` holds `c₁ ψ₁ + c₂ ψ₂` on the node next to each `DirichletBC` wall and zero elsewhere, where `ψ₁`, `ψ₂` are
+the first and second nodes away from that wall and the wall itself is a ghost node with `ψ = 0`. Dividing by `h²`
+gives the wall vorticity of a stationary wall, and dividing by `h⁴` gives its ghost contribution to the Laplacian
+of the vorticity on that node. Returns `nothing` if no side is `DirichletBC`.
+"""
+function onedim_wall_vorticity_correction(arch::Architecture, axis::Int, bcs::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    n = variable_dims(arch)[axis]
+    entries = onedim_wall_vorticity_entries(bcs, n; formula=formula)
+    return onedim_entry_operator(arch, axis, entries, array_type; cutoff=cutoff, maxdim=maxdim)
+end
