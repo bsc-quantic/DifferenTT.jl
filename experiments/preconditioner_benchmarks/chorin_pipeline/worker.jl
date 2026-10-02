@@ -67,8 +67,8 @@ const dt_map = Dict(
 )
 
 const n_steps_map = Dict(
-    (8, 8) => 200,
-    (10, 10) => 100,
+    (8, 8) => 100,
+    (10, 10) => 50,
     (12, 12) => 20
 )
 
@@ -87,9 +87,9 @@ const mu_values = [1e7]
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (8, 8) => 200,
-    (10, 10) => 350,
-    (12, 12) => 400
+    (8, 8) => 150,
+    (10, 10) => 200,
+    (12, 12) => 250
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
@@ -106,7 +106,7 @@ const nsweeps_map = Dict(
 )
 
 const tol_map = Dict(
-    (8, 8) => 1e-4,
+    (8, 8) => 1e-3,
     (10, 10) => 1e-3,
     (12, 12) => 1e-2
 )
@@ -219,6 +219,17 @@ function build_rhs(grid, masked_u)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
+# l2 norm of the discrete divergence of `u`, measured like the divergence in `poisson_rhs`: the rows
+# next to Dirichlet velocity boundaries are removed, since the projection does not act on them.
+function velocity_divergence_norm(grid, u)
+    experiment = grid.experiment
+    cutoff, maxdim = experiment.cutoff, experiment.maxdim
+    ∇u = DifferenTT.divergence(u, grid.cache.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+    ∇u = isnothing(correction) ? ∇u : apply(correction, ∇u; cutoff=cutoff, maxdim=maxdim)
+    return norm(∇u)
+end
+
 function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
@@ -290,7 +301,14 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
-    
+
+    # How much the pressure correction reduces the divergence (outside the timed solve)
+    div_norm_before = velocity_divergence_norm(grid, masked_u)
+    div_norm_after = velocity_divergence_norm(grid, div_free_u)
+    div_ratio = div_norm_after / div_norm_before
+    @info "Divergence norm ratio (after / before) $div_ratio"
+    flush(stderr)
+
     rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
     timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
     
@@ -298,7 +316,8 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
 
     iters_per_site = DifferenTT.positions_sum(numiter_store)
 
-    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, iters_per_site)
+    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, iters_per_site,
+                  div_norm_before, div_norm_after, div_ratio)
 
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
@@ -332,6 +351,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
         iters_per_site = Float64[]
         conds_per_site = Float64[]
         avg_conds = Float64[]
@@ -346,6 +368,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(iters, step_res.iters_per_site)
 
             if isempty(iters_per_site)
@@ -377,6 +402,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios,
             "precond_build_time" => 0.0,
             "precond_build_compile_time" => 0.0,
             "precond_build_gc_time" => 0.0,
@@ -454,6 +482,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         iters = Vector{Float64}[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
         iters_per_site = Float64[]
         pc_conds_per_site = Float64[]
         avg_pc_conds = Float64[]
@@ -468,6 +499,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(iters, step_res.iters_per_site)
 
             if isempty(iters_per_site)
@@ -503,6 +537,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios,
             "compile_times" => compile_times,
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
