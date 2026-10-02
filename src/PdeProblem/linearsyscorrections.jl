@@ -1,18 +1,56 @@
 """
-    symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=0.0, maxdim::Int=typemax(Int)) where N
+    neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
 
-Apply Neumann symmetrization correction to an arbitrary right-hand side `MPS`.
-This function encapsulates the behaviour of getting the Neumann symmetrization correction
-for the RHS and adding it to the RHS if required, which is meant to be used alongside
-`symmetrized_laplacian`.
+Diagonal weight `W = W₁ ⊗ … ⊗ W_N` that symmetrizes a linear system built with the mirrored `NeumannBC`
+closures, whose boundary lies on the stored node. `Wᵢ` is the identity with `1/2` on the Neumann boundary
+rows of axis `i`. Multiplying the whole system `A x = b` by `W` gives the finite volume half-cell equations:
+`W A` is symmetric and has the same solution, and a node shared by two Neumann faces gets weight `1/4`.
+Returns `nothing` if `field` has no `NeumannBC` face.
+
+Each `Wᵢ` is the identity plus [`onedim_neumann_symmetrization_correction`](@ref) applied to it. In QTT, `Wᵢ`
+has bond dimension 2 (one Neumann side) or 3 (both sides) inside its axis. The lifted `W` has bond dimension
+1 between axes for TT and sequential QTT, while interleaved QTT threads the bonds of every axis through the
+others.
+"""
+function neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
+    array_type = backend_type(field)
+    weights = Union{MPO,Nothing}[]
+
+    for i in 1:N
+        bcs = field.bcu[i]
+        if !(bcs.left isa NeumannBC || bcs.right isa NeumannBC)
+            push!(weights, nothing)
+            continue
+        end
+
+        if field.arch isa QTTArchitecture
+            identity_op = identity_mpo(siteinds(2, abs(field.arch.var_nsites[i])), array_type)
+        else
+            identity_op = adapt(array_type, identity_array(field.arch.var_dims[i]))
+        end
+        correction = onedim_neumann_symmetrization_correction(identity_op, field.arch, i, bcs; cutoff=cutoff, maxdim=maxdim)
+        onedim_weight = identity_op isa MPO ? _nothing_sum_handler(identity_op, correction; cutoff=cutoff, maxdim=maxdim) : identity_op + correction
+
+        push!(weights, ndim_operator_mpo(onedim_weight, i, field.usites, field.arch))
+    end
+
+    return _nothing_apply_handler(weights...; cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
+
+Weight an arbitrary right-hand side `MPS` with the Neumann weight `W` of `field` (see
+[`neumann_weight_mpo`](@ref)), i.e. halve it on the `NeumannBC` boundary rows of each axis (a quarter on
+nodes shared by two Neumann faces). Meant to be used alongside `symmetrized_laplacian`, which applies the
+same `W` to the operator. Returns `rhs` itself if `field` has no `NeumannBC` face.
 
 # Returns
 - `MPS`: The symmetrized right-hand side.
 """
-function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=0.0, maxdim::Int=typemax(Int)) where N
-    rhs_neumann_symmetrization = neumann_symmetrization_correction_mps(field.arch, field.bcu, rhs; cutoff=cutoff, maxdim=maxdim)
-    # return isnothing(rhs_neumann_symmetrization) ? rhs : +(rhs, rhs_neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
-    return _nothing_sum_handler(rhs, rhs_neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
+function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
+    weight = neumann_weight_mpo(field; cutoff=cutoff, maxdim=maxdim)
+    return isnothing(weight) ? rhs : apply(weight, rhs; cutoff=cutoff, maxdim=maxdim)
 end
 
 """
