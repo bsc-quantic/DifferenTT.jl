@@ -102,4 +102,19 @@ using LinearAlgebra
         @test all(iszero, full_lower[N-3:N, 1:N-4])
         @test all(iszero, full_lower[1:N-4, :])
     end
+
+    @testset "entry_mpo" begin
+        N = 2^n
+        for (row, col) in ((1, 1), (2, 5), (N, 1), (N, N - 1), (17, 42))
+            mpo = DifferenTT.entry_mpo(sites, row, col)
+            @test mpo isa MPO
+            @test length(mpo) == n
+            @test maxlinkdim(mpo) == 1
+
+            # Single-entry matrix |row⟩⟨col|
+            full = DifferenTT.contract_mpo(mpo)
+            @test full[row, col] == 1.0
+            @test count(!iszero, full) == 1
+        end
+    end
 end
