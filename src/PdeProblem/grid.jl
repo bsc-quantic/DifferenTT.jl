@@ -49,3 +49,19 @@ end
 # Convenience constructors for 1D
 Grid(arch::QTTArchitecture{1}, box_size::Real) = Grid(arch, (box_size,))
 Grid(arch::TTArchitecture{1}, box_size::Real) = Grid(arch, (box_size,))
+
+"""
+    interior_grid(arch::Union{QTTArchitecture{N}, TTArchitecture{N}}, domain_size::NTuple{N, Real}) where N
+
+Construct the `Grid` of the interior nodes of the domain `[0, L₁] × ... × [0, Lₙ]` when its walls are ghost nodes
+that are not stored: with `n` nodes per axis, the spacing is `h = L / (n + 1)` and the stored nodes sit at the
+physical positions `h, 2h, ..., n h`.
+
+The returned grid spans the interior box of size `L (n - 1) / (n + 1)`, so that its spacing is exactly `h` and
+sampling, cross interpolation and plotting work unchanged. Grid coordinates are physical coordinates minus `h`.
+"""
+function interior_grid(arch::Union{QTTArchitecture{N}, TTArchitecture{N}}, domain_size::NTuple{N, Real}) where N
+    dims = variable_dims(arch)
+    interior_size = ntuple(i -> Float64(domain_size[i]) * (dims[i] - 1) / (dims[i] + 1), N)
+    return Grid(arch, interior_size)
+end

@@ -66,4 +66,27 @@ using Test
         @test grid_tt.dx[1] ≈ (1.0 / 15)
         @test length(grid_tt.points[1]) == 16
     end
+
+    @testset "interior_grid (walls as ghost nodes)" begin
+        domain_size = (1.0, 2.0)
+        for arch in (QTTArchitecture((3, 4)), TTArchitecture((8, 16)))
+            grid = interior_grid(arch, domain_size)
+            dims = variable_dims(arch)
+
+            @test grid isa Grid{2}
+            # n interior nodes per axis, h = L / (n + 1)
+            @test all(grid.dx .≈ domain_size ./ (dims .+ 1))
+            @test all(grid.box_size .≈ domain_size .* (dims .- 1) ./ (dims .+ 1))
+            for i in 1:2
+                @test length(grid.points[i]) == dims[i]
+                # Grid coordinates are physical coordinates minus h: the nodes span [h, L - h]
+                @test grid.points[i][1] ≈ 0.0
+                @test grid.points[i][end] + 2 * grid.dx[i] ≈ domain_size[i]
+            end
+        end
+
+        grid_1d = interior_grid(QTTArchitecture((4,)), (1.0,))
+        @test grid_1d isa Grid{1}
+        @test grid_1d.dx[1] ≈ 1 / 17
+    end
 end
