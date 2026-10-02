@@ -161,6 +161,23 @@ function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Vector{<:Int}, arra
     return sum(row_pick_mpo(site_inds, single_row_index, array_type) for single_row_index in row_index)
 end
 
+"""
+    entry_mpo(site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array)
+
+Construct the bond-dimension-1 MPO of the single-entry matrix `|row⟩⟨column|`, i.e. the operator that moves the
+value at `column_index` of a 1D vector to `row_index`. Built as the elementwise product of
+[`row_pick_mpo`](@ref) and [`column_pick_mpo`](@ref).
+
+# Arguments
+- `site_inds::Vector{<:Index}`: Site indices.
+- `row_index::Int`: Row of the nonzero entry (1-based).
+- `column_index::Int`: Column of the nonzero entry (1-based).
+- `array_type::Type{<:AbstractArray}`: Backend array type.
+"""
+function entry_mpo(site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array)
+    return tt_mul(row_pick_mpo(site_inds, row_index, array_type), column_pick_mpo(site_inds, column_index, array_type))
+end
+
 # TODO Test this function
 # TODO FINISH REVISING THIS FUNCTION -> Last one from og operations.jl
 """

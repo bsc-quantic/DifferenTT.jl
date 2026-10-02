@@ -167,4 +167,74 @@ end
             @test (C_right * ones_vec)[end-3:end] ≈ expected atol=1e-12
         end
     end
+
+    @testset "Wall vorticity corrections" begin
+        nsite = 4
+        dim = 2^nsite
+        qtt_arch = QTTArchitecture((nsite,))
+        tt_arch = TTArchitecture((dim,))
+
+        @testset "onedim_entry_operator" begin
+            # The repeated entry must accumulate
+            entries = [(1, 1, 2.0), (3, 7, -1.5), (dim, 2, 0.25), (3, 7, 0.5)]
+            expected = zeros(dim, dim)
+            for (row, col, value) in entries
+                expected[row, col] += value
+            end
+            @test DifferenTT.contract_mpo(DifferenTT.onedim_entry_operator(qtt_arch, 1, entries)) ≈ expected atol=1e-12
+            @test DifferenTT.onedim_entry_operator(tt_arch, 1, entries) ≈ expected
+
+            no_entries = Tuple{Int,Int,Float64}[]
+            @test isnothing(DifferenTT.onedim_entry_operator(qtt_arch, 1, no_entries))
+            @test isnothing(DifferenTT.onedim_entry_operator(tt_arch, 1, no_entries))
+        end
+
+        bc_cases = [
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+            ("Dirichlet-Neumann", BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))),
+            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))),
+            ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
+            ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
+        ]
+
+        @testset "onedim_wall_vorticity_correction, $formula, $name" for formula in (:jensen, :thom), (name, bc1d) in bc_cases
+            c1, c2, _ = DifferenTT.wall_vorticity_coefficients(formula)
+            # c₁ ψ₁ + c₂ ψ₂ on the node next to each wall, independent of the implementation
+            expected = zeros(dim, dim)
+            if bc1d.left isa DirichletBC
+                expected[1, 1] = c1
+                expected[1, 2] = c2
+            end
+            if bc1d.right isa DirichletBC
+                expected[dim, dim] = c1
+                expected[dim, dim-1] = c2
+            end
+
+            # Zero coefficients (c₂ of Thom's formula) are not stored as entries
+            entries = DifferenTT.onedim_wall_vorticity_entries(bc1d, dim; formula=formula)
+            @test length(entries) == count(!iszero, expected)
+
+            qtt = DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, bc1d; formula=formula)
+            tt = DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, bc1d; formula=formula)
+            if iszero(expected)
+                @test isnothing(qtt)
+                @test isnothing(tt)
+            else
+                @test DifferenTT.contract_mpo(qtt) ≈ expected atol=1e-12
+                @test tt ≈ expected
+            end
+        end
+
+        @testset "onedim_wall_vorticity_correction on a reversed second axis" begin
+            # The 1D operator is built in natural order on the axis' own number of nodes; ndim_operator_mpo handles
+            # the reversal when lifting
+            c1, c2, _ = DifferenTT.wall_vorticity_coefficients(:jensen)
+            expected = zeros(16, 16)
+            expected[1, 1:2] .= (c1, c2)
+            expected[16, 15:16] .= (c2, c1)
+            bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+            qtt = DifferenTT.onedim_wall_vorticity_correction(QTTArchitecture((3, -4)), 2, bc1d)
+            @test DifferenTT.contract_mpo(qtt) ≈ expected atol=1e-12
+        end
+    end
 end

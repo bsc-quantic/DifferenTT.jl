@@ -47,6 +47,7 @@ using Test
     end
     @testset "Physics" begin
         include("Physics/test_chorin.jl")
+        include("Physics/test_vorticity.jl")
         include("Physics/test_equationterms.jl") # TODO: expand empty test in a future PR
         include("Physics/test_fdstencils.jl")
         include("Physics/test_insexperiment.jl")

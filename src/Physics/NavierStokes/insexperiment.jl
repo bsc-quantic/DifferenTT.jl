@@ -72,9 +72,10 @@ struct INSExperiment{N} <: INSExperimentBase
 end
 
 """
-    cfl_spectral_radii(experiment::INSExperiment{N}; vmax::Real=1.0) where N
+    cfl_spectral_radii(experiment::INSExperimentBase; vmax::Real=1.0)
 
-Upper bounds on the spectral radii of the discretized advection and diffusion operators of `experiment`,
+Upper bounds on the spectral radii of the discretized advection and diffusion operators of `experiment`
+(any experiment with `grid`, `Re` and `stencil_order` fields),
 built from the coefficients of its finite-difference stencils (Gershgorin bound). Contributions from all
 spatial dimensions add, since the time stepper advances the full combined RHS.
 
@@ -84,8 +85,9 @@ the highest wavenumber) and conservative for advection.
 # Returns
 - `(adv_eig, diff_eig)`: bounds for the advection term (with velocity magnitude `vmax`) and the diffusion term.
 """
-function cfl_spectral_radii(experiment::INSExperiment{N}; vmax::Real=1.0) where N
+function cfl_spectral_radii(experiment::INSExperimentBase; vmax::Real=1.0)
     grid = experiment.grid
+    N = length(grid.dx)
     s1 = sum(abs, values(derivative_coefficients(1; stencil_order=experiment.stencil_order)))  # advection
     s2 = sum(abs, values(derivative_coefficients(2; stencil_order=experiment.stencil_order)))  # diffusion
 
@@ -103,14 +105,14 @@ function _report_cfl(dt, dt_max)
 end
 
 """
-    check_cfl(experiment::INSExperiment{N}, stepper::RK4; vmax::Real=1.0) where N
-    check_cfl(experiment::INSExperiment{N}, stepper::ExplicitEuler; vmax::Real=1.0) where N
+    check_cfl(experiment::INSExperimentBase, stepper::RK4; vmax::Real=1.0)
+    check_cfl(experiment::INSExperimentBase, stepper::ExplicitEuler; vmax::Real=1.0)
 
 Checks the linear stability (CFL) condition of `experiment` for the time step stored in `stepper`, using the
 stability region of the given time integration scheme and the experiment's finite-difference stencils.
 `vmax` is the assumed maximum velocity magnitude of the flow.
 """
-function check_cfl(experiment::INSExperiment{N}, stepper::RK4; vmax::Real=1.0) where N
+function check_cfl(experiment::INSExperimentBase, stepper::RK4; vmax::Real=1.0)
     dt = stepper.time_evol_kwargs.dt
     adv_eig, diff_eig = cfl_spectral_radii(experiment; vmax=vmax)
 
@@ -129,8 +131,9 @@ function check_cfl(experiment::INSExperiment{N}, stepper::RK4; vmax::Real=1.0) w
     _report_cfl(dt, dt_max)
 end
 
-function check_cfl(experiment::INSExperiment{N}, stepper::ExplicitEuler; vmax::Real=1.0) where N
+function check_cfl(experiment::INSExperimentBase, stepper::ExplicitEuler; vmax::Real=1.0)
     dt = stepper.time_evol_kwargs.dt
+    N = length(experiment.grid.dx)
     _, diff_eig = cfl_spectral_radii(experiment; vmax=vmax)
 
     # Forward Euler is stable iff |1 + z| <= 1, a disk that only touches the imaginary axis at the origin, so
@@ -164,6 +167,6 @@ function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N
     !too_coarse && @info "Kolmogorov scale is resolved"
 end
 
-function check_kolmogorov_scale(experiment::INSExperiment{N}) where N
+function check_kolmogorov_scale(experiment::INSExperimentBase)
     check_kolmogorov_scale(experiment.grid, experiment.Re)
 end
