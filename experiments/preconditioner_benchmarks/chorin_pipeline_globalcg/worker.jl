@@ -66,8 +66,8 @@ const dt_map = Dict(
 )
 
 const n_steps_map = Dict(
-    (8, 8) => 30,
-    (10, 10) => 10,
+    (8, 8) => 50,
+    (10, 10) => 20,
     (12, 12) => 5
 )
 
@@ -78,7 +78,7 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
 end
 
 # const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const system_sizes = [(8, 8)]
+const system_sizes = [(8, 8), (10, 10)]
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
@@ -214,6 +214,17 @@ function build_rhs(grid, masked_u)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
+# l2 norm of the discrete divergence of `u`, measured like the divergence in `poisson_rhs`: the rows
+# next to Dirichlet velocity boundaries are removed, since the projection does not act on them.
+function velocity_divergence_norm(grid, u)
+    experiment = grid.experiment
+    cutoff, maxdim = experiment.cutoff, experiment.maxdim
+    ∇u = DifferenTT.divergence(u, grid.cache.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+    ∇u = isnothing(correction) ? ∇u : apply(correction, ∇u; cutoff=cutoff, maxdim=maxdim)
+    return norm(∇u)
+end
+
 function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=nothing)
     global_updater_kwargs.numiter_store[] = 0
     experiment = grid.experiment
@@ -262,6 +273,13 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
+
+    # How much the pressure correction reduces the divergence (outside the timed solve)
+    div_norm_before = velocity_divergence_norm(grid, masked_u)
+    div_norm_after = velocity_divergence_norm(grid, div_free_u)
+    div_ratio = div_norm_after / div_norm_before
+    @info "Divergence norm ratio (after / before) $div_ratio"
+    flush(stderr)
     
     rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
     timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
@@ -270,7 +288,8 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     
     global_iters = global_updater_kwargs.numiter_store[]
     
-    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, global_iters)
+    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, global_iters,
+                  div_norm_before, div_norm_after, div_ratio)
     
     return res_dict
 end
@@ -307,6 +326,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
 
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -318,6 +340,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(global_iters, step_res.global_iters)
 
             GC.gc(true)
@@ -332,6 +357,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios,
             "precond_build_time" => 0.0,
             "precond_build_compile_time" => 0.0,
             "precond_build_gc_time" => 0.0,
@@ -412,6 +440,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         global_iters = Int[]
         residuals = Float64[]
         solution_maxdims = Int[]
+        div_norms_before = Float64[]
+        div_norms_after = Float64[]
+        div_ratios = Float64[]
 
         for i in 1:N_STEPS
             @info "Step $i / $N_STEPS"
@@ -423,6 +454,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             push!(gc_times, step_res.gc_t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
+            push!(div_norms_before, step_res.div_norm_before)
+            push!(div_norms_after, step_res.div_norm_after)
+            push!(div_ratios, step_res.div_ratio)
             push!(global_iters, step_res.global_iters)
 
             GC.gc(true)
@@ -442,6 +476,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "total_global_iters" => sum(global_iters),
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
+            "div_norms_before" => div_norms_before,
+            "div_norms_after" => div_norms_after,
+            "div_ratios" => div_ratios,
             "compile_times" => compile_times,
             "gc_times" => gc_times,
             "total_compile_time" => sum(compile_times),
