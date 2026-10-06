@@ -54,6 +54,66 @@ function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, 
 end
 
 """
+    face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+
+MPS on the sites of `field` that is constant along `axis` and equal to `values` along the other axis, i.e. the
+profile of a face of `axis` extended to the whole domain. `values` is either a `Number` (constant profile) or a
+vector with one value per stored node of the other axis, in increasing node index.
+"""
+function face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    array_type = backend_type(field)
+    values isa Number && return values * ones_mps(field.usites, 1, array_type)
+
+    other = 3 - axis
+    length(values) == variable_dims(field.arch)[other] || throw(ArgumentError("Face profile of axis $axis must have $(variable_dims(field.arch)[other]) values, got $(length(values))"))
+    onedim = _onedim_diagonal_operator(field.arch, other, values, array_type; cutoff=cutoff)
+    profile_op = ndim_operator_mpo(onedim, other, field.usites, field.arch)
+    return apply(profile_op, ones_mps(field.usites, 1, array_type); cutoff=cutoff, maxdim=maxdim)
+end
+
+_onedim_diagonal_operator(arch::TTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15) = adapt(array_type, Matrix(Diagonal(Vector{Float64}(values))))
+
+# TODO A diagonal built from vec2mps would avoid the dense 2ⁿ × 2ⁿ matrix (fine up to n ≈ 11)
+function _onedim_diagonal_operator(arch::QTTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
+    sites = siteinds(2, abs(arch.var_nsites[axis]))
+    return adapt(array_type, mat2mpo(Matrix(Diagonal(Vector{Float64}(values))), sites; cutoff=cutoff))
+end
+
+"""
+    face_dirichlet_lift(field::ScalarField{2}, grid::Grid{2}, derivative_order::Int, axis::Int, side::Symbol, values; stencil_order::Int=2, cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+
+Ghost contribution of a single face to a derivative of order `derivative_order` along `axis`: the derivative
+operators truncate the stencils at non-periodic faces (ghost value 0), and adding this MPS restores the ghost
+value `values` (a `Number` or a profile along the face, see [`face_profile_mps`](@ref)) on the `side` (`:left` or
+`:right`) face of `axis`. With `stencil_order = 2`, it is only nonzero on the row next to the face.
+
+Returns `nothing` if `values` is `nothing` or zero.
+"""
+function face_dirichlet_lift(field::ScalarField{2}, grid::Grid{2}, derivative_order::Int, axis::Int, side::Symbol, values; stencil_order::Int=2, cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    (isnothing(values) || all(iszero, values)) && return nothing
+    side in (:left, :right) || throw(ArgumentError("side must be :left or :right, got $side"))
+    array_type = backend_type(field)
+    onedim = side == :left ?
+        onedim_left_dirichlet_correction(derivative_order, field.arch, axis, array_type; stencil_order=stencil_order) :
+        onedim_right_dirichlet_correction(derivative_order, field.arch, axis, array_type; stencil_order=stencil_order)
+    onedim = onedim isa MPO ? onedim * (1 / grid.dx[axis]^derivative_order) : onedim .* (1 / grid.dx[axis]^derivative_order)
+    correction = ndim_operator_mpo(onedim, axis, field.usites, field.arch)
+    return apply(correction, face_profile_mps(field, axis, values; cutoff=cutoff, maxdim=maxdim); cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+
+Subtract the node mean of `rhs` (plain sum over the nodes divided by their number), so that a right-hand side of a
+singular system with constant null space becomes consistent.
+"""
+function remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    sites = siteinds(rhs)
+    mean = integrate(rhs) / prod(dim, sites)
+    return +(rhs, -mean * ones_mps(sites, 1, backend_type(rhs)); cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
     divergence_dirichlet_correction(u_fields::VectorField{N}; stencil_order::Int = 8) where N
 
 Compute the boundary correction MPO for the divergence operator with Dirichlet BCs on velocity.

@@ -87,4 +87,82 @@ using Random
         @test isnothing(neumann_weight_mpo(sfield_per))
         @test symmetrize_rhs(sfield_per, u_mps) === u_mps
     end
+
+    # 4. Face profiles and the Dirichlet lift of a single face (ghost value g on one face)
+    face_archs = (
+        ("QTT sequential", QTTArchitecture((4, 4))),
+        ("QTT reversed", QTTArchitecture((4, -4))),
+        ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+        ("TT", TTArchitecture((16, 16)))
+    )
+    dirichlet_walls = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+
+    @testset "face_profile_mps ($label)" for (label, arch) in face_archs
+        dims = variable_dims(arch)
+        f_grid = Grid(arch, (1.0, 1.3))
+        field = ScalarField(siteinds(arch), arch, dirichlet_walls)
+        sampled(mps) = [DifferenTT.sample(mps, ((i - 1) * f_grid.dx[1], (j - 1) * f_grid.dx[2]), f_grid, arch) for i in 1:dims[1], j in 1:dims[2]]
+
+        Random.seed!(8)
+        for axis in 1:2
+            values = randn(dims[3-axis])
+            # Constant along `axis`, equal to the profile along the other axis
+            expected = axis == 1 ? repeat(values', dims[1]) : repeat(values, 1, dims[2])
+            @test sampled(DifferenTT.face_profile_mps(field, axis, values)) ≈ expected
+            @test sampled(DifferenTT.face_profile_mps(field, axis, 2.5)) ≈ fill(2.5, dims...)
+            @test_throws ArgumentError DifferenTT.face_profile_mps(field, axis, randn(dims[3-axis] + 1))
+        end
+    end
+
+    @testset "face_dirichlet_lift ($label)" for (label, arch) in face_archs
+        dims = variable_dims(arch)
+        f_grid = Grid(arch, (1.0, 1.3))
+        field = ScalarField(siteinds(arch), arch, dirichlet_walls)
+        sampled(mps) = [DifferenTT.sample(mps, ((i - 1) * f_grid.dx[1], (j - 1) * f_grid.dx[2]), f_grid, arch) for i in 1:dims[1], j in 1:dims[2]]
+        ops = DifferentialOpsScalar(f_grid, field; stencil_order=2)
+
+        Random.seed!(9)
+        f = random_mps(field.usites; linkdims=3)
+        F = sampled(f)
+        for axis in 1:2, side in (:left, :right), k in (1, 2)
+            h = f_grid.dx[axis]
+            g = randn(dims[3-axis])
+            lift = face_dirichlet_lift(field, f_grid, k, axis, side, g)
+
+            # (a) Only the row next to the face is nonzero: ∓g/(2h) for k = 1, g/h² for k = 2
+            expected = zeros(dims...)
+            value = k == 1 ? (side == :left ? -1 : 1) .* g ./ (2h) : g ./ h^2
+            row = side == :left ? 1 : dims[axis]
+            axis == 1 ? (expected[row, :] .= value) : (expected[:, row] .= value)
+            @test sampled(lift) ≈ expected
+
+            # (b) Truncated stencil + lift = full stencil with the ghost row g on that face (0 on the others)
+            P = zeros(dims[1] + 2, dims[2] + 2)
+            P[2:end-1, 2:end-1] .= F
+            ghost = side == :left ? 1 : dims[axis] + 2
+            axis == 1 ? (P[ghost, 2:end-1] .= g) : (P[2:end-1, ghost] .= g)
+            lo, hi = axis == 1 ? (P[1:end-2, 2:end-1], P[3:end, 2:end-1]) : (P[2:end-1, 1:end-2], P[2:end-1, 3:end])
+            dense = k == 1 ? (hi .- lo) ./ (2h) : (hi .- 2F .+ lo) ./ h^2
+            op = k == 1 ? ops.d_ops[axis] : ops.d2_ops[axis]
+            @test sampled(+(apply(op, f), lift; cutoff=1e-15)) ≈ dense
+        end
+
+        # No lift for a zero or missing ghost value
+        @test isnothing(face_dirichlet_lift(field, f_grid, 2, 1, :left, 0.0))
+        @test isnothing(face_dirichlet_lift(field, f_grid, 2, 1, :left, zeros(dims[2])))
+        @test isnothing(face_dirichlet_lift(field, f_grid, 2, 1, :left, nothing))
+        @test_throws ArgumentError face_dirichlet_lift(field, f_grid, 2, 1, :top, 1.0)
+    end
+
+    @testset "remove_mean" begin
+        for arch in (QTTArchitecture((3, 3)), TTArchitecture((8, 8)))
+            Random.seed!(10)
+            rhs = random_mps(siteinds(arch); linkdims=2)
+            centred = DifferenTT.remove_mean(rhs)
+            @test abs(DifferenTT.integrate(centred)) < 1e-12 * norm(rhs)
+            # Only the constant mode changes
+            shift = DifferenTT.contract_mps(rhs) .- DifferenTT.contract_mps(centred)
+            @test shift ≈ fill(DifferenTT.integrate(rhs) / 64, 64)
+        end
+    end
 end
