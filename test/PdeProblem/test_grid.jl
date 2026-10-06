@@ -89,4 +89,21 @@ using Test
         @test grid_1d isa Grid{1}
         @test grid_1d.dx[1] ≈ 1 / 17
     end
+
+    @testset "interior_grid with ghost sides per axis" begin
+        domain_size = (1.0, 2.0)
+        for arch in (QTTArchitecture((3, 4)), TTArchitecture((8, 16)))
+            dims = variable_dims(arch)
+            for g1 in 0:2, g2 in 0:2
+                grid = interior_grid(arch, domain_size, (g1, g2))
+                # n stored nodes and g ghost sides: h = L / (n - 1 + g)
+                @test all(grid.dx .≈ domain_size ./ (dims .- 1 .+ (g1, g2)))
+                @test all(grid.box_size .≈ grid.dx .* (dims .- 1))
+            end
+            # Two ghost sides per axis is the two-argument method
+            @test interior_grid(arch, domain_size, (2, 2)).dx == interior_grid(arch, domain_size).dx
+            @test_throws ArgumentError interior_grid(arch, domain_size, (3, 0))
+            @test_throws ArgumentError interior_grid(arch, domain_size, (1, -1))
+        end
+    end
 end
