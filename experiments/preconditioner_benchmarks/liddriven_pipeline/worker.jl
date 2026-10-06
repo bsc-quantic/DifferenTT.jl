@@ -75,9 +75,9 @@ const dt_map = Dict(
 )
 
 const n_steps_map = Dict(
-    (8, 8) => 200,
-    (10, 10) => 100,
-    (12, 12) => 20
+    (8, 8) => 1000,
+    (10, 10) => 500,
+    (12, 12) => 100
 )
 
 # Overridable for fast verification only — the default reproduces n_steps_map[nodes] exactly.
@@ -101,9 +101,9 @@ const mu_values = [1e7]
 const g_maxdims = 2:10
 
 const maxdims_map = Dict(
-    (8, 8) => 200,
-    (10, 10) => 350,
-    (12, 12) => 400
+    (8, 8) => 80,
+    (10, 10) => 120,
+    (12, 12) => 200
 )
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
@@ -121,8 +121,8 @@ const nsweeps_map = Dict(
 
 const tol_map = Dict(
     (8, 8) => 1e-4,
-    (10, 10) => 1e-3,
-    (12, 12) => 1e-2
+    (10, 10) => 1e-4,
+    (12, 12) => 1e-4
 )
 
 const fai_tol_map = Dict(

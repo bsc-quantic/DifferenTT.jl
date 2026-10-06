@@ -1,0 +1,4 @@
+Lid-driven cavity vs Ghia et al. (1982), Re = 1000, step 8000, 128×128 interior nodes
+  centreline RMS error: 0.0054  (u: 0.0022, v: 0.0073)
+  ψ_min = -0.11734 at (0.5349, 0.5659)  (Ghia: -0.117929 at (0.5313, 0.5625))
+  χ(ψ) = 25, χ(ω) = 33

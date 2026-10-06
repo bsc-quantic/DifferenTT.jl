@@ -342,10 +342,9 @@ visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/i
 previous_p = nothing
 epsilon = 1e-10
 
-# Correct the rhs of the equation taking into account that the rows affected by Neumann boundary condition get scaled by 0.5 at both sides.
-# The correction already has the - sign such that only need to sum it, but since we are solving -∇²p = -dt⁻¹∇⋅u we compute it with -1.0 * ∇u
-rhs_neumann_symmetrization = DifferenTT.neumann_symmetrization_correction_mps(experiment.p_field.arch, experiment.p_field.bcu, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
-rhs = isnothing(rhs_neumann_symmetrization) ? -1.0 * ∇u : +(-1.0 * ∇u, rhs_neumann_symmetrization; cutoff=cutoff, maxdim=maxdim)
+# Weight the rhs with the same Neumann weight W as the symmetrized Laplacian (1/2 on the Neumann rows, 1/4 on
+# Neumann corners). Since we are solving -∇²p = -dt⁻¹∇⋅u we weight -1.0 * ∇u
+rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 visualize_scalar(rhs, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_rhs.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-20, 20))
 
 # ---------------------------
