@@ -90,14 +90,16 @@ export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d,
 export ScalarField, VectorField, Grid, interior_grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
-export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs, neumann_weight_mpo
+export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs, neumann_weight_mpo, face_dirichlet_lift
 
 # Export types and functions from Physics
-export advection, diffusion, divergence, gradient, symmetrized_laplacian, equicorrelated_laplacian
+export advection, diffusion, divergence, gradient, symmetrized_laplacian, kronecker_laplacian, equicorrelated_laplacian
 export INSExperiment, check_cfl, check_kolmogorov_scale
 export ChorinCache, chorin_step, chorin_evolve!, NavierStokesPredictorRHS
 export INSVorticityExperiment, VorticityCache, VorticityTransportRHS, vorticity_step, vorticity_evolve!
 export poisson_streamfunction, streamfunction_velocity
+export VorticityFace, NoSlipWall, SlipWall, InflowFace, OutflowFace, PeriodicFace
+export vorticity_boundary_conditions, vorticity_grid, cavity_faces
 
 # Export types and functions from Linear Solvers
 export AbstractLinearSolver, AbstractDMRGSolver, AbstractGlobalSolver, linearsolve
