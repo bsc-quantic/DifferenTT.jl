@@ -152,6 +152,28 @@ end
         arch isa TTArchitecture && @test maxlinkdim(Δ) == 2
     end
 
+    @testset "kronecker_laplacian ($label)" for (label, arch) in (
+        ("QTT sequential", QTTArchitecture((4, 4))),
+        ("QTT reversed", QTTArchitecture((4, -4))),
+        ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+        ("TT", TTArchitecture((16, 16)))
+    )
+        grid = Grid(arch, (1.0, 1.0))
+        # With Neumann faces: the unweighted mirrored Kronecker sum, and W times it is the symmetrized Laplacian
+        field = ScalarField(siteinds(arch), arch, neumann_bcs)
+        K = kronecker_laplacian(field, grid; stencil_order=2)
+        K_dense = DifferenTT.contract_mpo(K)
+        A_dense = mirrored_laplacian_dense(field, grid)
+        @test norm(K_dense - A_dense) < 1e-10 * norm(A_dense)
+        W_dense = DifferenTT.contract_mpo(neumann_weight_mpo(field))
+        @test norm(W_dense * K_dense - DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=2))) < 1e-10 * norm(A_dense)
+
+        # Without Neumann faces: the same operator as symmetrized_laplacian
+        dirichlet_periodic = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC()))
+        plain_field = ScalarField(siteinds(arch), arch, dirichlet_periodic)
+        @test DifferenTT.contract_mpo(kronecker_laplacian(plain_field, grid; stencil_order=2)) == DifferenTT.contract_mpo(symmetrized_laplacian(plain_field, grid; stencil_order=2))
+    end
+
     @testset "Second-order consistency on Neumann rows (TT)" begin
         # p = cos(πx)cos(πy) has zero normal derivative on every face of [0,1]² and Δp = -2π²p. Its odd
         # derivatives vanish on the boundary, so the half-cell rows W*A are O(h²) accurate like the
