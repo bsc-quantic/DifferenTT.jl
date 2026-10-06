@@ -225,6 +225,25 @@ end
             end
         end
 
+        @testset "Wall vorticity corrections with explicit wall flags" begin
+            c1, c2, _ = DifferenTT.wall_vorticity_coefficients(:jensen)
+            # Only the flagged side gets entries, whatever the boundary conditions
+            @test DifferenTT.onedim_wall_vorticity_entries((true, false), dim) == [(1, 1, c1), (1, 2, c2)]
+            @test DifferenTT.onedim_wall_vorticity_entries((false, true), dim) == [(dim, dim, c1), (dim, dim - 1, c2)]
+            @test isempty(DifferenTT.onedim_wall_vorticity_entries((false, false), dim))
+            @test isnothing(DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, (false, false)))
+
+            # The BoundaryCond1d methods are the flag methods with every DirichletBC side as a wall
+            for (name, bc1d) in bc_cases, formula in (:jensen, :thom)
+                flags = (bc1d.left isa DirichletBC, bc1d.right isa DirichletBC)
+                @test DifferenTT.onedim_wall_vorticity_entries(bc1d, dim; formula=formula) == DifferenTT.onedim_wall_vorticity_entries(flags, dim; formula=formula)
+                any(flags) || continue
+                @test DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, bc1d; formula=formula) == DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, flags; formula=formula)
+                @test DifferenTT.contract_mpo(DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, bc1d; formula=formula)) ≈
+                      DifferenTT.contract_mpo(DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, flags; formula=formula))
+            end
+        end
+
         @testset "onedim_wall_vorticity_correction on a reversed second axis" begin
             # The 1D operator is built in natural order on the axis' own number of nodes; ndim_operator_mpo handles
             # the reversal when lifting

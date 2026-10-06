@@ -80,6 +80,26 @@ side. `cutoff` and `maxdim` truncate that product; the default `cutoff` keeps th
 - `MPO`: The symmetrized Laplacian operator.
 """
 function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=1e-15) where N
+    laplacian = kronecker_laplacian(field, grid; asymmetry=asymmetry, stencil_order=stencil_order, maxdim=maxdim, cutoff=cutoff)
+
+    # Symmetrize the whole rows, not each 1D operator: halving only the 1D boundary row of each axis
+    # leaves the tangential derivatives of a Neumann row with double weight
+    weight = neumann_weight_mpo(field; cutoff=cutoff, maxdim=maxdim)
+    return isnothing(weight) ? laplacian : apply(weight, laplacian; cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    kronecker_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=1e-15) where N
+
+Laplacian with the closures of the boundary conditions of `field` (Dirichlet truncated, Neumann mirrored, periodic
+wrapped), built as the Kronecker sum of the 1D second derivatives. Unlike [`symmetrized_laplacian`](@ref), the
+Neumann rows are not weighted, so it is the consistent operator for explicit terms, but it is not symmetric with
+Neumann faces. Without Neumann faces, both functions return the same operator.
+
+# Returns
+- `MPO`: The Laplacian operator.
+"""
+function kronecker_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::Float64=1.0, stencil_order::Int=8, maxdim::Int=typemax(Int), cutoff::Float64=1e-15) where N
 
     # helper for loop to create raw 1D d2x, d2y, d2z...
     raw_onedim_ops = ntuple(i -> begin
@@ -94,12 +114,7 @@ function symmetrized_laplacian(field::ScalarField{N}, grid::Grid{N}; asymmetry::
             return i == 1 ? asymmetry * onedim_op : onedim_op
         end, N)
 
-    laplacian = ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
-
-    # Symmetrize the whole rows, not each 1D operator: halving only the 1D boundary row of each axis
-    # leaves the tangential derivatives of a Neumann row with double weight
-    weight = neumann_weight_mpo(field; cutoff=cutoff, maxdim=maxdim)
-    return isnothing(weight) ? laplacian : apply(weight, laplacian; cutoff=cutoff, maxdim=maxdim)
+    return ndim_operator_sum_mpo(raw_onedim_ops, field.usites, field.arch)
 end
 
 """

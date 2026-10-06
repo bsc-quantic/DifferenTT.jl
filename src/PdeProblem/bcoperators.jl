@@ -340,24 +340,35 @@ function onedim_entry_operator(arch::TTArchitecture, axis::Int, entries::Vector{
 end
 
 """
-    onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen)
+    onedim_wall_vorticity_entries(walls::NTuple{2, Bool}, n::Int; formula::Symbol=:jensen)
 
 Nonzero entries `(row, column, value)` of the unscaled (h = 1) 1D wall vorticity correction on `n` nodes: for each
-`DirichletBC` side, `c₁ ψ₁ + c₂ ψ₂` (see [`wall_vorticity_coefficients`](@ref)) placed on the node next to the wall.
+side flagged as a wall in `walls = (left, right)`, `c₁ ψ₁ + c₂ ψ₂` (see [`wall_vorticity_coefficients`](@ref))
+placed on the node next to the wall.
 """
-function onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen)
+function onedim_wall_vorticity_entries(walls::NTuple{2, Bool}, n::Int; formula::Symbol=:jensen)
     c1, c2, _ = wall_vorticity_coefficients(formula)
     entries = Tuple{Int,Int,Float64}[]
-    if bcs.left isa DirichletBC
+    if walls[1]
         push!(entries, (1, 1, c1))
         iszero(c2) || push!(entries, (1, 2, c2))
     end
-    if bcs.right isa DirichletBC
+    if walls[2]
         push!(entries, (n, n, c1))
         iszero(c2) || push!(entries, (n, n - 1, c2))
     end
     return entries
 end
+
+"""
+    onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen)
+
+Same as the flag method, with every `DirichletBC` side taken as a wall.
+"""
+onedim_wall_vorticity_entries(bcs::BoundaryCond1d, n::Int; formula::Symbol=:jensen) =
+    onedim_wall_vorticity_entries(dirichlet_flags(bcs), n; formula=formula)
+
+dirichlet_flags(bcs::BoundaryCond1d) = (bcs.left isa DirichletBC, bcs.right isa DirichletBC)
 
 """
     onedim_wall_vorticity_correction(arch::Architecture, axis::Int, bcs::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
@@ -369,7 +380,17 @@ gives the wall vorticity of a stationary wall, and dividing by `h⁴` gives its 
 of the vorticity on that node. Returns `nothing` if no side is `DirichletBC`.
 """
 function onedim_wall_vorticity_correction(arch::Architecture, axis::Int, bcs::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    return onedim_wall_vorticity_correction(arch, axis, dirichlet_flags(bcs), array_type; formula=formula, cutoff=cutoff, maxdim=maxdim)
+end
+
+"""
+    onedim_wall_vorticity_correction(arch::Architecture, axis::Int, walls::NTuple{2, Bool}, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+
+Same as the `BoundaryCond1d` method, with the wall sides given explicitly by `walls = (left, right)`. Used when
+only some of the `DirichletBC` sides are no-slip walls.
+"""
+function onedim_wall_vorticity_correction(arch::Architecture, axis::Int, walls::NTuple{2, Bool}, array_type::Type{<:AbstractArray}=Array; formula::Symbol=:jensen, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     n = variable_dims(arch)[axis]
-    entries = onedim_wall_vorticity_entries(bcs, n; formula=formula)
+    entries = onedim_wall_vorticity_entries(walls, n; formula=formula)
     return onedim_entry_operator(arch, axis, entries, array_type; cutoff=cutoff, maxdim=maxdim)
 end
