@@ -14,10 +14,12 @@ using ITensorMPS
         @test backend_type(cpu_itensor) == Array
         @test backend_type(cpu_mps) == Array
 
-        try using CUDA
+        # import, not using: runtests.jl includes every file into Main, and CUDA's exports (e.g. CG) would
+        # clash with the KrylovKit names of the later test files
+        try import CUDA
             if CUDA.functional()
-                gpu_array = CuArray(rand(2, 2))
-                @test backend_type(gpu_array) == CuArray
+                gpu_array = CUDA.CuArray(rand(2, 2))
+                @test backend_type(gpu_array) == CUDA.CuArray
             else
                 @warn "CUDA not functional, skipping GPU tests for backend_type"
             end
