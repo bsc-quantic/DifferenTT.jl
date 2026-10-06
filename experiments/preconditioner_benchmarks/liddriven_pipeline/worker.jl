@@ -64,9 +64,10 @@ const U_LID = 1.0
 const STENCIL_ORDER = 2
 const WALL_FORMULA = :jensen
 
-# DirichletBC logs at every construction: build the wall conditions once
-const WALL = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
-const WALL_BCS = BoundaryConditions(WALL, WALL)
+# Four no-slip walls with ψ = 0, the top one moving in +x. DirichletBC logs at every construction: build the
+# boundary conditions once
+const FACES = cavity_faces(U_LID)
+const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
 const dt_map = Dict(
     (8, 8) => 0.001,
@@ -164,15 +165,15 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
     sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
     # Walls are ghost nodes: 2^n interior nodes per axis with h = L / (2^n + 1)
-    grid = interior_grid(arch, BOX_SIZE)
+    grid = vorticity_grid(arch, BOX_SIZE, FACES)
 
     # Fluid at rest, impulsively started lid
-    omega_field = ScalarField(zeros_mps(sites), arch, WALL_BCS)
-    psi_field = ScalarField(zeros_mps(sites), arch, WALL_BCS)
+    omega_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
+    psi_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
 
     time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
-    experiment = INSVorticityExperiment(grid, omega_field, psi_field, RE_NUM, U_LID; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
-    check_cfl(experiment, time_stepper; vmax=U_LID)
+    experiment = INSVorticityExperiment(grid, omega_field, psi_field, RE_NUM, FACES; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    check_cfl(experiment, time_stepper; vmax=experiment.vmax)
 
     # The stream function operator A = -Δ (Dirichlet, ghost walls) is SPD: no pinning, no RHS corrections
     cache = VorticityCache(experiment)
