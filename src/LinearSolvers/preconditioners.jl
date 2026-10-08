@@ -224,27 +224,49 @@ function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSol
 end
 
 """
-    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array) where N
+    _spectral_lower_bound(mat::AbstractMatrix) -> Float64
 
-Build a Sinc-quadrature (sum of exponentials) preconditioner for a specific problem where operators are given by `A_list`.
+Smallest eigenvalue of a symmetric `mat`, or the smallest real part of its eigenvalues otherwise.
 """
-function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array) where N
+function _spectral_lower_bound(mat::AbstractMatrix)
+    dense = Matrix(mat)
+    return ishermitian(dense) ? eigmin(Hermitian(dense)) : minimum(real, eigvals(dense))
+end
+
+"""
+    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array, normalize_spectrum::Bool=true) where N
+
+Build a Sinc-quadrature (sum of exponentials) preconditioner `B_M ≈ L0⁻¹` for the Kronecker sum
+`L0 = Σ_ℓ A_ℓ` of the one-dimensional SPD operators in `A_list` (Khoromskij 2009). The result is
+a sum of `2M + 1` rank-one terms, so its bond dimension is at most `2M + 1`.
+
+The quadrature of `1/x` is accurate on spectra normalized to `[1, R]`. With `normalize_spectrum=true`,
+`L0` is therefore rescaled by `λ_min(L0) = Σ_ℓ λ_min(A_ℓ)` before applying the quadrature, i.e.
+`B_M = (1/λ_min) Σ_k c_k ⊗_ℓ exp(-t_k A_ℓ / λ_min)`, which keeps `B_M L0` well conditioned
+regardless of the scaling of `A_list` (e.g. a `1/h²` factor). `normalize_spectrum=false` applies
+the quadrature to the unscaled operators.
+"""
+function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array, normalize_spectrum::Bool=true) where N
     d = length(A_list)
     @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
     @assert N == d "Number of local operators does not match architecture dimensions"
     @assert all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) "Arch var dims fo not match matrix dimensions"
     h = pi / sqrt(M)
-    
+
+    # Eigenvalues of a Kronecker sum are sums of the eigenvalues of its terms
+    λmin = normalize_spectrum ? sum(_spectral_lower_bound, A_list) : 1.0
+    λmin > 0 || throw(ArgumentError("The Kronecker sum of A_list must be positive definite, got λ_min = $λmin"))
+
     precond_mpo = nothing
     total_sites = length(sites)
-    
+
     for k in -M:M
-        t_k = exp(k * h)
+        t_k = exp(k * h) / λmin
         c_k = h * t_k
-        
+
         links = [Index(1, "Link,l=$i") for i in 1:total_sites-1]
         mpo_tensors = Vector{ITensor}(undef, total_sites)
-        
+
         for i in 1:total_sites
             l = arch.site_map[i]
             expA = exp(-t_k * A_list[l])
