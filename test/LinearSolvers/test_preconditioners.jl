@@ -133,6 +133,30 @@ using LinearAlgebra
 
         @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
         @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
+        @test_throws ArgumentError DifferenTT.sincquadrature_preconditioner(arch, sites, [-A1, -A2], M)
+    end
+
+    @testset "SincQuadraturePreconditioner spectral normalization" begin
+        arch = DifferenTT.TTArchitecture((4, 4))
+        sites = ITensorMPS.siteinds(arch)
+        dense(mpo) = reshape(Array(prod(mpo), sites[1]', sites[2]', sites[1], sites[2]), 16, 16)
+
+        # 1D Dirichlet Laplacians with the 1/h² scaling that motivates the normalization
+        h = 1 / 5
+        A1 = Matrix(SymTridiagonal(fill(2.0, 4), fill(-1.0, 3))) / h^2
+        A_list = [A1, 2 * A1]
+        L0 = kron(Matrix(1.0I, 4, 4), A_list[1]) + kron(A_list[2], Matrix(1.0I, 4, 4))
+        M = 3
+
+        # Normalized B_M is homogeneous of degree -1 in the operator scaling
+        B = dense(DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M).operator)
+        B_scaled = dense(DifferenTT.sincquadrature_preconditioner(arch, sites, 10.0 .* A_list, M).operator)
+        @test B_scaled ≈ B / 10
+
+        κ(B) = (λ = eigvals(Symmetric((B * L0 + (B * L0)') / 2)); maximum(λ) / minimum(λ))
+        B_raw = dense(DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M; normalize_spectrum=false).operator)
+        @test κ(B) < 1.25
+        @test κ(B) < κ(B_raw)
     end
 
     @testset "inverse_laplacian_preconditioner constructors" begin
