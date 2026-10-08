@@ -230,6 +230,18 @@ function velocity_divergence_norm(grid, u)
     return norm(∇u)
 end
 
+# Final fluid state of a run, stored in the task file so the plotters can draw the last snapshot.
+# The collectors strip it before building their dataframes.
+function last_snapshot(grid, n_steps::Int)
+    experiment = grid.experiment
+    return Dict{String, Any}(
+        "grid" => experiment.grid,
+        "u_fields" => experiment.u_fields,
+        "p_field" => experiment.p_field,
+        "n_steps" => n_steps,
+    )
+end
+
 function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
@@ -419,6 +431,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "warmup_time" => warmup_time,
             "gc_ballast_bytes" => length(GC_BALLAST),
             "heap_size_hint" => Int(Base.JLOptions().heap_size_hint),
+            "last_snapshot" => last_snapshot(grid, N_STEPS),
         )
 
         if compute_cond
@@ -551,6 +564,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             "warmup_time" => warmup_time,
             "gc_ballast_bytes" => length(GC_BALLAST),
             "heap_size_hint" => Int(Base.JLOptions().heap_size_hint),
+            "last_snapshot" => last_snapshot(grid, N_STEPS),
         )
 
         if compute_cond

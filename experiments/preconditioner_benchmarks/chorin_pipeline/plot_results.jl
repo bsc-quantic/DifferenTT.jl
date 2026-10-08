@@ -12,6 +12,8 @@
     7. Step-by-step relative residual of every configuration
     8. Step-by-step divergence norm ratio (after / before the pressure correction) of every configuration
     9. Scaling behavior across system sizes
+    10. Velocity, vorticity and pressure of the last snapshot of every configuration
+        (`<size>/last_snapshots/`, read from the nocond task files)
     Uses nocond results for accurate timings, and cond results for
     condition-number profiles.
 
@@ -37,6 +39,7 @@ mkpath(plots_dir)
 cond_folder = joinpath(base_folder, "results")
 
 include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+include(joinpath(@__DIR__, "..", "snapshot_plot_utils.jl"))
 
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
 @info "Loading nocond dataframe from $results_file_nocond"
@@ -463,5 +466,10 @@ if !isempty(max_total_speedups) && length(max_total_speedups) > 1
     hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
     savefig(p_scale, joinpath(plots_dir, "scaling_summary_evolution.png"))
 end
+
+# ---------------------------------------------------------
+# 4. Last snapshot of the fluid (velocity, vorticity, pressure) of every configuration
+# ---------------------------------------------------------
+plot_last_snapshots(joinpath(nocond_folder, "tasks"), plots_dir)
 
 @info "All evolution plots successfully generated in $plots_dir"

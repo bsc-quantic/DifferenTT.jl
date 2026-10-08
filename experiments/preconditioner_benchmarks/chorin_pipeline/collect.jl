@@ -1,5 +1,9 @@
 using JLD2
 using DataFrames
+# Needed to deserialize the "last_snapshot" entry of the task files (which is then discarded)
+using ITensors
+using ITensorMPS
+using DifferenTT
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/preconditioner_benchmarks/chorin_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/chorin_pipeline/results"
@@ -18,6 +22,8 @@ for file in readdir(tasks_folder)
         filepath = joinpath(tasks_folder, file)
         try
             result = load(filepath, "result")
+            # The final fluid state is only for the snapshot plots, which read the task files directly
+            delete!(result, "last_snapshot")
             if !haskey(result, "compute_cond")
                 result["compute_cond"] = should_compute_cond(Tuple(result["nodes"]), use_nocond)
             end
