@@ -170,3 +170,56 @@ function positions_mean_cond(stats::KrylovCondStats)
     end
     return means
 end
+"""
+    KrylovSpectrumStats(; max_blockdim=4096)
+
+Container to store spectral diagnostics of the local (projected) operators during `alternating_update` sweeps.
+
+One record (a `NamedTuple`) is stored per visit, with the sweep index, `lpos`, the local block dimension, the local
+Krylov convergence info and the output of `_local_spectrum`. Unlike `KrylovCondStats`, the records keep the sign of
+the eigenvalues, so they show whether the projected preconditioner is positive definite. Blocks larger than
+`max_blockdim` are not diagonalized, and their spectral fields are `NaN` (counts are `-1`).
+"""
+mutable struct KrylovSpectrumStats
+    records::Vector{NamedTuple}
+    max_blockdim::Int
+    current_sweep::Int
+    last_lpos::Int
+    moved_since_sweep_start::Bool
+end
+
+KrylovSpectrumStats(; max_blockdim::Int=4096) = KrylovSpectrumStats(NamedTuple[], max_blockdim, 1, -1, false)
+
+"""
+    record_krylov_spectrum!(stats::KrylovSpectrumStats, lpos::Int, blockdim::Int, info, spectrum)
+
+Record the local spectrum (`nothing` if the block was not diagonalized) of projected position `lpos`.
+"""
+function record_krylov_spectrum!(stats::KrylovSpectrumStats, lpos::Int, blockdim::Int, info, spectrum)
+    if stats.last_lpos == 0 && lpos == 0 && stats.moved_since_sweep_start
+        stats.current_sweep += 1
+        stats.moved_since_sweep_start = false
+    end
+
+    if stats.last_lpos != -1 && lpos != stats.last_lpos
+        stats.moved_since_sweep_start = true
+    end
+
+    spectrum = isnothing(spectrum) ? _EMPTY_LOCAL_SPECTRUM : spectrum
+    record = (; sweep = stats.current_sweep, position = lpos + 1, blockdim, numiter = Int(info.numiter),
+                converged = info.converged > 0, normres = Float64(info.normres), spectrum...)
+    push!(stats.records, record)
+
+    stats.last_lpos = lpos
+    return stats
+end
+
+"""
+    spectrum_table(stats::KrylovSpectrumStats) -> Dict{String, Vector}
+
+Column-wise copy of the records (one vector per field), which can be saved without DifferenTT types.
+"""
+function spectrum_table(stats::KrylovSpectrumStats)
+    isempty(stats.records) && return Dict{String, Vector}()
+    return Dict{String, Vector}(String(k) => [r[k] for r in stats.records] for k in keys(first(stats.records)))
+end

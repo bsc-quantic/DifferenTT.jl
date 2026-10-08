@@ -33,12 +33,14 @@ Base.@kwdef struct LocalUpdaterArgs
     numiter_store::Any = nothing
     cond_store::Any = nothing
     pc_cond_store::Any = nothing
+    spectrum_store::Any = nothing
+    spd_tol::Union{Nothing, Float64} = nothing
 
-    function LocalUpdaterArgs(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store)
+    function LocalUpdaterArgs(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
         if compute_cond && (!ishermitian || !isposdef)
             @warn "compute_cond=true is typically only meaningful for Conjugate Gradient (CG) solvers, which require ishermitian=true and isposdef=true."
         end
-        new(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store)
+        new(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
     end
 end
 
@@ -106,7 +108,9 @@ function Base.NamedTuple(args::LocalUpdaterArgs)
         verbosity = args.verbosity,
         numiter_store = args.numiter_store,
         cond_store = args.cond_store,
-        pc_cond_store = args.pc_cond_store
+        pc_cond_store = args.pc_cond_store,
+        spectrum_store = args.spectrum_store,
+        spd_tol = args.spd_tol
     )
 end
 

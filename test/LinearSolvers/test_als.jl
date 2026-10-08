@@ -43,4 +43,33 @@ using DifferenTT: ALS
         pos in 2:3 && continue
         @test pc_conds[pos] == conds[pos]
     end
+
+    # Sign-aware local spectra: the identity preconditioner is SPD, -Id is negative definite, and the local blocks
+    # are congruences of them, so their inertia must be recovered at every visited block
+    spd_A = MPO(s, "Id")
+    for (scale, negative) in ((1.0, false), (-1.0, true))
+        spectrum_store = DifferenTT.KrylovSpectrumStats()
+        spectrum_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(spectrum_store=spectrum_store))
+        linearsolve(spectrum_solver, spd_A, b, Preconditioner(scale * MPO(s, "Id")), nothing; nsweeps=2)
+
+        table = DifferenTT.spectrum_table(spectrum_store)
+        @test !isempty(table)
+        @test maximum(table["sweep"]) == 2
+        @test all(table["eigmin_A"] .> 0)
+        @test all((table["nneg_P"] .== table["blockdim"]) .== negative)
+        @test all((table["nneg_PA"] .== table["blockdim"]) .== negative)
+    end
+
+    # With spd_tol set, the SPD check of compute_cond stops the solve at the first indefinite local P⁻¹A, and an SPD
+    # preconditioner runs through
+    spd_kwargs = (; ishermitian=true, isposdef=true, compute_cond=true, spd_tol=1e-8, krylovdim=1, maxiter=50)
+    spd_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(; spd_kwargs...))
+    @test_throws DifferenTT.NotSPDError linearsolve(spd_solver, spd_A, b, Preconditioner(-1.0 * MPO(s, "Id")), nothing; nsweeps=2)
+    @test linearsolve(spd_solver, spd_A, b, Preconditioner(MPO(s, "Id")), nothing; nsweeps=2) isa MPS
+
+    # Blocks above max_blockdim are recorded without a spectrum
+    skip_store = DifferenTT.KrylovSpectrumStats(max_blockdim=1)
+    skip_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(spectrum_store=skip_store))
+    linearsolve(skip_solver, spd_A, b, nothing; nsweeps=1)
+    @test all(isnan, DifferenTT.spectrum_table(skip_store)["eigmin_A"])
 end

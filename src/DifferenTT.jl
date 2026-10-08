@@ -109,6 +109,7 @@ export Preconditioner, FactorizedPreconditioner
 export rank1_preconditioner, newtoniter_preconditioner, linsolve_preconditioner, fai_preconditioner
 export sincquadrature_preconditioner, inverse_laplacian_preconditioner
 export KrylovSweepStats, KrylovCondStats, positions_mean, positions_mean_cond
+export KrylovSpectrumStats, spectrum_table, NotSPDError
 
 # Include and Export Logging
 

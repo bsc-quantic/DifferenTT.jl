@@ -65,9 +65,34 @@ function _local_dense_matrix(op, b_tensor)
     return A, rowinds, colinds, rowdim, coldim
 end
 
-function _warn_if_not_spd(λ, label, lpos)
+"""
+    NotSPDError(label, lpos, λmin, λmax_abs)
+
+Thrown by the local SPD checks of `compute_cond` when `spd_tol` is set and a local operator has an eigenvalue with
+real part below `-spd_tol * max|λ|`. It aborts the sweep, so callers can stop a solve as soon as a non-SPD local
+operator (e.g. a preconditioner that is not positive definite) is found.
+"""
+struct NotSPDError <: Exception
+    label::String
+    lpos::Int
+    λmin::Float64
+    λmax_abs::Float64
+end
+
+function Base.showerror(io::IO, e::NotSPDError)
+    print(io, "NotSPDError: $(e.label) is not SPD at lpos = $(e.lpos): min Re λ = $(e.λmin), ",
+              "min Re λ / max|λ| = $(e.λmin / e.λmax_abs)")
+end
+
+# Warns when the spectrum has a non-positive real part. With `spd_tol` set, also throws a `NotSPDError` when the most
+# negative real part is below -spd_tol * max|λ|, i.e. clearly away from the rounding level around 0.
+function _warn_if_not_spd(λ, label, lpos, spd_tol::Union{Nothing, Real}=nothing)
     λmin_real = minimum(real, λ)
     λmin_real <= 0 && @warn "$(label) is not SPD" λmin_real lpos
+    if !isnothing(spd_tol)
+        λmax_abs = maximum(abs, λ)
+        λmin_real < -spd_tol * λmax_abs && throw(NotSPDError(label, lpos, λmin_real, λmax_abs))
+    end
 end
 
 function _record_cond!(store, problem, κ)
@@ -79,13 +104,13 @@ end
 # A non-preconditioned problem has no κ_PC of its own. When `pc_cond_store` is given (a block of a preconditioned
 # solve that skips the preconditioner, see `preconditioner_sites`), κ(A) is recorded in it as well, so that
 # `pc_cond_store` holds an entry for every visited block and stays aligned with `cond_store`.
-function _compute_and_record_cond!(problem::ReducedLinearProblem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+function _compute_and_record_cond!(problem::ReducedLinearProblem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store, spd_tol=nothing)
     lpos = _krylov_lpos(problem)
     A, = _local_dense_matrix(contract(operator(problem)), constant_term(problem))
     κ_A, λ_A = _eig_condition(A)
 
     if compute_cond
-        use_cg && _warn_if_not_spd(λ_A, "Operator A", lpos)
+        use_cg && _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
         verbosity > 0 && @info "local cond" lpos κ_A
     end
     _record_cond!(cond_store, problem, κ_A)
@@ -94,7 +119,7 @@ end
 
 # The dense matrices are the transposes of the operators (rows are the unprimed indices), so the dense product is
 # (A P⁻¹)ᵀ, which is similar to P⁻¹A: the spectrum is the same.
-function _compute_and_record_cond!(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+function _compute_and_record_cond!(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, use_cg, compute_cond, verbosity, cond_store, pc_cond_store, spd_tol=nothing)
     lpos = _krylov_lpos(problem)
     linear_problem = problem.linear_problem
     A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(contract(operator(linear_problem)), constant_term(linear_problem))
@@ -106,14 +131,79 @@ function _compute_and_record_cond!(problem::Union{ReducedPrecondLinearProblem, R
 
     if compute_cond
         if use_cg
-            _warn_if_not_spd(λ_A, "Operator A", lpos)
+            _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
             # If A is SPD, P⁻¹A has a non-positive eigenvalue iff P⁻¹ is not SPD (Sylvester's law of inertia)
-            _warn_if_not_spd(λ_PA, "Preconditioned operator P⁻¹A", lpos)
+            _warn_if_not_spd(λ_PA, "Preconditioned operator P⁻¹A", lpos, spd_tol)
         end
         verbosity > 0 && @info "local precond cond" lpos κ_A κ_PC
     end
     _record_cond!(cond_store, problem, κ_A)
     _record_cond!(pc_cond_store, problem, κ_PC)
+end
+
+# ---------------------------------------------------------------------------
+# Sign-aware local spectra (`spectrum_store`). The local blocks are congruences VᵀAV, VᵀM⁻¹V of the global
+# operators (V the basis of the current projection), so by Sylvester's law of inertia a negative eigenvalue of the
+# symmetric part of the local M⁻¹ certifies that the global M⁻¹ is not positive definite. The converse does not
+# hold: a positive local block only says that M⁻¹ is positive on the span of V.
+# ---------------------------------------------------------------------------
+
+const _EMPTY_LOCAL_SPECTRUM = (; eigmin_A = NaN, eigmax_A = NaN, asym_A = NaN,
+                                 eigmin_P = NaN, eigmax_P = NaN, nneg_P = -1, asym_P = NaN,
+                                 eigmin_PA = NaN, eigmax_PA = NaN, nneg_PA = -1)
+
+_relative_asymmetry(M::AbstractMatrix) = norm(M - transpose(M)) / norm(M)
+
+# Negative eigenvalues beyond the rounding level of a dense eigensolver
+_count_negative(λ) = count(<(-length(λ) * eps(Float64) * maximum(abs, λ)), λ)
+
+"""
+    _local_spectrum(A, Pinv) -> NamedTuple
+
+Sign-aware spectra of the dense local operator `A` and, if given, of the local preconditioner `Pinv`. Only the
+symmetric parts S_A, S_P are diagonalized, since they set the sign of the quadratic forms. When S_A = LLᵀ is SPD,
+the spectrum of S_P S_A (the PCG operator if `Pinv` is symmetric) is that of the symmetric Lᵀ S_P L, which has the
+inertia of S_P.
+"""
+function _local_spectrum(A::AbstractMatrix, Pinv::Union{Nothing, AbstractMatrix})
+    SA = Symmetric((A + transpose(A)) / 2)
+    λA = eigvals(SA)
+    spectrum = merge(_EMPTY_LOCAL_SPECTRUM, (; eigmin_A = first(λA), eigmax_A = last(λA), asym_A = _relative_asymmetry(A)))
+    isnothing(Pinv) && return spectrum
+
+    SP = Symmetric((Pinv + transpose(Pinv)) / 2)
+    λP = eigvals(SP)
+    spectrum = merge(spectrum, (; eigmin_P = first(λP), eigmax_P = last(λP), nneg_P = _count_negative(λP), asym_P = _relative_asymmetry(Pinv)))
+
+    chol = cholesky(SA; check=false)
+    issuccess(chol) || return spectrum
+    L = chol.L
+    λPA = eigvals(Symmetric(transpose(L) * Matrix(SP) * L))
+    return merge(spectrum, (; eigmin_PA = first(λPA), eigmax_PA = last(λPA), nneg_PA = _count_negative(λPA)))
+end
+
+_record_spectrum!(::Nothing, problem, info) = nothing
+
+function _record_spectrum!(store::KrylovSpectrumStats, problem::ReducedLinearProblem, info)
+    b = constant_term(problem)
+    spectrum = nothing
+    if dim(b) <= store.max_blockdim
+        A, = _local_dense_matrix(contract(operator(problem)), b)
+        spectrum = _local_spectrum(A, nothing)
+    end
+    record_krylov_spectrum!(store, _krylov_lpos(problem), dim(b), info, spectrum)
+end
+
+function _record_spectrum!(store::KrylovSpectrumStats, problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, info)
+    linear_problem = problem.linear_problem
+    b = constant_term(linear_problem)
+    spectrum = nothing
+    if dim(b) <= store.max_blockdim
+        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(contract(operator(linear_problem)), b)
+        Pinv = reshape(array(contract(problem.preconditioner), rowinds..., colinds...), rowdim, coldim)
+        spectrum = _local_spectrum(A, Pinv)
+    end
+    record_krylov_spectrum!(store, _krylov_lpos(problem), dim(b), info, spectrum)
 end
 
 """
@@ -127,6 +217,13 @@ If `preconditioner_sites` is given, the preconditioner is only applied to the bl
 (`lpos + 1`) is in it; the other blocks are solved unpreconditioned. For those blocks, the condition number
 of the unpreconditioned local problem is recorded in both `cond_store` and `pc_cond_store`.
 
+If a `KrylovSpectrumStats` is passed as `spectrum_store`, the sign-aware local spectra of every visited block are
+recorded too (see `_local_spectrum`).
+
+With `compute_cond=true` and CG (`ishermitian && isposdef`), the local A and P⁻¹A are checked to be SPD. If `spd_tol`
+is set, a local operator with an eigenvalue whose real part is below `-spd_tol * max|λ|` throws a `NotSPDError`,
+which stops the solve.
+
 Condition metrics: κ_λ = max|λ| / min|λ| of the dense local A and P⁻¹A. This is the exact spectral κ for
 CG/PCG. For GMRES it is a heuristic indicator only: it is a lower bound on κ₂ for non-normal operators, and
 GMRES convergence also depends on the eigenvector conditioning and on the spectrum distribution.
@@ -139,8 +236,10 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
     verbosity = get(kwargs, :verbosity, 0)
+    spectrum_store = get(kwargs, :spectrum_store, nothing)
+    spd_tol = get(kwargs, :spd_tol, nothing)
     use_cg = _uses_cg_metric(kwargs)
-    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store), kwargs)
+    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store, :spectrum_store, :spd_tol), kwargs)
 
     x, info = linsolve(
         operator(problem),
@@ -152,8 +251,9 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     )
 
     if compute_cond || !isnothing(cond_store)
-        _compute_and_record_cond!(problem, use_cg, compute_cond, verbosity, cond_store, nothing)
+        _compute_and_record_cond!(problem, use_cg, compute_cond, verbosity, cond_store, nothing, spd_tol)
     end
+    _record_spectrum!(spectrum_store, problem, info)
 
     if !isnothing(numiter_store)
         record_krylov_numiter!(numiter_store, _krylov_lpos(problem), info.numiter)
@@ -171,8 +271,10 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
     pc_cond_store = get(kwargs, :pc_cond_store, nothing)
     preconditioner_sites = get(kwargs, :preconditioner_sites, nothing)
     verbosity = get(kwargs, :verbosity, 0)
+    spectrum_store = get(kwargs, :spectrum_store, nothing)
+    spd_tol = get(kwargs, :spd_tol, nothing)
     use_cg = _uses_cg_metric(kwargs)
-    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store, :preconditioner_sites), kwargs)
+    kwargs = filter(p -> first(p) ∉ (:compute_cond, :numiter_store, :cond_store, :pc_cond_store, :spectrum_store, :spd_tol, :preconditioner_sites), kwargs)
 
     use_preconditioner = true
     if !isnothing(preconditioner_sites)
@@ -192,8 +294,9 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
         )
 
         if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
-            _compute_and_record_cond!(problem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+            _compute_and_record_cond!(problem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store, spd_tol)
         end
+        _record_spectrum!(spectrum_store, problem, info)
     else
         x, info = linsolve(
             operator(problem.linear_problem),
@@ -206,8 +309,9 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
 
         if compute_cond || !isnothing(cond_store) || !isnothing(pc_cond_store)
             # The unpreconditioned κ(A) is also recorded as this block's κ_PC (the effective preconditioner is the identity)
-            _compute_and_record_cond!(problem.linear_problem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store)
+            _compute_and_record_cond!(problem.linear_problem, use_cg, compute_cond, verbosity, cond_store, pc_cond_store, spd_tol)
         end
+        _record_spectrum!(spectrum_store, problem.linear_problem, info)
     end
 
     if !isnothing(numiter_store)
