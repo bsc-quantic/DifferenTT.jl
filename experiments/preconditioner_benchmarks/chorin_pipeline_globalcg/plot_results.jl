@@ -209,7 +209,8 @@ for nodes in system_sizes
     p_iters = plot(title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
         xlabel="Chorin Time Step",
         ylabel="Avg Krylov Iterations per Site",
-        legend=:outertopright)
+        legend=:outertopright,
+        yaxis=:log10)
 
     if has_baseline
         plot!(p_iters, steps_range, base_iters,
@@ -223,7 +224,8 @@ for nodes in system_sizes
     p_sp = plot(title=p_sp_title,
         xlabel="Chorin Time Step",
         ylabel=p_sp_ylabel,
-        legend=:outertopright)
+        legend=:outertopright,
+        yaxis=:log10)
 
     if has_baseline
         hline!(p_sp, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")

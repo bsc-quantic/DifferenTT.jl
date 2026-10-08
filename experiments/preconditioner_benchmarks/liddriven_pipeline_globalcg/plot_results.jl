@@ -12,6 +12,10 @@
     7. Scaling behavior across system sizes
 
     Global CG does not record local Krylov condition numbers.
+
+    Usage: julia --project=. experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg/plot_results.jl [single|double]
+    The lid count selects the results folder (`results_singlelid`/`results` or `results_doublelid`); without it, it
+    is detected from the folders that exist.
 """
 
 using JLD2
@@ -28,11 +32,14 @@ default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin
 
 # Configuration
 ENV["GKSwstype"] = "100"
-base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg/results"
+include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+
+results_root = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg"
+const RESULTS_SUFFIX = cavity_results_suffix(s -> isfile(joinpath(results_root, "results" * s, "collected_results.jld2")))
+@info "Plotting the lid-driven cavity results with folder suffix \"$RESULTS_SUFFIX\""
+base_folder = joinpath(results_root, "results" * RESULTS_SUFFIX)
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
-
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
 
 results_file = joinpath(base_folder, "collected_results.jld2")
 @info "Loading dataframe from $results_file"
@@ -209,7 +216,8 @@ for nodes in system_sizes
     p_iters = plot(title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
         xlabel="Time Step",
         ylabel="Avg Krylov Iterations per Site",
-        legend=:outertopright)
+        legend=:outertopright,
+        yaxis=:log10)
 
     if has_baseline
         plot!(p_iters, steps_range, base_iters,
@@ -223,7 +231,8 @@ for nodes in system_sizes
     p_sp = plot(title=p_sp_title,
         xlabel="Time Step",
         ylabel=p_sp_ylabel,
-        legend=:outertopright)
+        legend=:outertopright,
+        yaxis=:log10)
 
     if has_baseline
         hline!(p_sp, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")

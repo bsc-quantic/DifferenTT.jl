@@ -6,7 +6,10 @@ Long time evolution of the lid-driven cavity of Kiffner & Jaksch (arXiv:2303.030
 solves the SPD stream function Poisson system `-Δψ = ω` once and advances ω explicitly with the resulting
 velocity and wall vorticity. Mirrors `experiments/inse/chorin_worker_8x8/worker.jl`.
 
-Usage: julia --project=. experiments/inse/liddriven_cavity/worker.jl [task_id] [nocond]
+Set `CAVITY_LIDS=2` for the doubly-driven cavity of the same paper (Fig. 5): the bottom lid also moves, with
+velocity `-U_LID`. Its results go to the `*_doublelid` folders.
+
+Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/inse/liddriven_cavity/worker.jl [task_id] [nocond]
 """
 
 using ITensors
@@ -21,8 +24,13 @@ const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", "1"))
 LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 @info "Set BLAS threads to $cpus_per_task"
 
+# Number of moving lids: 1 is the lid-driven cavity, 2 the doubly-driven cavity (bottom lid moving in -x)
+const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
+CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
+const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results"
+base_folder = (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") * RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
@@ -33,9 +41,10 @@ const STENCIL_ORDER = 2
 const WALL_FORMULA = :jensen
 const SAVE_EVERY = 200
 
-# Four no-slip walls with ψ = 0, the top one moving in +x. DirichletBC logs at every construction: build the
-# boundary conditions once
-const FACES = cavity_faces(U_LID)
+# Four no-slip walls with ψ = 0, the top one moving in +x and, for two lids, the bottom one moving in -x.
+# DirichletBC logs at every construction: build the boundary conditions once
+const FACES = CAVITY_LIDS == 1 ? cavity_faces(U_LID) :
+    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-U_LID), NoSlipWall(velocity=U_LID)))
 const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
 const tf_map = Dict(
@@ -111,7 +120,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     # Walls are ghost nodes: 2^n interior nodes per axis with h = L / (2^n + 1)
     grid = vorticity_grid(arch, BOX_SIZE, FACES)
 
-    # Fluid at rest, impulsively started lid
+    # Fluid at rest, impulsively started lid(s)
     omega_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
     psi_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
 
@@ -316,6 +325,7 @@ function run_task(task::TaskSpec)
         result_dict = Dict{String, Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
+            "cavity_lids" => CAVITY_LIDS,
             "compute_cond" => compute_cond,
             "total_solve_time" => isempty(solve_times) ? 0.0 : sum(solve_times),
             "solve_times" => solve_times,
@@ -422,6 +432,7 @@ function run_task(task::TaskSpec)
         result_dict = Dict{String, Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
+            "cavity_lids" => CAVITY_LIDS,
             "compute_cond" => compute_cond,
             "mu" => μ,
             "G_maxdim" => gdim,

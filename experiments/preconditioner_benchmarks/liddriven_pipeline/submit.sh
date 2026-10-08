@@ -4,9 +4,10 @@
 #
 # Submits a SLURM job array and a dependent collector job.
 #
-# Usage: bash experiments/preconditioner_benchmarks/liddriven_pipeline/submit.sh [nocond]
+# Usage: [CAVITY_LIDS=1|2] bash experiments/preconditioner_benchmarks/liddriven_pipeline/submit.sh [nocond]
 #
 # Pass "nocond" to skip condition-number estimates for all grid sizes.
+# With CAVITY_LIDS=2 (doubly-driven cavity) the results folders get the _doublelid suffix.
 #
 
 SCRIPT_DIR="experiments/preconditioner_benchmarks/liddriven_pipeline"
@@ -14,12 +15,24 @@ SCRIPT_DIR="experiments/preconditioner_benchmarks/liddriven_pipeline"
 # GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
+# Number of moving lids: 1 (lid-driven cavity) or 2 (doubly-driven cavity, bottom lid moving in -x).
+# Override with CAVITY_LIDS=2; the results then go to the *_doublelid folders.
+CAVITY_LIDS="${CAVITY_LIDS:-1}"
+if [ "${CAVITY_LIDS}" != "1" ] && [ "${CAVITY_LIDS}" != "2" ]; then
+    echo "CAVITY_LIDS must be 1 or 2, got ${CAVITY_LIDS}"
+    exit 1
+fi
+RESULTS_SUFFIX=""
+if [ "${CAVITY_LIDS}" == "2" ]; then
+    RESULTS_SUFFIX="_doublelid"
+fi
+
 NOCOND_ARG=""
-RESULTS_DIR="${SCRIPT_DIR}/results"
+RESULTS_DIR="${SCRIPT_DIR}/results${RESULTS_SUFFIX}"
 
 if [ "$1" == "nocond" ]; then
     NOCOND_ARG="nocond"
-    RESULTS_DIR="${SCRIPT_DIR}/results_nocond"
+    RESULTS_DIR="${SCRIPT_DIR}/results_nocond${RESULTS_SUFFIX}"
 fi
 
 TASKS_DIR="${RESULTS_DIR}/tasks"
@@ -32,11 +45,11 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     --output="${LOGS_DIR}/task_%03a.out" \
     --error="${LOGS_DIR}/task_%03a.err" <<ARRAY_EOF
 #!/bin/bash
-#SBATCH --job-name=liddriven_pipeline
+#SBATCH --job-name=liddriven_pipeline${RESULTS_SUFFIX}
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 # #SBATCH --array=1-111
-#SBATCH --array=1-20
+#SBATCH --array=1-10
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
@@ -53,8 +66,9 @@ fi
 HEAP_HINT_MB=\$(( TASK_MEM_MB * 80 / 100 ))
 
 export GC_BALLAST_GB="${GC_BALLAST_GB}"
+export CAVITY_LIDS="${CAVITY_LIDS}"
 
-echo "Task \${SLURM_ARRAY_TASK_ID} / 20 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
+echo "Task \${SLURM_ARRAY_TASK_ID} / 10 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 # echo "Task \${SLURM_ARRAY_TASK_ID} / 37 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB"
 
@@ -69,7 +83,8 @@ else
     echo "Mode: default (condition-number estimates on 10x10)"
 fi
 
-echo "Submitted array job: ${ARRAY_JOB_ID} (20 tasks)"
+echo "Lids: ${CAVITY_LIDS}"
+echo "Submitted array job: ${ARRAY_JOB_ID} (10 tasks)"
 # echo "Submitted array job: ${ARRAY_JOB_ID} (37 tasks)"
 
 # ---- Submit collector job ----
@@ -86,6 +101,8 @@ COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \
 #SBATCH --qos=ngp_bsccase
 
 module load julia/1.12.0 2>/dev/null || true
+
+export CAVITY_LIDS="${CAVITY_LIDS}"
 
 echo "Collecting results from array job..."
 

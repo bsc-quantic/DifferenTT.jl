@@ -159,3 +159,21 @@ function step_profile_plot(series; title, ylabel)
     end
     return p
 end
+
+# Folder suffix of the lid-driven cavity results to plot. The lid count comes from the first command-line argument
+# ("1"/"single" or "2"/"double") or from the CAVITY_LIDS environment variable; without either, it is detected as
+# the only suffix whose results exist. `has_results(suffix)` tells whether the results of that suffix exist.
+# Single-lid results may carry the "_singlelid" suffix or none (the workers' default folders).
+function cavity_results_suffix(has_results::Function)
+    candidates = Dict("1" => ["_singlelid", ""], "single" => ["_singlelid", ""], "2" => ["_doublelid"], "double" => ["_doublelid"])
+    spec = lowercase(length(ARGS) > 0 ? ARGS[1] : get(ENV, "CAVITY_LIDS", ""))
+    if !isempty(spec)
+        haskey(candidates, spec) || error("Lid count must be 1/single or 2/double, got \"$spec\"")
+        found = filter(has_results, candidates[spec])
+        return isempty(found) ? first(candidates[spec]) : first(found)  # nothing found: the loader reports the missing file
+    end
+    found = filter(has_results, ["_singlelid", "", "_doublelid"])
+    length(found) == 1 && return only(found)
+    error(isempty(found) ? "No lid-driven cavity results found: pass 1/single or 2/double to pick the folder" :
+          "Results found for several suffixes $(found): pass 1/single or 2/double to pick one")
+end

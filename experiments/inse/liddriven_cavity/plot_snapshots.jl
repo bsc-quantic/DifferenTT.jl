@@ -4,9 +4,13 @@ using DifferenTT
 using JLD2
 using Plots
 
-# Usage: julia --project=. experiments/inse/liddriven_cavity/plot_snapshots.jl [nocond]
+# Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/inse/liddriven_cavity/plot_snapshots.jl [nocond]
+# Number of moving lids of the worker run (see worker.jl): 2 reads the doubly-driven cavity results
+const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
+CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
+const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results"
+base_folder = (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") * RESULTS_SUFFIX
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 
 if !isfile(snapshots_file)

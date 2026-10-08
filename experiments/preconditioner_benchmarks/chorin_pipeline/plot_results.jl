@@ -246,11 +246,11 @@ for nodes in system_sizes
 
     p_iters_combined = plot(
         title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Chorin Time Step", ylabel="Total Krylov Iterations", legend=:outertopright
+        xlabel="Chorin Time Step", ylabel="Total Krylov Iterations", legend=:outertopright, yscale=:log10
     )
     p_sp_combined = plot(
         title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright
+        xlabel="Chorin Time Step", ylabel="Speedup Ratio", legend=:outertopright, yscale=:log10
     )
     p_site_combined = plot(
         title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nBest μ per \$\\chi_{max}\$"),
@@ -305,7 +305,8 @@ for nodes in system_sizes
             label="Baseline", color=:red, lw=2, marker=:circle,
             title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Chorin Time Step",
-            ylabel="Total Krylov Iterations"
+            ylabel="Total Krylov Iterations",
+            yscale=:log10
         )
         plot!(p_iters, steps_range, best_v["iters"],
             label="FAI", color=:blue, lw=2, marker=:square)
@@ -319,7 +320,8 @@ for nodes in system_sizes
             title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Chorin Time Step",
             ylabel="Speedup Ratio",
-            legend=:outertopright)
+            legend=:outertopright,
+            yscale=:log10)
         hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
         savefig(p_sp, joinpath(out_dir, "step_speedup.png"))
 

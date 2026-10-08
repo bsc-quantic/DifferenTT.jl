@@ -8,6 +8,8 @@ The walls are ghost nodes: interior node k (1-based) sits at the physical coordi
 (K + 1)·h = L. The velocity is rebuilt on the nodes and the walls from ψ with the same central differences as the
 solver, then interpolated linearly on the centrelines x = 0.5 and y = 0.5.
 
+Only for the single-lid cavity: Ghia et al. have no doubly-driven reference data.
+
 Usage: julia --project=. experiments/inse/liddriven_cavity/ghia_comparison.jl [nocond]
 """
 
@@ -18,6 +20,8 @@ using JLD2
 using Plots
 using Printf
 using Statistics
+
+get(ENV, "CAVITY_LIDS", "1") == "1" || error("ghia_comparison.jl only applies to the single-lid cavity (CAVITY_LIDS=1)")
 
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results"

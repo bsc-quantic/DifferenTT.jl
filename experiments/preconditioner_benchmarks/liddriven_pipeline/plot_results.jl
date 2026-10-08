@@ -16,6 +16,10 @@
     condition-number profiles.
 
     Note: `pc_conds_per_site` is the absolute local κ(P^{-1}A), not a ratio.
+
+    Usage: julia --project=. experiments/preconditioner_benchmarks/liddriven_pipeline/plot_results.jl [single|double]
+    The lid count selects the results folders (`results*_singlelid`/`results*` or `results*_doublelid`, and the
+    matching `plots*`); without it, it is detected from the folders that exist.
 """
 
 using JLD2
@@ -29,14 +33,16 @@ gr()
 default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 ENV["GKSwstype"] = "100"
+include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+
 base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline"
-nocond_folder = joinpath(base_folder, "results_nocond")
-plots_dir = joinpath(base_folder, "plots")
+const RESULTS_SUFFIX = cavity_results_suffix(s -> isfile(joinpath(base_folder, "results_nocond" * s, "collected_results.jld2")))
+@info "Plotting the lid-driven cavity results with folder suffix \"$RESULTS_SUFFIX\""
+nocond_folder = joinpath(base_folder, "results_nocond" * RESULTS_SUFFIX)
+plots_dir = joinpath(base_folder, "plots" * RESULTS_SUFFIX)
 mkpath(plots_dir)
 
-cond_folder = joinpath(base_folder, "results")
-
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+cond_folder = joinpath(base_folder, "results" * RESULTS_SUFFIX)
 
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
 @info "Loading nocond dataframe from $results_file_nocond"
@@ -246,11 +252,11 @@ for nodes in system_sizes
 
     p_iters_combined = plot(
         title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Time Step", ylabel="Total Krylov Iterations", legend=:outertopright
+        xlabel="Time Step", ylabel="Total Krylov Iterations", legend=:outertopright, yscale=:log10
     )
     p_sp_combined = plot(
         title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Time Step", ylabel="Speedup Ratio", legend=:outertopright
+        xlabel="Time Step", ylabel="Speedup Ratio", legend=:outertopright, yscale=:log10
     )
     p_site_combined = plot(
         title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nBest μ per \$\\chi_{max}\$"),
@@ -305,7 +311,8 @@ for nodes in system_sizes
             label="Baseline", color=:red, lw=2, marker=:circle,
             title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Time Step",
-            ylabel="Total Krylov Iterations"
+            ylabel="Total Krylov Iterations",
+            yscale=:log10
         )
         plot!(p_iters, steps_range, best_v["iters"],
             label="FAI", color=:blue, lw=2, marker=:square)
@@ -319,7 +326,8 @@ for nodes in system_sizes
             title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
             xlabel="Time Step",
             ylabel="Speedup Ratio",
-            legend=:outertopright)
+            legend=:outertopright,
+            yscale=:log10)
         hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
         savefig(p_sp, joinpath(out_dir, "step_speedup.png"))
 

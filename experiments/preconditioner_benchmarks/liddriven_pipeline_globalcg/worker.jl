@@ -5,6 +5,11 @@ FAI preconditioner benchmark with GlobalCG on the stream function Poisson system
 cavity (`INSVorticityExperiment`, walls as ghost nodes). The operator is the plain Dirichlet 5-point Laplacian,
 so it is exactly symmetric positive definite. Mirrors `chorin_pipeline_globalcg/worker.jl`: one timed Poisson
 solve per step, followed by the explicit vorticity transport.
+
+Set `CAVITY_LIDS=2` for the doubly-driven cavity of Kiffner & Jaksch (arXiv:2303.03010, Fig. 5): the bottom lid
+also moves, with velocity `-U_LID`. Its results go to the `results_doublelid` folder.
+
+Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg/worker.jl [task_id]
 """
 
 using ITensors
@@ -52,31 +57,46 @@ const GC_BALLAST = allocate_ballast(GC_BALLAST_GB)
 @info "GC ballast" gb=length(GC_BALLAST) / GIB heap_cap_gb=gc_max_memory() / GIB
 flush(stderr)
 
-const default_base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg/results"
+# Number of moving lids: 1 is the lid-driven cavity, 2 the doubly-driven cavity (bottom lid moving in -x)
+const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
+CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
+const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
+
+const default_base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg/results" * RESULTS_SUFFIX
 base_folder = get(ENV, "LIDDRIVEN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
 const BOX_SIZE = (1.0, 1.0)
-const RE_NUM = 1000
+# Reynolds number per grid size: 1000 up to 2^10 nodes, 24000 on 2^11 (Kiffner & Jaksch, where 2^11 resolves the
+# Kolmogorov scale Re^(-3/4) = 5.2e-4 with h = 4.9e-4)
+const re_map = Dict(
+    (8, 8) => 1000,
+    (10, 10) => 1000,
+    (11, 11) => 24000,
+    (12, 12) => 1000
+)
 const U_LID = 1.0
 const STENCIL_ORDER = 2
 const WALL_FORMULA = :jensen
 
-# Four no-slip walls with ψ = 0, the top one moving in +x. DirichletBC logs at every construction: build the
-# boundary conditions once
-const FACES = cavity_faces(U_LID)
+# Four no-slip walls with ψ = 0, the top one moving in +x and, for two lids, the bottom one moving in -x.
+# DirichletBC logs at every construction: build the boundary conditions once
+const FACES = CAVITY_LIDS == 1 ? cavity_faces(U_LID) :
+    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-U_LID), NoSlipWall(velocity=U_LID)))
 const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
 const dt_map = Dict(
     (8, 8) => 0.001,
     (10, 10) => 0.0002,
+    (11, 11) => 0.0003, # RK4 limit at Re = 24000 is 6.9e-4 (advection)
     (12, 12) => 0.00001
 )
 
 const n_steps_map = Dict(
     (8, 8) => 50,
     (10, 10) => 20,
+    (11, 11) => 10,
     (12, 12) => 10
 )
 
@@ -88,6 +108,8 @@ end
 
 # const system_sizes = [(8, 8), (10, 10), (12, 12)]
 const system_sizes = [(8, 8)]
+# 2^11 x 2^11 at Re = 24000 (the array has 1 + length(g_maxdims) = 10 tasks):
+# const system_sizes = [(11, 11)]
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
@@ -97,30 +119,35 @@ const g_maxdims = 2:10
 const maxdims_map = Dict(
     (8, 8) => 120,
     (10, 10) => 150,
+    (11, 11) => 200,
     (12, 12) => 250
 )
 
 const cutoff_map = Dict(
     (8, 8) => 1e-13,
     (10, 10) => 1e-13,
+    (11, 11) => 1e-13,
     (12, 12) => 1e-13
 )
 
 const maxiter_map = Dict(
     (8, 8) => 3000,
     (10, 10) => 3000,
+    (11, 11) => 4000,
     (12, 12) => 5000
 )
 
 const tol_map = Dict(
     (8, 8) => 1e-3,
     (10, 10) => 1e-3,
+    (11, 11) => 1e-3,
     (12, 12) => 1e-3
 )
 
 const fai_tol_map = Dict(
     (8, 8) => 0.1,
     (10, 10) => 0.1,
+    (11, 11) => 0.1,
     (12, 12) => 0.2
 )
 
@@ -159,12 +186,12 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
     # Walls are ghost nodes: 2^n interior nodes per axis with h = L / (2^n + 1)
     grid = vorticity_grid(arch, BOX_SIZE, FACES)
 
-    # Fluid at rest, impulsively started lid
+    # Fluid at rest, impulsively started lid(s)
     omega_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
     psi_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
 
     time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
-    experiment = INSVorticityExperiment(grid, omega_field, psi_field, RE_NUM, FACES; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    experiment = INSVorticityExperiment(grid, omega_field, psi_field, re_map[nodes], FACES; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
     check_cfl(experiment, time_stepper; vmax=experiment.vmax)
 
     # The stream function operator A = -Δ (Dirichlet, ghost walls) is SPD: no pinning, no RHS corrections
@@ -328,6 +355,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         result_dict = Dict{String, Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
+            "cavity_lids" => CAVITY_LIDS,
+            "Re" => re_map[task.nodes],
             "total_solve_time" => sum(solve_times),
             "solve_times" => solve_times,
             "global_iters" => global_iters,
@@ -445,6 +474,8 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         result_dict = Dict{String, Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
+            "cavity_lids" => CAVITY_LIDS,
+            "Re" => re_map[task.nodes],
             "mu" => μ,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
