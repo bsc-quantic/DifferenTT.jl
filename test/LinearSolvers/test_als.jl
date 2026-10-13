@@ -28,6 +28,10 @@ using DifferenTT: ALS
     @test x_local_precond isa MPS
     @test length(x_local_precond) == n
 
+    # An index outside 1:length(b) would match no block and silently solve every block unpreconditioned
+    @test_throws ArgumentError linearsolve(solver, A, b, M⁻¹, nothing; nsweeps=1, preconditioner_sites=0:2)
+    @test_throws ArgumentError linearsolve(solver, A, b, M⁻¹, nothing; nsweeps=1, preconditioner_sites=5:6)
+
     # With local preconditioning and condition number tracking: the blocks outside `preconditioner_sites`
     # record their unpreconditioned κ(A) in `pc_cond_store` too, so both stores cover the same positions
     cond_store = DifferenTT.KrylovCondStats()

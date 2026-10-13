@@ -221,14 +221,30 @@ sweep keyword arguments.
 
 The optional `preconditioner_sites` (default `nothing`: precondition every block) goes to the local
 updater, which only applies `M⁻¹` to the blocks whose first site is in `preconditioner_sites`; the other
-blocks are solved unpreconditioned. The remaining `kwargs` are merged with the solver's `SweepingArgs`
-by `linearsolve_sweep_kwargs`.
+blocks are solved unpreconditioned. Every index must lie in `1:length(b)`. An index outside that range
+throws an `ArgumentError`: otherwise no block would match, the solve would run unpreconditioned, and the
+condition-number stores would still fill with `κ(A)`. The remaining `kwargs` are merged with the solver's
+`SweepingArgs` by `linearsolve_sweep_kwargs`.
 
 # Returns
 - `(updater_kwargs, sweep_kwargs)`
 """
-function precond_linearsolve_kwargs(solver, A, b, kwargs)
-    preconditioner_sites = get(kwargs, :preconditioner_sites, nothing)
+function _checked_preconditioner_sites(preconditioner_sites::Nothing, n::Int)::Nothing
+    return nothing
+end
+
+function _checked_preconditioner_sites(preconditioner_sites::Union{AbstractVector, AbstractRange, Tuple}, n::Int)::Vector{Int}
+    sites = Vector{Int}()
+    for site in preconditioner_sites
+        site isa Integer || throw(ArgumentError("preconditioner_sites entries must be integers, got $(repr(site))"))
+        1 <= site <= n || throw(ArgumentError("preconditioner_sites index $site is outside 1:$n"))
+        push!(sites, Int(site))
+    end
+    return sites
+end
+
+function precond_linearsolve_kwargs(solver::AbstractDMRGSolver, A::MPO, b::MPS, kwargs::Base.Pairs)::Tuple{NamedTuple, NamedTuple}
+    preconditioner_sites = _checked_preconditioner_sites(get(kwargs, :preconditioner_sites, nothing), length(b))
     updater_kwargs = (; coefficients = (false, true), preconditioner_sites = preconditioner_sites, NamedTuple(solver.updater_kwargs)...)
     kw = Dict(kwargs...)
     delete!(kw, :preconditioner_sites)
