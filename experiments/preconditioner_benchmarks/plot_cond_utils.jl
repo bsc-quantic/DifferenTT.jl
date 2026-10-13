@@ -141,17 +141,17 @@ function match_cond(grid_data_cond::AbstractDict, v::AbstractDict)
 end
 
 """
-    step_profile_plot(series; title, ylabel) -> Union{Plot, Nothing}
+    step_profile_plot(series; title, ylabel, yaxis=:log10) -> Union{Plot, Nothing}
 
-Per-step curves of several configurations on a log axis (residuals, divergence ratios, ...).
+Per-step curves of several configurations, on a log axis by default (residuals, divergence ratios, ...).
 `series` holds one `(; label, values, color, lw[, ls])` per configuration, drawn in order.
 Non-finite or non-positive entries become gaps, and configurations without data (results written
 before the metric existed) are skipped; returns `nothing` when none has any.
 """
-function step_profile_plot(series; title, ylabel)
+function step_profile_plot(series; title, ylabel, yaxis=:log10)
     series = [s for s in series if nonempty_numeric_vec(s.values)]
     isempty(series) && return nothing
-    p = plot(title=title, xlabel="Chorin Time Step", ylabel=ylabel, yaxis=:log10,
+    p = plot(title=title, xlabel="Chorin Time Step", ylabel=ylabel, yaxis=yaxis,
         legend=:outertopright, size=(1050, 600), legendfont=font(8, "Computer Modern"))
     for s in series
         plot!(p, 1:length(s.values), clean_kappa(s.values);

@@ -9,7 +9,8 @@
     4. Step-by-step Speedup profiles
     5. Step-by-step relative residual of every configuration
     6. Step-by-step divergence norm ratio (after / before the pressure correction) of every configuration
-    7. Scaling behavior across system sizes
+    7. Step-by-step bond dimension of the pressure field of every configuration
+    8. Scaling behavior across system sizes
 
     Global CG does not record local Krylov condition numbers.
 """
@@ -54,6 +55,7 @@ for row in eachrow(df)
         "iters" => row.global_iters,
         "residuals" => row.residuals,
         "div_ratios" => row_vec(row, :div_ratios),
+        "solution_maxdims" => row_vec(row, :solution_maxdims),
         "n_steps" => length(row.solve_times)
     )
     results[nodes][k] = d
@@ -284,7 +286,7 @@ for nodes in system_sizes
     savefig(p_sp, joinpath(plots_dir, "step_speedup_$(nodes[1])x$(nodes[2]).png"))
     savefig(p_res, joinpath(plots_dir, "step_residuals_$(nodes[1])x$(nodes[2]).png"))
 
-    # Per-step residual and divergence reduction of every configuration
+    # Per-step residual, divergence reduction and pressure bond dimension of every configuration
     step_keys = sort(keys_list, by=k -> (grid_data[k]["G_maxdim"], grid_data[k]["mu"]))
     function step_series(metric)
         series = Any[]
@@ -302,8 +304,12 @@ for nodes in system_sizes
     p_div_all = step_profile_plot(step_series("div_ratios");
         title="Divergence Reduction by the Pressure Correction ($nodes)\nAll Preconditioner Setups",
         ylabel="Divergence Norm Ratio (after / before)")
+    p_bond_all = step_profile_plot(step_series("solution_maxdims");
+        title="Pressure Field Bond Dimension vs Time Step ($nodes)\nAll Preconditioner Setups",
+        ylabel="Max Bond Dimension of p", yaxis=:identity)
     isnothing(p_res_all) || savefig(p_res_all, joinpath(plots_dir, "step_residuals_all_setups_$(nodes[1])x$(nodes[2]).png"))
     isnothing(p_div_all) || savefig(p_div_all, joinpath(plots_dir, "step_div_ratio_all_setups_$(nodes[1])x$(nodes[2]).png"))
+    isnothing(p_bond_all) || savefig(p_bond_all, joinpath(plots_dir, "step_pressure_bonddim_all_setups_$(nodes[1])x$(nodes[2]).png"))
 
 end
 
