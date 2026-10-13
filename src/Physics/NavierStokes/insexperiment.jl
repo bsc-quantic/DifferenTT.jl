@@ -133,7 +133,6 @@ end
 
 function check_cfl(experiment::INSExperimentBase, stepper::ExplicitEuler; vmax::Real=1.0)
     dt = stepper.time_evol_kwargs.dt
-    N = length(experiment.grid.dx)
     _, diff_eig = cfl_spectral_radii(experiment; vmax=vmax)
 
     # Forward Euler is stable iff |1 + z| <= 1, a disk that only touches the imaginary axis at the origin, so
@@ -142,9 +141,11 @@ function check_cfl(experiment::INSExperimentBase, stepper::ExplicitEuler; vmax::
     dt_diff_max = 2 / diff_eig
 
     # For a Fourier mode with advection symbol a and diffusion symbol d, |1 + dt(-d + ia)| <= 1 iff
-    # dt <= 2d / (d² + a²). The stencils in use satisfy κ₂(θ) >= κ₁(θ)² for the modified wavenumbers of the
-    # second and first derivatives, so a² <= N vmax² Re d, and dt <= 2 / (diff_eig + N vmax² Re) is sufficient.
-    dt_max = 2 / (diff_eig + N * vmax^2 * experiment.Re)
+    # dt <= 2d / (d² + a²). The stencils in use satisfy κ₂(θ) >= κ₁(θ)². With |u| <= vmax that gives
+    # a² = |∑ u_i κ₁(θ_i)/h_i|² <= |u|² ∑ κ₂(θ_i)/h_i² = vmax² Re d, by Cauchy-Schwarz on the velocity
+    # vector: the components cannot all equal vmax at once, so the dimension does not multiply the bound.
+    # Hence dt <= 2 / (d + vmax² Re). Since d <= diff_eig, dt <= 2 / (diff_eig + vmax² Re) is sufficient.
+    dt_max = 2 / (diff_eig + vmax^2 * experiment.Re)
 
     if dt > dt_diff_max
         @warn "CFL condition violated for diffusion term" dt dt_diff_max

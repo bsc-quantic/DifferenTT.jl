@@ -145,7 +145,7 @@ using ITensorMPS
 
         te_ok = TimeEvolArgs(0.0, 0.01, 0.001)
         te_bad = TimeEvolArgs(0.0, 100.0, 1)
-        # Stable for RK4, but beyond the forward Euler advection-diffusion limit 2 / (diff_eig + N vmax² Re) ≈ 0.01
+        # Stable for RK4, but beyond the forward Euler advection-diffusion limit 2 / (diff_eig + vmax² Re) ≈ 0.02
         te_rk4_only = TimeEvolArgs(0.0, 0.05, 1)
 
         @test_logs min_level=Base.CoreLogging.Warn check_cfl(experiment, RK4(time_evol_kwargs=te_ok))
