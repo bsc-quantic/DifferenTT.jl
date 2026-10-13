@@ -44,8 +44,14 @@ using DifferenTT: ALS
     @test length(pc_conds) == length(conds)
     @test all(length(pc_conds[pos]) == length(conds[pos]) for pos in eachindex(conds))
     for pos in eachindex(conds)
-        pos in 2:3 && continue
-        @test pc_conds[pos] == conds[pos]
+        if pos in 2:3
+            # rank1_preconditioner of a random MPO is not a multiple of the identity, so a block that
+            # applied it records κ(P⁻¹A) ≠ κ(A). Equality here would mean the window was ignored.
+            @test !isempty(Iterators.flatten(pc_conds[pos]))
+            @test pc_conds[pos] != conds[pos]
+        else
+            @test pc_conds[pos] == conds[pos]
+        end
     end
 
     # Sign-aware local spectra: the identity preconditioner is SPD, -Id is negative definite, and the local blocks
