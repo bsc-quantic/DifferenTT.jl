@@ -89,9 +89,9 @@ const RE_NUM = 3000
 const STENCIL_ORDER = 8
 const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.jld2"
 
-const CHORIN_DENSE_NODES = [(4, 4), (5, 5), (6, 6)]
+const CHORIN_DENSE_NODES = [(4, 4), (5, 5), (6, 6), (7, 7)]
 const CHORIN_LARGE_NODES = [(8, 8), (10, 10)]
-const CHORIN_LARGE_MAXDIMS = [2, 4, 6, 8, 10]
+const CHORIN_LARGE_MAXDIMS = [8, 10, 12, 14, 16, 18, 20]
 # FAI is SPD by construction (Glᵀ Gl): a control for the local spectra of the first Chorin step. Empty to skip.
 const CHORIN_FAI_CONTROL = [(1e7, 4)]
 const CHORIN_FAI_TOL = 0.1
@@ -177,18 +177,37 @@ end
 Spectra of the symmetric part S of the dense preconditioner `P` and of S·A (as the symmetric LᵀSL, A = LLᵀ), plus
 how far `P` is from A⁻¹. By Weyl's inequality λ_min(S) ≥ λ_min(A⁻¹) - ‖S - A⁻¹‖₂, so S can only lose positive
 definiteness when the approximation error exceeds λ_min(A⁻¹) = 1/λ_max(A).
+
+Works in place on two n×n buffers (S and a scratch W): at 7x7 nodes each dense matrix is 2 GiB.
 """
 function dense_analysis(P::AbstractMatrix, op)
     n = size(P, 1)
-    S = symmetric_part(P)
-    λS = eigvals(S)
+    S = similar(P)
+    S .= (P .+ transpose(P)) ./ 2
+    W = similar(P)
+    # P - Pᵀ = 2(P - S)
+    W .= P .- S
+    asym_P = 2 * norm(W) / norm(P)
+    W .= S
+    λS = eigvals!(Symmetric(W))
+    # LᵀSL
     L = op.chol.L
-    λSA = eigvals(Symmetric(transpose(L) * Matrix(S) * L))
-    λerr = eigvals(Symmetric(Matrix(S) - symmetric_part(op.Ainv)))
-    In = Matrix{Float64}(I, n, n)
+    W .= S
+    rmul!(W, L)
+    lmul!(transpose(L), W)
+    λSA = eigvals!(Symmetric(W))
+    W .= S .- (op.Ainv .+ transpose(op.Ainv)) ./ 2
+    λerr = eigvals!(Symmetric(W))
+    # AP + PA - 2I
+    mul!(W, op.Ad, P)
+    mul!(W, P, op.Ad, true, true)
+    W[diagind(W)] .-= 2
+    sylvester_residual = norm(W) / (2 * sqrt(n))
+    W .= P .- op.Ainv
+    inverse_rel_error = norm(W) / norm(op.Ainv)
     return Dict{String, Any}(
         "n" => n,
-        "asym_P" => relative_asymmetry(P),
+        "asym_P" => asym_P,
         "eigs_S" => λS,
         "eigmin_S" => first(λS),
         "eigmax_S" => last(λS),
@@ -199,8 +218,8 @@ function dense_analysis(P::AbstractMatrix, op)
         "nneg_SA" => count_negative(λSA),
         "cond_SA" => spectral_cond(λSA),
         # ‖AP + PA - 2I‖_F / ‖2I‖_F: the residual of the system that linsolve_preconditioner solves
-        "sylvester_residual" => norm(op.Ad * P + P * op.Ad - 2In) / norm(2In),
-        "inverse_rel_error_fro" => norm(P - op.Ainv) / norm(op.Ainv),
+        "sylvester_residual" => sylvester_residual,
+        "inverse_rel_error_fro" => inverse_rel_error,
         "sym_error_2norm" => maximum(abs, λerr),
         "eigmin_Ainv" => 1 / last(op.λA),
     )
