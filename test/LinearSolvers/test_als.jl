@@ -70,9 +70,9 @@ using DifferenTT: ALS
         @test all((table["nneg_PA"] .== table["blockdim"]) .== negative)
     end
 
-    # With spd_tol set, the SPD check of compute_cond stops the solve at the first indefinite local P⁻¹A, and an SPD
+    # spd_tol alone (no condition-number store) stops the solve at the first indefinite local P⁻¹A, and an SPD
     # preconditioner runs through
-    spd_kwargs = (; ishermitian=true, isposdef=true, compute_cond=true, spd_tol=1e-8, krylovdim=1, maxiter=50)
+    spd_kwargs = (; ishermitian=true, isposdef=true, spd_tol=1e-8, krylovdim=1, maxiter=50)
     spd_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(; spd_kwargs...))
     @test_throws DifferenTT.NotSPDError linearsolve(spd_solver, spd_A, b, Preconditioner(-1.0 * MPO(s, "Id")), nothing; nsweeps=2)
     @test linearsolve(spd_solver, spd_A, b, Preconditioner(MPO(s, "Id")), nothing; nsweeps=2) isa MPS

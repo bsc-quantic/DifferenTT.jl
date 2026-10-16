@@ -4,7 +4,7 @@ using ITensorMPS
 using KrylovKit
 using LinearAlgebra
 using DifferenTT
-using DifferenTT: _uses_cg_metric, _eig_condition, _warn_if_not_spd, _local_dense_matrix
+using DifferenTT: _uses_cg_metric, _eig_condition, _check_spd, _wants_cond, _local_dense_matrix, NotSPDError, KrylovCondStats
 
 @testset "KrylovUpdater instantiation" begin
     updater = DifferenTT.KrylovUpdater()
@@ -52,9 +52,20 @@ end
         @test isinf(first(_eig_condition(Matrix(Diagonal([0.0, 1.0])))))
     end
 
-    @testset "_warn_if_not_spd" begin
-        @test_logs (:warn, r"TEST is not SPD") _warn_if_not_spd([-1.0, 2.0], "TEST", 1)
-        @test_logs _warn_if_not_spd([1.0, 2.0], "TEST", 1)
+    @testset "_check_spd" begin
+        # Without spd_tol nothing is checked, and nothing is logged
+        @test isnothing(@test_logs _check_spd([-1.0, 2.0], "TEST", 1, nothing))
+        @test_throws NotSPDError _check_spd([-1.0, 2.0], "TEST", 1, 1e-8)
+        @test isnothing(_check_spd([1.0, 2.0], "TEST", 1, 1e-8))
+        # Rounding-level negative eigenvalues (e.g. a singular Neumann Poisson block) pass
+        @test isnothing(_check_spd([-1e-15, 2.0], "TEST", 1, 1e-8))
+    end
+
+    @testset "_wants_cond" begin
+        @test !_wants_cond(nothing, nothing, nothing)
+        @test _wants_cond(KrylovCondStats(), nothing, nothing)
+        @test _wants_cond(nothing, KrylovCondStats(), nothing)
+        @test _wants_cond(nothing, nothing, 1e-8)
     end
 
     @testset "_local_dense_matrix" begin

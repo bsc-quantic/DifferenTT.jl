@@ -87,7 +87,6 @@ rhs_mps = symmetrize_rhs(field, rhs_mps)
 updater_kwargs = LocalUpdaterArgs(;
     ishermitian=true,
     isposdef=true,
-    compute_cond=false,
     rtol=1e-5,
     krylovdim=1,
     maxiter=1000,
