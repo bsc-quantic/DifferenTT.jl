@@ -68,9 +68,9 @@ end
 """
     NotSPDError(label, lpos, λmin, λmax_abs)
 
-Thrown when a CG local spectrum is computed with `spd_tol` set and a local operator has an eigenvalue with real part
-below `-spd_tol * max|λ|`. It aborts the sweep, so callers can stop a solve as soon as a non-SPD local operator
-(e.g. a preconditioner that is not positive definite) is found.
+Thrown by the local SPD checks of `compute_cond` when `spd_tol` is set and a local operator has an eigenvalue with
+real part below `-spd_tol * max|λ|`. It aborts the sweep, so callers can stop a solve as soon as a non-SPD local
+operator (e.g. a preconditioner that is not positive definite) is found.
 """
 struct NotSPDError <: Exception
     label::String
@@ -109,10 +109,10 @@ function _compute_and_record_cond!(problem::ReducedLinearProblem, use_cg, comput
     A, = _local_dense_matrix(contract(operator(problem)), constant_term(problem))
     κ_A, λ_A = _eig_condition(A)
 
-    # The spectrum is already in hand for every CG κ that is recorded, including jobs that only attach a store
-    # (`compute_cond` stays false). `spd_tol` is what turns the warning into a `NotSPDError`.
-    use_cg && _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
-    compute_cond && verbosity > 0 && @info "local cond" lpos κ_A
+    if compute_cond
+        use_cg && _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
+        verbosity > 0 && @info "local cond" lpos κ_A
+    end
     _record_cond!(cond_store, problem, κ_A)
     _record_cond!(pc_cond_store, problem, κ_A)
 end
@@ -129,12 +129,14 @@ function _compute_and_record_cond!(problem::Union{ReducedPrecondLinearProblem, R
     κ_A, λ_A = _eig_condition(A)
     κ_PC, λ_PA = _eig_condition(Pinv * A)
 
-    if use_cg
-        _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
-        # If A is SPD, P⁻¹A has a non-positive eigenvalue iff P⁻¹ is not SPD (Sylvester's law of inertia)
-        _warn_if_not_spd(λ_PA, "Preconditioned operator P⁻¹A", lpos, spd_tol)
+    if compute_cond
+        if use_cg
+            _warn_if_not_spd(λ_A, "Operator A", lpos, spd_tol)
+            # If A is SPD, P⁻¹A has a non-positive eigenvalue iff P⁻¹ is not SPD (Sylvester's law of inertia)
+            _warn_if_not_spd(λ_PA, "Preconditioned operator P⁻¹A", lpos, spd_tol)
+        end
+        verbosity > 0 && @info "local precond cond" lpos κ_A κ_PC
     end
-    compute_cond && verbosity > 0 && @info "local precond cond" lpos κ_A κ_PC
     _record_cond!(cond_store, problem, κ_A)
     _record_cond!(pc_cond_store, problem, κ_PC)
 end
@@ -218,9 +220,9 @@ of the unpreconditioned local problem is recorded in both `cond_store` and `pc_c
 If a `KrylovSpectrumStats` is passed as `spectrum_store`, the sign-aware local spectra of every visited block are
 recorded too (see `_local_spectrum`).
 
-Whenever the local spectrum of a CG solve is computed (`compute_cond` or a condition-number store), A and P⁻¹A are
-checked to be SPD. If `spd_tol` is set, a local operator with an eigenvalue whose real part is below
-`-spd_tol * max|λ|` throws a `NotSPDError`, which stops the solve.
+With `compute_cond=true` and CG (`ishermitian && isposdef`), the local A and P⁻¹A are checked to be SPD. If `spd_tol`
+is set, a local operator with an eigenvalue whose real part is below `-spd_tol * max|λ|` throws a `NotSPDError`,
+which stops the solve.
 
 Condition metrics: κ_λ = max|λ| / min|λ| of the dense local A and P⁻¹A. This is the exact spectral κ for
 CG/PCG. For GMRES it is a heuristic indicator only: it is a lower bound on κ₂ for non-normal operators, and
