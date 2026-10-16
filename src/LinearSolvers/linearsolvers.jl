@@ -21,11 +21,15 @@ function linearsolve end
     LocalUpdaterArgs
 
 Configuration for the local subspace updater used in DMRG-based linear solvers.
+
+The local diagnostics are switched on by what is attached, each with a single role: `cond_store` / `pc_cond_store`
+record the local condition numbers, `spectrum_store` records the sign-aware local spectra, `numiter_store` the Krylov
+iteration counts, and `spd_tol` (CG only) stops the solve with a `NotSPDError` at the first local block that is
+clearly not SPD. `verbosity > 0` logs the condition numbers that were computed.
 """
 Base.@kwdef struct LocalUpdaterArgs
     ishermitian::Bool = false
     isposdef::Bool = false
-    compute_cond::Bool = false
     rtol::Float64 = 1e-8
     krylovdim::Int = 30
     maxiter::Int = 100
@@ -36,11 +40,11 @@ Base.@kwdef struct LocalUpdaterArgs
     spectrum_store::Any = nothing
     spd_tol::Union{Nothing, Float64} = nothing
 
-    function LocalUpdaterArgs(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
-        if compute_cond && (!ishermitian || !isposdef)
-            @warn "compute_cond=true is typically only meaningful for Conjugate Gradient (CG) solvers, which require ishermitian=true and isposdef=true."
+    function LocalUpdaterArgs(ishermitian, isposdef, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
+        if !isnothing(spd_tol) && (!ishermitian || !isposdef)
+            throw(ArgumentError("spd_tol checks the local blocks of a CG solve, which requires ishermitian=true and isposdef=true."))
         end
-        new(ishermitian, isposdef, compute_cond, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
+        new(ishermitian, isposdef, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
     end
 end
 
@@ -101,7 +105,6 @@ function Base.NamedTuple(args::LocalUpdaterArgs)
     return (;
         ishermitian = args.ishermitian,
         isposdef = args.isposdef,
-        compute_cond = args.compute_cond,
         rtol = args.rtol,
         krylovdim = args.krylovdim,
         maxiter = args.maxiter,

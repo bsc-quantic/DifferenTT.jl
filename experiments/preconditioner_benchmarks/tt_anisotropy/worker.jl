@@ -190,7 +190,6 @@ function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build
     fai_updater_kwargs = LocalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        compute_cond = false,
         rtol = 1e-5,
         krylovdim = 1,
         maxiter = 2000

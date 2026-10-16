@@ -17,7 +17,6 @@ function (up::QRUpdater)(
     problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...
 )
     verbosity = get(kwargs, :verbosity, 0)
-    compute_cond = get(kwargs, :compute_cond, false)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
 
@@ -40,13 +39,10 @@ function (up::QRUpdater)(
     rel_residual = norm(shifted_Amat * x - bvec) / norm(bvec)
     verbosity > 0 && @info "Qr updater got relative residual norm = $(rel_residual)"
 
-    if compute_cond || !isnothing(cond_store)
+    if !isnothing(cond_store)
         # Same metric as KrylovUpdater: κ_λ = max|λ| / min|λ| of the dense local operator
-        cond_val, eigs_op = _eig_condition(Amat)
-        if compute_cond
-            _warn_if_not_spd(eigs_op, "Operator A", problem.reduced_operator.lpos)
-            verbosity > 0 && @info "local cond" lpos = problem.reduced_operator.lpos cond_val
-        end
+        cond_val, _ = _eig_condition(Amat)
+        verbosity > 0 && @info "local cond" lpos = problem.reduced_operator.lpos cond_val
         _record_cond!(cond_store, problem, cond_val)
     end
 

@@ -12,6 +12,12 @@ using DifferenTT: LocalUpdaterArgs, GlobalUpdaterArgs, SweepingArgs, default_lin
         nt = NamedTuple(args)
         @test nt.ishermitian == false
         @test nt.krylovdim == 30
+        @test !haskey(nt, :compute_cond)
+
+        # spd_tol checks the local blocks of a CG solve, so it needs ishermitian and isposdef
+        @test LocalUpdaterArgs(ishermitian=true, isposdef=true, spd_tol=1e-8).spd_tol == 1e-8
+        @test_throws ArgumentError LocalUpdaterArgs(spd_tol=1e-8)
+        @test_throws ArgumentError LocalUpdaterArgs(ishermitian=true, spd_tol=1e-8)
     end
 
     @testset "GlobalUpdaterArgs" begin

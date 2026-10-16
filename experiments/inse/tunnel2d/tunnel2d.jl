@@ -188,7 +188,7 @@ p_field = ScalarField(sites, arch, bcsp)
 updater_kwargs = LocalUpdaterArgs(;
     ishermitian=true,
     isposdef=true,
-    compute_cond=true,
+    cond_store=KrylovCondStats(),  # computes the local κ, which verbosity=1 logs
     rtol=1e-4,
     krylovdim=1,
     maxiter=500,

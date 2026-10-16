@@ -402,7 +402,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         fai_updater_kwargs = LocalUpdaterArgs(
             ishermitian = true,
             isposdef = true,
-            compute_cond = false,
             rtol = 1e-5,
             krylovdim = 1,
             maxiter = 3000

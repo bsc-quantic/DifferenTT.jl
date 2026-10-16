@@ -12,7 +12,7 @@ Sections (all of them run by default; select some with `LINSOLVE_SPD_SECTIONS=a,
   truncated to bond dimension χ. Shows that the indefiniteness comes from the TT truncation itself, not from the
   solver that builds the linsolve preconditioner.
 - `chorin_linsolve_large`: the systems of the benchmark, too large for dense matrices.
-  The first solve of the benchmark (the first Chorin step) runs with `compute_cond`, whose
+  The first solve of the benchmark (the first Chorin step) runs with `spd_tol` set, whose
   local SPD checks stop the solve with a `NotSPDError` as soon as a local P⁻¹A has an eigenvalue with real part
   below -SPD_TOL · max|λ|. The preconditioner is then marked as not SPD. The local blocks are congruences of the
   global operators (Sylvester's law of inertia), so a negative local eigenvalue proves the global preconditioner is
@@ -101,7 +101,7 @@ const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002)
 const chorin_maxdims_map = Dict((8, 8) => 150, (10, 10) => 200)
 const CHORIN_TOL = 1e-3
 # The first Chorin step converges in a few sweeps with an SPD preconditioner. The cap only matters if the linsolve
-# preconditioner keeps it from converging. compute_cond diagonalizes every local block (dense, nonsymmetric), which is
+# preconditioner keeps it from converging. The SPD checks diagonalize every local block (dense, nonsymmetric), which is
 # affordable here because the first-step solution has χ ≈ 40-50 (blocks up to ≈ 8000 rows).
 const CHORIN_SPECTRAL_NSWEEPS = 10
 
@@ -331,7 +331,7 @@ end
 """
     spectral_solve(A, rhs, x0, precond; maxdim, nsweeps, tol, cutoff) -> Dict
 
-ResidualALS solve of `A x = rhs` preconditioned by `precond`, as in the benchmarks, with `compute_cond` on. The local
+ResidualALS solve of `A x = rhs` preconditioned by `precond`, as in the benchmarks. The local
 SPD checks throw a `NotSPDError` (`spd_tol = SPD_TOL`) at the first local P⁻¹A that is clearly not SPD, which stops the
 solve and marks the preconditioner as not SPD. Other solver failures are recorded instead of aborting the benchmark.
 """
@@ -342,7 +342,6 @@ function spectral_solve(A::MPO, rhs::MPS, x0::MPS, precond; maxdim::Int, nsweeps
     updater_kwargs = LocalUpdaterArgs(
         ishermitian = true,
         isposdef = true,
-        compute_cond = true,
         spd_tol = SPD_TOL,
         rtol = 0.1 * tol,
         krylovdim = 1,
