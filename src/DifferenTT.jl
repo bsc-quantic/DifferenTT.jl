@@ -172,6 +172,8 @@ public regularization_check, mask_correction, cfl_spectral_radii
 # Solvers and statistics
 public TTCG, TTGMRES, KrylovUpdater, QRUpdater, positions_sum, krylov_numiters, krylov_conds
 public dense_projected_operator, preconditioned_linsolve
+public AbstractUpdater, bind_observer, default_differenTT_checkdone
+public AbstractALSExpansion, NullExpansion, RandomSPSDexpansion, RandomLTexpansion, ResidualExpansion
 
 function __init__()
     _register_plots_error_hint()

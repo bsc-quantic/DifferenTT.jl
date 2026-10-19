@@ -21,14 +21,10 @@ local solve, we compute the full SVD of the two-site tensor ``\\phi = U S V^\\to
 where ``\\varepsilon`` is `residual_tol`, ``\\delta`` is `residual_damp` and ``N`` is the number of sites, found by a
 bisection over ``r`` that assumes the residual decreases with the rank. The scaling by ``1/\\sqrt{N}`` follows Dolgov's
 implementations, so that the ``N`` local errors of a sweep add up to about ``\\varepsilon``. The rank is then clamped to
-`[mindim, maxdim]`, and a Frobenius floor keeps at least the rank whose discarded relative weight
-``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff^2` (`cutoff` from [`SweepingArgs`](@ref)). Note
-that this floor compares the weight with `cutoff^2`, whereas ITensors and [`AMEn`](@ref) compare it with `cutoff`, so it
-keeps every singular value above about `cutoff` times the largest one. For small cutoffs the floor therefore dominates
-the residual criterion: on a ``2^4 \\times 2^4`` QTT Laplacian with `residual_tol = 1e-4`, the residual alone selects
-rank 13 at the central bond, but `cutoff = 1e-10` or `1e-13` raises it back to the full rank 16, while `cutoff = 1e-6`
-leaves it at 13. Set `cutoff = 0` to truncate by the residual alone. In a preconditioned solve, the local residual is
-always that of the unpreconditioned ``A_{\\text{loc}}``.
+`[mindim, maxdim]`. The sweeping `cutoff` (from [`SweepingArgs`](@ref)) adds a floor on the rank: we keep at least the
+smallest rank whose discarded relative weight ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff^2`,
+and `cutoff = 0` disables the floor, so that the rank is chosen by the residual alone. In a preconditioned solve, the
+local residual is always that of the unpreconditioned ``A_{\\text{loc}}``.
 
 The residual-based truncation applies only to `nsite = 2`. With `nsite = 1`, the sweep falls back to the truncation
 of [`ALS`](@ref). The cost per bond is that of the local solve plus ``\\mathcal{O}(\\log r_{\\max})`` applications
@@ -160,11 +156,8 @@ function residual_replacebond!(
     end
 
     # ── 3–5. Residual-based rank selection, with the Frobenius cutoff as a floor ──
-    # NOTE: the floor compares the discarded relative weight Σσ² with `cutoff^2`, whereas ITensors
-    # compares it with `cutoff`. This is kept as is so that ResidualALS results do not change. The floor
-    # is not inactive for small cutoffs: with cutoff = 1e-10 it keeps every σ above ~1e-10·σ₁ and
-    # overrides the residual-based rank (measured in WP3c, see the ResidualALS docstring).
-    # TODO(release): decide which convention is intended; AMEn uses the ITensors one.
+    # The floor compares the discarded relative weight Σσ² with `cutoff^2`, whereas ITensors, ALS and AMEn compare
+    # it with `cutoff`. TODO(release): decide whether to align the convention (it changes ResidualALS results).
     chosen_rank, truncerr, res_exact = _residual_rank(
         reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp, frob_weight=cutoff^2, mindim, maxdim
     )
