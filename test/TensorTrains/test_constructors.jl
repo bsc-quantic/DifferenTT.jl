@@ -281,5 +281,12 @@ using LinearAlgebra
         l_strict = DifferenTT.lower_triang_mpo(sites, false)
         l_strict_mat = contract_mpo(l_strict)
         @test l_strict_mat ≈ tril(ones(D, D), -1)
+
+        # Regression test: a single site threw a BoundsError
+        s1 = DifferenTT.site_indices([3])
+        @test contract_mpo(DifferenTT.upper_triang_mpo(s1)) ≈ triu(ones(3, 3))
+        @test contract_mpo(DifferenTT.upper_triang_mpo(s1, false)) ≈ triu(ones(3, 3), 1)
+        @test contract_mpo(DifferenTT.lower_triang_mpo(s1)) ≈ tril(ones(3, 3))
+        @test contract_mpo(DifferenTT.lower_triang_mpo(s1, false)) ≈ tril(ones(3, 3), -1)
     end
 end

@@ -18,9 +18,9 @@ function toeplitz_mpo(
 )
     nsite = length(site_indices)
     if length(coeffs) == 9 && nsite < 4
-        error("nsite must be >= 4 in order to build the toeplitz mpo if length(coeffs)=9")
+        throw(ArgumentError("nsite must be >= 4 in order to build the toeplitz mpo if length(coeffs)=9, got $nsite"))
     elseif length(coeffs) == 3 && nsite < 2
-        error("nsite must be >= 2 in order to build the toeplitz mpo if length(coeffs)=3")
+        throw(ArgumentError("nsite must be >= 2 in order to build the toeplitz mpo if length(coeffs)=3, got $nsite"))
     end
 
     tensors = AbstractArray[]
@@ -77,7 +77,7 @@ function toeplitz_mpo(
         penultimate_mat = vcat(hcat(eye, J', J), hcat(Z, J, Z), hcat(Z, Z, J'))
         # Reshape to (PhysRow, BlockRow, PhysCol, BlockCol) -> Permute to (PhysRow, PhysCol, BlockRow, BlockCol)
         penultimate = permutedims(reshape(bulk_mat, 2, 3, 2, 3), (1, 3, 2, 4))
-        push!(tensors, penultimate)
+        nsite > 2 && push!(tensors, penultimate) # With two sites, the leftmost tensor sits right before the rightmost
 
         rightmost = vcat(
             hcat(coeffs[0] * eye + coeffs[1] * J + coeffs[-1] * J'), hcat(coeffs[-1] * J), hcat(coeffs[1] * J')
@@ -121,7 +121,8 @@ function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_
 
     matrices = (matrix0, matrix1)
 
-    column_index < 1 && error("MPO index must be >= 1")
+    1 <= column_index <= 2^nsite ||
+        throw(ArgumentError("column_index must lie in 1:$(2^nsite) for $nsite sites, got $column_index"))
 
     site_bits = decimal_to_binary(column_index - 1, nsite) # Binary counting starts at 0, but we are assuming columns start at 1.
 

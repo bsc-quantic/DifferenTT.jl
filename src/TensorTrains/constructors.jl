@@ -215,6 +215,11 @@ end
 
 function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
     n = length(site_inds)
+    if n == 1
+        d = dim(only(site_inds))
+        mask = include_diag ? triu(ones(Float64, d, d)) : triu(ones(Float64, d, d), 1)
+        return MPO([ITensor(adapt(array_type, mask), only(site_inds)', only(site_inds))])
+    end
     mpo_itensors = ITensor[]
     mpo_links = [Index(2, "Link,l=$l") for l in 1:(n-1)]
 

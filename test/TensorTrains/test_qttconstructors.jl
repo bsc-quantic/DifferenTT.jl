@@ -40,6 +40,17 @@ using .TestUtils
         mpo_d = DifferenTT.toeplitz_mpo(sites, coeffs, bc_dirichlet)
         @test mpo_d isa MPO
         @test length(mpo_d) == n
+
+        # Regression test: two sites with three coefficients threw a DimensionMismatch (one tensor too many), and too
+        # few sites threw an ErrorException
+        s2 = siteinds(2, 2)
+        toeplitz4 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0; 0.0 0.0 -1.0 2.0]
+        @test contract_mpo(DifferenTT.toeplitz_mpo(s2, short_coeffs, bc_dirichlet)) ≈ toeplitz4
+        circulant4 = copy(toeplitz4)
+        circulant4[1, 4] = circulant4[4, 1] = -1.0
+        @test contract_mpo(DifferenTT.toeplitz_mpo(s2, short_coeffs, bc_periodic)) ≈ circulant4
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(siteinds(2, 1), short_coeffs, bc_dirichlet)
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(siteinds(2, 3), coeffs, bc_dirichlet)
     end
 
     @testset "column_pick_mpo" begin
@@ -51,6 +62,9 @@ using .TestUtils
         # Test vector version
         mpo_sum = DifferenTT.column_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
+
+        @test_throws ArgumentError DifferenTT.column_pick_mpo(sites, 0)
+        @test_throws ArgumentError DifferenTT.column_pick_mpo(sites, 2^n + 1)
 
         # Test MPO entries
         # Since col_idx = 2, reverse(digits(1, base=2, pad=6)) = [0, 0, 0, 0, 0, 1]
