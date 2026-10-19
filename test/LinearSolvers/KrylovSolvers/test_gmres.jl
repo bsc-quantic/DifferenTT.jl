@@ -64,3 +64,17 @@ end
     # Measured: no convergence in 500 cycles without preconditioner, 17 cycles with Jacobi
     @test info.numiter < info_none.numiter / 5
 end
+
+# A preconditioned solve that stops without converging returns the residual of the unpreconditioned system and its
+# norm. (It used to return the norm of M⁻¹r, and an r that was not updated after the last restart.)
+@testset "Non-converged preconditioned GMRES reports the unpreconditioned residual" begin
+    _, Abad, b, x0 = gmres_fixtures()
+    Minv = Diagonal(1 ./ diag(Abad))
+    alg = GMRES(; tol=1e-12 * norm(b), krylovdim=3, maxiter=2)
+    x, info = DifferenTT.preconditioned_linsolve(Abad, b, x0, Minv, alg)
+    @test info.converged == 0
+    @test info.residual ≈ b - Abad * x rtol = 1e-10
+    @test info.normres ≈ norm(b - Abad * x) rtol = 1e-10
+    # The preconditioned norm is far from it here, so the two cannot be confused
+    @test !isapprox(norm(Minv * (b - Abad * x)), info.normres; rtol=0.5)
+end

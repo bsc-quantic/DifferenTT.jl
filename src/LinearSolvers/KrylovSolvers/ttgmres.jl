@@ -9,9 +9,8 @@ left-preconditioned by `M⁻¹`. See [`TTGMRES`](@ref) for the algorithm and its
 
 With `M⁻¹`, we build the Arnoldi basis of ``M^{-1}(a_0 + a_1 A)``, so each cycle minimizes the preconditioned
 residual ``\\|M^{-1}\\mathbf{r}\\|``; the solve still stops on the unpreconditioned residual,
-``\\|\\mathbf{r}\\| \\le \\texttt{tol}\\, \\|\\mathbf{b}\\|``, recomputed at the end of every cycle. Note that when the
-solve stops without converging, the `normres` it returns is that of ``M^{-1}\\mathbf{r}``, while a converged solve
-returns ``\\|\\mathbf{r}\\|``. `alg_rrule` is accepted for compatibility with KrylovKit and ignored.
+``\\|\\mathbf{r}\\| \\le \\texttt{tol}\\, \\|\\mathbf{b}\\|``, recomputed at the end of every cycle, and the returned
+`normres` is always ``\\|\\mathbf{r}\\|``. `alg_rrule` is accepted for compatibility with KrylovKit and ignored.
 
 Returns the solution and a `KrylovKit.ConvergenceInfo`, whose `numiter` is the number of restart cycles.
 """
@@ -310,13 +309,13 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
         if numiter >= maxiter
             if alg.verbosity >= WARN_LEVEL
                 @warn """TTGMRES linsolve stopped without converging after $numiter iterations:
-                * norm of residual = $(normres2string(β))
+                * norm of residual = $(normres2string(normr))
                 * number of operations = $numops"""
             end
-            return (x, ConvergenceInfo(0, r, β, numiter, numops))
+            return (x, ConvergenceInfo(0, r, normr, numiter, numops))
         end
         if alg.verbosity >= EACHITERATION_LEVEL
-            @info "TTGMRES linsolve in iteration $numiter; step $k: normres = $(normres2string(β))"
+            @info "TTGMRES linsolve in iteration $numiter; step $k: normres = $(normres2string(normr))"
         end
     end
     return nothing

@@ -103,3 +103,17 @@ end
         Ans, b, x0, DifferenTT.TTGMRES(; krylovdim=2, maxiter=1, tol=1e-12, verbosity=1)
     )
 end
+
+@testset "Non-converged preconditioned TTGMRES reports the unpreconditioned residual" begin
+    A, sites, _, _ = tt_laplacian((8, 8))
+    b = random_mps(rng(1), sites; linkdims=2)
+    # M⁻¹ = 0.01 I, so that |M⁻¹r| and |r| differ by a factor 100
+    M⁻¹ = Preconditioner(0.01 * identity_mpo(sites))
+    short = DifferenTT.TTGMRES(; krylovdim=2, maxiter=1, tol=1e-12, cutoff=1e-15, orth_cutoff=1e-15)
+    x, info = KrylovKit.linsolve(A, b, zeros_mps(sites), M⁻¹, short)
+    @test info.converged == 0
+    @test info.normres ≈ norm(todense(b) - todense(A) * todense(x)) rtol = 1e-6
+    @test_logs (:warn, r"TTGMRES linsolve stopped without converging") match_mode = :any KrylovKit.linsolve(
+        A, b, zeros_mps(sites), M⁻¹, DifferenTT.TTGMRES(; krylovdim=2, maxiter=1, tol=1e-12, verbosity=1)
+    )
+end
