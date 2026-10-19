@@ -126,7 +126,7 @@ site_dim(arch::QTTArchitecture, site_idx::Int) = 2
 site_dim(arch::TTArchitecture, site_idx::Int) = arch.var_dims[arch.site_map[site_idx]]
 
 site_dims(arch::QTTArchitecture) = fill(2, total_sites(arch))
-site_dims(arch::TTArchitecture) = arch.var_dims
+site_dims(arch::TTArchitecture{N}) where {N} = ntuple(n -> site_dim(arch, n), N)
 
 variable_dims(arch::QTTArchitecture) = map(x -> 2^abs(x), arch.var_nsites)
 variable_dims(arch::TTArchitecture) = arch.var_dims

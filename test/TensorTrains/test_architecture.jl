@@ -1,5 +1,6 @@
 using Test
 using DifferenTT
+using ITensors, ITensorMPS, LinearAlgebra
 
 # If these are not exported by DifferenTT, we explicitly import them
 import DifferenTT: QTTArchitecture, TTArchitecture
@@ -74,5 +75,18 @@ import DifferenTT: QTTArchitecture, TTArchitecture
         @test site_dim(QTTArchitecture((3, 2)), 4) == 2
         @test [site_dim(TTArchitecture((5, 7)), n) for n in 1:2] == [5, 7]
         @test [site_dim(TTArchitecture((5, 7), Dict(1 => 2, 2 => 1)), n) for n in 1:2] == [7, 5]
+    end
+
+    # Regression test: site_dims of a TTArchitecture returned the dimensions in variable order, so siteinds(arch) built
+    # sites of the wrong dimension whenever var_map permuted variables of different dimensions
+    @testset "site_dims follows the site order" begin
+        arch = TTArchitecture((5, 7, 3), Dict(1 => 3, 2 => 1, 3 => 2))
+        @test site_dims(arch) == (7, 3, 5)
+        @test collect(site_dims(arch)) == [site_dim(arch, n) for n in 1:3]
+        @test dim.(siteinds(arch)) == [7, 3, 5]
+        @test variable_dims(arch) == (5, 7, 3)
+        sites = siteinds(arch)
+        op = DifferenTT.ndim_operator_mpo(collect(reshape(1.0:49.0, 7, 7)), 2, sites, arch)
+        @test DifferenTT.contract_mpo(op) ≈ kron(collect(reshape(1.0:49.0, 7, 7)), I(3), I(5))
     end
 end
