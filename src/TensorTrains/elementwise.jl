@@ -210,16 +210,13 @@ function interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0
         m = size(K, 1)
         Kt = K
         error = 0.0
-        #num_below_cutoff = 0
         for t in 1:maxdim
             Kt2 = Kt * Kt
             l = argmax(p -> (p ∈ cols ? -Inf : Kt2[p, p] / Kt[p, p]), 1:m)
             max_err2 = Kt2[l, l] / Kt[l, l]
-            #(max_err2 < eps(eltype(M)) || num_below_cutoff >= 2) && break
             error = sqrt(abs(max_err2))
             if (error < cutoff)
                 break
-                #num_below_cutoff += 1
             end
             push!(cols, l)
             Kt = K - K[:, cols] * (K[cols, cols] \ K[cols, :]) #Schur complement
@@ -343,7 +340,7 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     end
     pivs = [vcat([get_pivs(r, c) for c in 1:length(col_inds)]...) for r in 1:rank]
 
-    # TODO: debugging code to check if reconstructed pivot index matches
+    # Check that the reconstructed pivot index matches the one passed by the caller, if any
     check_pivot_index = DifferenTT.pivot_index(pivs; tags) # qualified: the keyword `pivot_index` shadows it here
     @assert dim(check_pivot_index) == rank
     if isnothing(pivot_index)
@@ -358,7 +355,6 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
             )
         end
     end
-    #end
 
     # Make ITensors from C and Z matrices
     C = ITensor(C_matrix, cr, pivot_index) * dag(Cmb_row)

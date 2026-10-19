@@ -86,10 +86,6 @@ function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_
 
     ∇u = divergence(masked_u_mpss, cache.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
 
-    # @debug_plots begin
-    #     @show visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/divu/divu_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
-    # end
-
     ∇u_correction = divergence_dirichlet_correction(
         experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim
     )
@@ -110,22 +106,10 @@ function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_
         )
     end
 
-    # @debug_plots begin
-    #     @show visualize_scalar(Δp_correction, experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/lapp_correction/lapp_correction_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
-    # end
-
     ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff, maxdim=maxdim)
-
-    # @debug_plots begin
-    #     @show visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/dirich_corrected_divu/dirich_corrected_divu_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
-    # end
 
     # TODO Clarify what is the right sign for this correction
     ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff, maxdim=maxdim)
-
-    # @debug_plots begin
-    #     @show visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/rhs/rhs_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
-    # end
 
     rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
 
@@ -189,10 +173,6 @@ function poisson_pressure(
     term3 = ITensorMPS.inner(rhs, rhs)
 
     res_l2norm = sqrt(max(0.0, term1 - term2 + term3))
-
-    # @debug_plots begin
-    #     @show visualize_scalar(pdt * (1 / dt), experiment.grid, experiment.u_fields.arch, "experiments/debug_plots/solp/solp_$(length(experiment.u_fields)).png"; npoints=200, size = (1200, 600))
-    # end
 
     return pdt * (1 / dt), res_l2norm
 end

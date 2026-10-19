@@ -139,24 +139,6 @@ function initialize_reducedprecondlinearproblem(
     return ReducedFAIPrecondLinearProblem(linear_problem, reducedGl)
 end
 
-function initialize_reducedprecondlinearproblem(operator::MPO, constant_terms::Vector{MPS}, Minv::Preconditioner)
-    error("Not implemented yet")
-    # # The residual in this case would be Σbᵢ which would have an absurd bond dimension, so...
-    # linear_problem = ReducedLinearProblem(ProjMPO(operator), ReducedConstantTerm.(constant_terms))
-    # projMinv = ProjMPO(Minv)
-    # return ReducedPrecondLinearProblem(linear_problem, projMinv)
-end
-
-function initialize_reducedprecondlinearproblem(
-    operator::MPO, constant_terms::Vector{MPS}, Gl::FactorizedPreconditioner
-)
-    error("Not implemented yet")
-    # # The residual in this case would be Σbᵢ which would have an absurd bond dimension, so...
-    # linear_problem = ReducedLinearProblem(ProjMPO(operator), ReducedConstantTerm.(constant_terms))
-    # projGl = ProjMPO(Gl)
-    # return ReducedPrecondLinearProblem(linear_problem, projGl)
-end
-
 function Base.copy(reduced_problem::ReducedPrecondLinearProblem)
     return ReducedPrecondLinearProblem(copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner))
 end
