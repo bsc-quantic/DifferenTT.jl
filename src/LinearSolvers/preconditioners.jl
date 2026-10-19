@@ -1,9 +1,9 @@
 """
     _regularized_inv(mat; rtol=eps(Float64)) -> Matrix
 
-Invert `mat` with Tikhonov regularization: `(mat + ε I)⁻¹` where
-`ε = rtol * max(‖mat‖₂, 1)`. Avoids `SingularException` / huge entries when
-TT truncation leaves a nearly singular local tensor.
+Return ``(\\texttt{mat} + \\varepsilon I)^{-1}`` with ``\\varepsilon = \\texttt{rtol} \\max(\\|\\texttt{mat}\\|_2, 1)``,
+which avoids a `SingularException` when a truncation leaves a nearly singular local factor. Throws a `DimensionMismatch`
+if `mat` is not square.
 """
 function _regularized_inv(mat::AbstractMatrix; rtol::Float64=eps(Float64))
     n = size(mat, 1)
@@ -13,20 +13,35 @@ function _regularized_inv(mat::AbstractMatrix; rtol::Float64=eps(Float64))
 end
 
 """
-    rank1_preconditioner(operator::MPO)
+    rank1_preconditioner(operator::MPO) -> Preconditioner
 
-Build a rank-1 preconditioner by truncating the operator to bond dimension 1 and inverting each local n×n matrix.
+Build the preconditioner of bond dimension 1 obtained by truncating `operator` to bond dimension 1 and inverting each
+of its local factors.
+
+An operator of bond dimension 1 is a Kronecker product ``A_1 \\otimes \\dots \\otimes A_N``, whose inverse is the
+Kronecker product of the inverses of its ``d \\times d`` factors. We therefore truncate `operator` to bond dimension 1
+by SVD, and invert each factor with a Tikhonov regularization ``(A_k + \\varepsilon I)^{-1}``,
+``\\varepsilon = \\epsilon \\max(\\|A_k\\|_2, 1)``, at a cost of ``\\mathcal{O}(N d^3)`` after the truncation. The
+result is exact, up to ``\\varepsilon``, for an operator of bond dimension 1, and a cheap but rough approximation
+otherwise: for the Laplacian, whose bond dimension is 2 or 3, ``\\|I - M^{-1} A\\|_2`` is about 1.5 on a ``2^4``-point
+QTT grid. Note that the truncated factors need not be SPD, so neither does the result. We use it to precondition the
+construction of other preconditioners (the `preconditioning` keyword of [`fai_preconditioner`](@ref) and
+[`linsolve_preconditioner`](@ref)) and as the starting guess of [`newtoniter_preconditioner`](@ref).
+
+# Arguments
+
+  - `operator::MPO`: operator with site indices at prime levels 0 (input) and 1 (output).
 
 # Returns
 
-  - `Preconditioner`: The preconditioner with all bond dimensions equal to 1.
+  - `Preconditioner`: the approximate inverse, of bond dimension 1.
 """
 function rank1_preconditioner(operator::MPO)
     rank1_operator = deepcopy(operator)
     truncate!(rank1_operator; maxdim=1)
 
     preconditioner_tensors = ITensor[]
-    # TODO Ensure that this method of getting rid of the dummy legs is robust
+    # TODO(release): this way of dropping the link indices of dimension 1 assumes the index order (s', s, links...)
     for tensor in rank1_operator
         mat = order(tensor) == 3 ? dropdims(array(tensor); dims=3) : dropdims(array(tensor); dims=(3, 4))
         invmat = _regularized_inv(mat)
@@ -36,9 +51,24 @@ function rank1_preconditioner(operator::MPO)
 end
 
 """
-    newtoniter_preconditioner(operator::MPO, init_preconditioner::MPO, niter::Int)
+    newtoniter_preconditioner(operator::MPO, init_preconditioner::MPO, niter::Int; cutoff=1e-15, maxdim=typemax(Int))
+        -> Preconditioner
+    newtoniter_preconditioner(operator::MPO, niter::Int; cutoff=1e-15, maxdim=typemax(Int)) -> Preconditioner
 
-Refine a preconditioner via Newton iteration: X_{k+1} = X_k (2I - A X_k). Not yet implemented.
+Refine an approximate inverse of `operator` by `niter` Newton–Schulz iterations
+``X_{k+1} = X_k (2I - A X_k)``, starting from `init_preconditioner`, or from 0.01 times
+[`rank1_preconditioner`](@ref)`(operator)` in the second method.
+
+The iteration needs no linear solve, and its residual satisfies ``I - X_{k+1} A = (I - X_k A)^2``, so it converges
+quadratically once ``\\|I - X_0 A\\| < 1``, but not otherwise. The bond dimension grows with every step, since each one
+multiplies three MPOs; we truncate the products and sums with `cutoff` and `maxdim`, which also limits the attainable
+accuracy. From the default starting guess the convergence can be slow: on a ``2^4``-point QTT Laplacian, three steps
+reduce ``\\|I - X A\\|_2`` only from 0.9998 to 0.9984. As for any truncated approximate inverse, the result is not
+guaranteed to be SPD.
+
+# Throws
+
+  - `ArgumentError`: if `init_preconditioner` and `operator` do not have the same site indices.
 """
 function newtoniter_preconditioner(
     operator::MPO, init_preconditioner::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
@@ -54,24 +84,46 @@ function newtoniter_preconditioner(
     return Preconditioner(preconditioner)
 end
 
-"""
-    newtoniter_preconditioner(operator::MPO, niter::Int)
-
-Build a preconditioner via Newton iteration starting from a rank-1 initial guess.
-"""
 function newtoniter_preconditioner(operator::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     init_preconditioner = 0.01 * rank1_preconditioner(operator).operator
     return newtoniter_preconditioner(operator, init_preconditioner, niter; cutoff=cutoff, maxdim=maxdim)
 end
 
 """
-    linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver; kwargs...)
+    linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, symmetrize::Bool=true; linsolve_x0=nothing,
+                            preconditioning=false, residual_tol=nothing, rng=Random.default_rng(), kwargs...)
+        -> Preconditioner
 
-Build a preconditioner M⁻¹ by solving the Sylvester-like equation `A*X + X*A = 2I` using a linear solver in an extended Hilbert space.
+Build an approximate inverse ``X \\approx A^{-1}`` of `operator` by solving, in the TT format, the matrix equation
+``AX + XA = 2I`` (`symmetrize = true`) or ``AX = I``, as in the matrix inversion of Oseledets & Dolgov (2012).
+
+We vectorize the unknown ``X`` by fusing, at each site, its row and column indices into one index of dimension
+``d^2``, which turns the matrix equation into a linear system for an MPS with ``N`` sites, and solve it with
+`solver`. Both equations have the solution ``A^{-1}``; the symmetric form keeps the solution symmetric for a
+symmetric ``A``. Note that the result is truncated to the bond dimension of `solver`, so it controls the norm error
+but not the sign of the eigenvalues: for an SPD ``A`` it can be indefinite (Fig. 3 of Torrente et al.,
+*Factorized approximate inverse preconditioners in the tensor train format*, solid lines), which is the motivation for
+[`fai_preconditioner`](@ref).
+
+# Arguments
+
+  - `operator::MPO`: the operator ``A``.
+  - `solver::AbstractLinearSolver`: solver of the vectorized system.
+  - `symmetrize::Bool=true`: solve ``AX + XA = 2I`` instead of ``AX = I``.
+
+# Keywords
+
+  - `linsolve_x0=nothing`: initial guess for ``X``, an MPO on the sites of `operator`; by default ``10^{-12}`` times a
+    random MPO of bond dimension 1, drawn from `rng`.
+  - `preconditioning::Bool=false`: precondition the vectorized system with [`rank1_preconditioner`](@ref).
+  - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps once the relative residual of the
+    vectorized system is below it (through a [`ResidualObserver`](@ref) used as `sweep_observer!`).
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the default initial guess.
+  - `kwargs...`: passed to [`linearsolve`](@ref).
 
 # Returns
 
-  - `Preconditioner`: The approximate inverse of the operator.
+  - `Preconditioner`: the approximate inverse ``X``.
 """
 function linsolve_preconditioner(
     operator::MPO,
@@ -155,13 +207,44 @@ function linsolve_preconditioner(
     return Preconditioner(MPO([preconditioner_mps...]))
 end
 
-# TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
+# TODO(release): test the densitymatrix and zipup algorithms for the products below, with maxdim and cutoff
 """
-    fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning=false, residual_tol=nothing, compute_residual=false, rng=Random.default_rng(), kwargs...) -> (G̃_L::MPO, D::MPO)
+    fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning=false,
+           residual_tol=nothing, compute_residual=false, rng=Random.default_rng(), kwargs...) -> (G̃_L::MPO, D::MPO)
 
-Internal. Return the lower-triangular approximate inverse ``\\tilde{G}_L`` (the solution of Eq. (22)) and the diagonal
-rescaling ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` that [`fai_preconditioner`](@ref) combines into ``G_L``.
-`D_kwargs` may hold the `cutoff`, `maxdim` and `oversample` of the element-wise map that computes ``D``.
+Internal. Return the two factors of the FAI of the SPD `operator` ``A``: the lower-triangular approximate inverse
+``\\tilde{G}_L`` and the diagonal rescaling ``D``, which [`fai_preconditioner`](@ref) multiplies into
+``G_L = D \\tilde{G}_L``. Tests and tutorials call it qualified, `DifferenTT.fai_dg`, to inspect them.
+
+We vectorize ``X = \\tilde{G}_L`` by fusing, at each site, its row index (a copy of the sites, the output of
+``\\tilde{G}_L``) with its column index into one index of dimension ``d^2``, and solve with `g_solver` the projected
+system of Eq. (22) of Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*,
+
+```math
+\\left[\\mathbb{P}_L \\mathcal{T}_A \\mathbb{P}_L + \\mu (\\mathbb{I} - \\mathbb{P}_L)\\right]
+\\mathrm{vec}(\\tilde{G}_L) = \\mathrm{vec}(\\mathbf{I}),
+```
+
+where ``\\mathcal{T}_A \\mathrm{vec}(X) = \\mathrm{vec}(XA)`` is the operator written ``\\mathbf{I} \\otimes A`` in Eq.
+(19) for a symmetric ``A``, ``\\mathbb{P}_L`` = [`triang_projector_mpo`](@ref) keeps the lower-triangular entries of
+``X`` (Eqs. (14)–(20)), and ``\\mu > 0`` weights the equations ``\\mu X_{ij} = 0`` of the entries above the diagonal.
+Its exact solution satisfies Eq. (10), ``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j``, and does not depend on
+``\\mu`` (Appendix B.1). The initial guess is ``10^{-3}`` times the lower-triangular matrix of ones. We then extract
+``\\mathrm{diag}(\\tilde{G}_L)`` as an MPS with delta tensors ([`diagmps`](@ref)), and evaluate
+``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) element-wise by RSI with uniform sketches
+([`elementwise_function`](@ref), Sec. 3.2). The inverse square root is evaluated as ``1/\\sqrt{\\max(x, \\epsilon)}``,
+so a non-positive entry, which Lemma 1 rules out unless its whole row is lost, gives a large finite entry of ``D``
+rather than an error.
+
+`D_kwargs` may hold the `cutoff` (default `1e-15`), `maxdim` (default `typemax(Int)`) and `oversample` (default `10`)
+of [`elementwise_function`](@ref). With `preconditioning = true`, the system is preconditioned by
+``\\mathbb{P}_L R \\mathbb{P}_L + \\mu(\\mathbb{I} - \\mathbb{P}_L)``, where ``R`` is the [`rank1_preconditioner`](@ref)
+of its operator. Note that this weights the complement by ``\\mu`` rather than by ``1/\\mu``, and that it slows the
+build down: on a ``2^6``-point QTT Laplacian with `ResidualALS`, it multiplied the local CG iterations by 3 for
+``\\mu = 1`` and by 22 for ``\\mu = 10^7``, for a preconditioner of the same quality;
+`residual_tol` adds a [`ResidualObserver`](@ref) on the system as `sweep_observer!`; `compute_residual = true` logs the
+relative residual of the system after the solve, at the cost of two more sandwiches with its operator; the other
+`kwargs` go to [`linearsolve`](@ref).
 """
 function fai_dg(
     operator::MPO,
@@ -269,20 +352,39 @@ function fai_dg(
 end
 
 """
-    fai_preconditioner(A::MPO; μ::Real, solver::AbstractLinearSolver, totalmaxdim::Int=5, D_cutoff::Real=1e-15, D_maxdim::Int=typemax(Int), D_oversample::Int=10, preconditioning::Bool=false, residual_tol=nothing, compute_residual::Bool=false, rng::AbstractRNG=Random.default_rng(), kwargs...) -> FactorizedPreconditioner
+    fai_preconditioner(A::MPO; μ::Real, solver::AbstractLinearSolver, totalmaxdim::Int=5, D_cutoff::Real=1e-15,
+                       D_maxdim::Int=typemax(Int), D_oversample::Int=10, preconditioning::Bool=false,
+                       residual_tol=nothing, compute_residual::Bool=false, rng::AbstractRNG=Random.default_rng(),
+                       kwargs...) -> FactorizedPreconditioner
 
 Build a factorized approximate inverse (FAI) preconditioner ``M^{-1} = G_L^\\top G_L \\approx A^{-1}`` of the SPD
 operator `A` in the TT format.
 
 Truncated TT approximate inverses control the norm error but not the sign of their eigenvalues, so they can become
 indefinite and break CG (Sec. 3 and Fig. 3 of Torrente et al., *Factorized approximate inverse preconditioners in the
-tensor train format*). We therefore build the inverse in factorized form, which is positive semidefinite by
-construction, and definite whenever ``G_L`` is non-singular. To do this, we first compute the lower-triangular
-approximate inverse ``\\tilde{G}_L`` by solving the projected system of Eq. (22) with `solver`, and then set
-``G_L = D \\tilde{G}_L``, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is evaluated element-wise by
-the randomized sketch of [`elementwise_function`](@ref) (Sec. 3.2). Note that this shortcut for ``D`` holds only if
-``\\tilde{G}_L`` solves its system exactly, which an approximate solver does not guarantee (Lemma 1). The cost is
-dominated by the solve for ``\\tilde{G}_L``, whose sites have dimension ``d^2``.
+tensor train format*). We therefore build the inverse in factorized form, as in the FSAI of Kolotilina & Yeremin
+(1993): ``G_L^\\top G_L`` is positive semidefinite by construction, and definite whenever ``G_L`` is non-singular,
+whatever the truncation of ``G_L``. Since ``G_L`` approximates the inverse ``L_A^{-1}`` of the Cholesky factor
+``A = L_A L_A^\\top``, which we cannot compute in the TT format, we proceed in two steps. We first solve the projected
+system of Eq. (22) with `solver` for the lower-triangular approximate inverse ``\\tilde{G}_L``, defined by
+``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j`` (Eq. (10)); this needs no Cholesky factor. We then set
+``G_L = D \\tilde{G}_L``, truncated to `totalmaxdim`, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is
+evaluated element-wise by RSI with uniform sketches ([`elementwise_function`](@ref), Sec. 3.2). For an exact
+``\\tilde{G}_L`` this gives ``G_L = L_A^{-1}`` and ``M^{-1} = A^{-1}``. The bond dimension of ``G_L`` plays the role of
+the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at the expense
+of its quality.
+
+The cost is dominated by the solve for ``\\tilde{G}_L``, an MPS with ``N`` sites of dimension ``d^2`` whose operator
+contains ``A`` and the projector ``\\mathbb{P}_L`` of bond dimension 2 (Eq. (14)) twice. In the paper's experiments we
+use ``\\mu = 10^7`` (the results do not change for ``\\mu`` between ``10^5`` and ``10^8``, and the exact solution does
+not depend on ``\\mu``, Appendix B.1), build ``\\tilde{G}_L`` with MALS ([`ResidualALS`](@ref)) at a local tolerance
+between ``10^{-5}`` and ``10^{-8}``, stop once the residual of Eq. (22) is below ``10^{-1}`` (`residual_tol = 0.1`),
+and keep ``\\chi_{G_L}`` between 4 and 10. The FAI pays off when it is reused, e.g. across the time steps of the
+Chorin projection, and when the local dimension is small (Sec. 5.2); with a large local dimension ``d^2`` the build
+becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (23) for ``D`` holds only if ``\\tilde{G}_L``
+solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error of its row, but
+on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy (Appendix B.6).
+Larger values of ``\\mu`` also make the system worse conditioned for Krylov local solvers.
 
 # Arguments
 
@@ -290,19 +392,19 @@ dominated by the solve for ``\\tilde{G}_L``, whose sites have dimension ``d^2``.
 
 # Keywords
 
-  - `μ::Real`: weight of the complement of the lower-triangular mask in the projected operator of Eq. (22), e.g.
-    `1e7`.
-  - `solver::AbstractLinearSolver`: solver of the projected system for ``\\tilde{G}_L`` (e.g. `ALS` or
-    `ResidualALS`).
-  - `totalmaxdim::Int=5`: maximum bond dimension of ``G_L = D \\tilde{G}_L``.
+  - `μ::Real`: weight of the equations of the entries above the diagonal of ``\\tilde{G}_L`` in Eq. (22), e.g. `1e7`.
+  - `solver::AbstractLinearSolver`: solver of Eq. (22), e.g. [`ResidualALS`](@ref) with `ishermitian` and `isposdef`
+    set, since the system is SPD.
+  - `totalmaxdim::Int=5`: maximum bond dimension ``\\chi_{G_L}`` of ``G_L = D \\tilde{G}_L``.
   - `D_cutoff::Real=1e-15`, `D_maxdim::Int=typemax(Int)`, `D_oversample::Int=10`: truncation cutoff, maximum bond
     dimension and sketch oversampling of the element-wise map that computes ``D``.
   - `preconditioning::Bool=false`: precondition the solve for ``\\tilde{G}_L`` with [`rank1_preconditioner`](@ref).
+    In our tests this slowed the build down (see the internal `DifferenTT.fai_dg`).
   - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps of `solver` once the relative residual of
-    the projected system is below it (through a [`ResidualObserver`](@ref)).
-  - `compute_residual::Bool=false`: compute and log the relative residual of the projected system after the solve.
+    Eq. (22) is below it (through a [`ResidualObserver`](@ref) used as `sweep_observer!`).
+  - `compute_residual::Bool=false`: compute and log the relative residual of Eq. (22) after the solve.
   - `rng::AbstractRNG=Random.default_rng()`: random number generator of the sketches of ``D``.
-  - `kwargs...`: passed to [`linearsolve`](@ref) for the projected system.
+  - `kwargs...`: passed to [`linearsolve`](@ref) for Eq. (22).
 
 # Returns
 
@@ -311,8 +413,12 @@ dominated by the solve for ``\\tilde{G}_L``, whose sites have dimension ``d^2``.
 # Examples
 
 ```julia
-A, sites = …
-M⁻¹ = fai_preconditioner(A; μ=1e7, solver=ALS(), totalmaxdim=8)
+A, sites = …                                  # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+build = ResidualALS(;
+    sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=8),
+    updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5),
+)
+M⁻¹ = fai_preconditioner(A; μ=1e7, solver=build, totalmaxdim=8, residual_tol=0.1)
 x = linearsolve(ResidualALS(), A, b, M⁻¹, nothing)
 ```
 
@@ -340,7 +446,12 @@ function fai_preconditioner(
     return FactorizedPreconditioner(Gl)
 end
 
-# Deprecated positional form, kept so that existing scripts keep running
+"""
+    fai_preconditioner(A::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; kwargs...)
+
+Deprecated positional form of [`fai_preconditioner`](@ref), kept so that existing scripts keep running; `D_kwargs`
+maps to `D_cutoff`, `D_maxdim` and `D_oversample`.
+"""
 function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; kwargs...)
     Base.depwarn(
         "`fai_preconditioner(A, μ, solver, D_kwargs; kwargs...)` is deprecated, use " *
@@ -369,17 +480,48 @@ function _spectral_lower_bound(mat::AbstractMatrix)
 end
 
 """
-    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array, normalize_spectrum::Bool=true) where N
+    sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix},
+                                  M::Int; array_type::Type{<:AbstractArray}=Array,
+                                  normalize_spectrum::Bool=true) where {N}
+        -> Preconditioner
 
-Build a Sinc-quadrature (sum of exponentials) preconditioner `B_M ≈ L0⁻¹` for the Kronecker sum
-`L0 = Σ_ℓ A_ℓ` of the one-dimensional SPD operators in `A_list` (Khoromskij 2009). The result is
-a sum of `2M + 1` rank-one terms, so its bond dimension is at most `2M + 1`.
+Build the Sinc-quadrature (exponential-sum) preconditioner ``B_M \\approx L_0^{-1}`` of the Kronecker sum
+``L_0 = \\sum_\\ell A_\\ell`` of the one-dimensional SPD operators in `A_list` (Khoromskij, 2009; Eq. (26) of Torrente
+et al., *Factorized approximate inverse preconditioners in the tensor train format*).
 
-The quadrature of `1/x` is accurate on spectra normalized to `[1, R]`. With `normalize_spectrum=true`,
-`L0` is therefore rescaled by `λ_min(L0) = Σ_ℓ λ_min(A_ℓ)` before applying the quadrature, i.e.
-`B_M = (1/λ_min) Σ_k c_k ⊗_ℓ exp(-t_k A_ℓ / λ_min)`, which keeps `B_M L0` well conditioned
-regardless of the scaling of `A_list` (e.g. a `1/h²` factor). `normalize_spectrum=false` applies
-the quadrature to the unscaled operators.
+The inverse of a Kronecker sum has no low-rank form in general, but its exponential does, since
+``e^{-tL_0} = \\bigotimes_\\ell e^{-tA_\\ell}``. We therefore approximate ``1/x`` on ``[1, \\infty)`` by the Sinc
+quadrature ``\\sum_{k=-M}^{M} c_k e^{-t_k x}`` with ``t_k = e^{kh}``, ``c_k = h t_k`` and ``h = \\pi/\\sqrt{M}``, and
+obtain ``B_M`` as a sum of ``2M + 1`` Kronecker products, of bond dimension at most ``2M + 1``. The quadrature is
+accurate on spectra normalized to ``[1, R]``, so with `normalize_spectrum = true` we rescale ``L_0`` by
+``\\lambda_{\\min}(L_0) = \\sum_\\ell \\lambda_{\\min}(A_\\ell)``, i.e.
+``B_M = \\lambda_{\\min}^{-1} \\sum_k c_k \\bigotimes_\\ell e^{-t_k A_\\ell / \\lambda_{\\min}}``, which makes ``B_M``
+independent of the scaling of `A_list` (e.g. a ``1/h^2`` factor). `normalize_spectrum = false` applies the quadrature
+to the unscaled operators. Note that ``B_M`` is built for the separable part ``L_0`` only: for an operator with
+couplings between the dimensions, such as the anisotropic ``\\mathcal{L}(\\rho)`` of Eq. (28), its quality degrades as
+the operator becomes less separable (Sec. 5.1).
+
+# Arguments
+
+  - `arch::TTArchitecture{N}`: TT architecture with one site per dimension; `arch.site_map` assigns `A_list` to sites.
+  - `sites::Vector{<:Index}`: site indices of the operator.
+  - `A_list::Vector{<:AbstractMatrix}`: the ``N`` one-dimensional SPD operators, of sizes `arch.var_dims`.
+  - `M::Int`: number of quadrature points on each side; the result has ``2M + 1`` terms.
+
+# Keywords
+
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the result.
+  - `normalize_spectrum::Bool=true`: rescale ``L_0`` by ``\\lambda_{\\min}(L_0)`` before the quadrature.
+
+# Returns
+
+  - `Preconditioner`: ``B_M``.
+
+# Throws
+
+  - `DimensionMismatch`: if a matrix of `A_list` is not square, their number differs from ``N``, or their sizes differ
+    from `arch.var_dims`.
+  - `ArgumentError`: if ``\\lambda_{\\min}(L_0) \\le 0`` with `normalize_spectrum = true`.
 """
 function sincquadrature_preconditioner(
     arch::TTArchitecture{N},
@@ -443,6 +585,12 @@ end
 # license, Copyright (C) 2009-2012 Ivan Oseledets, Sergey Dolgov, Vladimir Kazeev, Thomas Mach, Olga Lebedeva, Dmitry
 # Savostyanov, Pavel Zhlobich, Le Song) rather than the formulas of Kazeev & Khoromskij (2012); see
 # THIRD_PARTY_NOTICES.md.
+"""
+    _dd_exact_inverse_laplacian(sites, arch::QTTArchitecture{1}, grid, bc, array_type=Array) -> MPO
+
+Exact QTT inverse, of bond dimension 5, of the second-order 1D Laplacian with Dirichlet conditions on both ends,
+scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
+"""
 function _dd_exact_inverse_laplacian(
     sites::Vector{<:Index},
     arch::QTTArchitecture{1},
@@ -529,6 +677,12 @@ function _dd_exact_inverse_laplacian(
     return (-grid.dx[1]^2) * MPO(tensors)
 end
 
+"""
+    _dn_exact_inverse_laplacian(sites, arch::QTTArchitecture{1}, grid, bc, array_type=Array) -> MPO
+
+Exact QTT inverse, of bond dimension 4, of the second-order 1D Laplacian with a Dirichlet condition on the left and a
+Neumann condition on the right, scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
+"""
 function _dn_exact_inverse_laplacian(
     sites::Vector{<:Index},
     arch::QTTArchitecture{1},
@@ -596,11 +750,28 @@ function _dn_exact_inverse_laplacian(
 end
 
 """
-    inverse_laplacian_preconditioner(arch::QTTArchitecture{1}, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+    inverse_laplacian_preconditioner(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid,
+                                     bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array) -> Preconditioner
 
-Construct the exact explicit QTT representation of the -1.0 * 1D inverse Laplacian following
-Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
-Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
+Build the exact QTT inverse of the second-order one-dimensional Laplacian on `grid` with the boundary conditions `bc`.
+
+The inverse of the 1D Laplacian has an explicit QTT representation of bond dimension 5 (Dirichlet–Dirichlet) or 4
+(Dirichlet–Neumann) (Kazeev & Khoromskij, 2012); we follow the implementation of TT-Toolbox. The result is the
+inverse of the operator that [`symmetrized_laplacian`](@ref) builds with `stencil_order = 2` for the same grid and
+boundary conditions, which is negative definite: to precondition the SPD ``-\\Delta_h``, use ``-1`` times its
+operator. It is exact for one dimension only, and serves as a reference.
+
+# Arguments
+
+  - `sites::Vector{<:Index}`: site indices of the operator.
+  - `arch::QTTArchitecture{1}`: one-dimensional QTT architecture.
+  - `grid::Grid`: the grid, whose spacing ``h`` scales the result by ``h^2``.
+  - `bc::BoundaryConditions`: Dirichlet on the left, and Dirichlet or Neumann on the right.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the result.
+
+# Throws
+
+  - `ArgumentError`: for other boundary conditions.
 """
 function inverse_laplacian_preconditioner(
     sites::Vector{<:Index},
@@ -616,7 +787,8 @@ function inverse_laplacian_preconditioner(
     else
         throw(
             ArgumentError(
-                "inverse_laplacian_preconditioner supports only Dirichlet-Dirichlet or Dirichlet-Neumann boundary conditions",
+                "inverse_laplacian_preconditioner supports only Dirichlet-Dirichlet or Dirichlet-Neumann " *
+                "boundary conditions",
             ),
         )
     end
