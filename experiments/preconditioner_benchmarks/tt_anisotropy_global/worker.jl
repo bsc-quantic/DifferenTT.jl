@@ -80,26 +80,11 @@ const residual_tol = 1e-3
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
-const maxdims_map = Dict(
-    5 => 80,
-    10 => 100,
-    15 => 150,
-    20 => 200
-)
+const maxdims_map = Dict(5 => 80, 10 => 100, 15 => 150, 20 => 200)
 
-const maxiter_map = Dict(
-    5 => 1000,
-    10 => 1000,
-    15 => 1000,
-    20 => 1000
-)
+const maxiter_map = Dict(5 => 1000, 10 => 1000, 15 => 1000, 20 => 1000)
 
-const pc_tol_map = Dict(
-    5 => 1e-3,
-    10 => 1e-3,
-    15 => 1e-3,
-    20 => 1e-3
-)
+const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-3)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
@@ -144,7 +129,9 @@ function build_task_list()
     return tasks
 end
 
-problem(N::Int, F::Real) = build_problem(N, F; nodes_per_dim=N_NODES_PER_DIM, rhs_kind=RHS_KIND, sol_maxdim=get(maxdims_map, N, 10))
+function problem(N::Int, F::Real)
+    build_problem(N, F; nodes_per_dim=N_NODES_PER_DIM, rhs_kind=RHS_KIND, sol_maxdim=get(maxdims_map, N, 10))
+end
 
 """
     make_global_solver(; rtol, maxiter, maxdim, cutoff, orth_maxdim, orth_cutoff)
@@ -153,20 +140,22 @@ Build the outer GlobalCG solver and its iteration-count `Ref`. Used both by the 
 and by every timed task, with identical argument *types*, so no keyword-method compilation is
 deferred into the timed solve.
 """
-function make_global_solver(; rtol::Float64, maxiter::Int, maxdim::Int, cutoff::Float64, orth_maxdim::Int, orth_cutoff::Float64)
+function make_global_solver(;
+    rtol::Float64, maxiter::Int, maxdim::Int, cutoff::Float64, orth_maxdim::Int, orth_cutoff::Float64
+)
     numiter_store = Ref{Int}(0)
-    updater_kwargs = GlobalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = rtol,
-        maxiter = maxiter,
-        maxdim = maxdim,
-        cutoff = cutoff,
-        orth_maxdim = orth_maxdim,
-        orth_cutoff = orth_cutoff,
-        numiter_store = numiter_store,
+    updater_kwargs = GlobalUpdaterArgs(;
+        ishermitian=true,
+        isposdef=true,
+        rtol=rtol,
+        maxiter=maxiter,
+        maxdim=maxdim,
+        cutoff=cutoff,
+        orth_maxdim=orth_maxdim,
+        orth_cutoff=orth_cutoff,
+        numiter_store=numiter_store,
     )
-    return GlobalCG(updater_kwargs=updater_kwargs), numiter_store
+    return GlobalCG(; updater_kwargs=updater_kwargs), numiter_store
 end
 
 """
@@ -177,42 +166,50 @@ with the same keyword set as the real build (including `residual_tol`), so the
 `sweep_observer!` path inside `fai_dg` is compiled ahead of time.
 """
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
-    fai_sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
+    fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
 
-    fai_updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = 1e-5,
-        krylovdim = 1,
-        maxiter = 2000
-    )
+    fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
 
-    fai_als_solver = ALS(
-        sweep_kwargs = fai_sweep_kwargs,
-        updater_kwargs = fai_updater_kwargs,
-    )
+    fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
     D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
 
-    return fai_preconditioner(A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build)
+    return fai_preconditioner(
+        A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build
+    )
 end
 
-"""Run the outer GlobalCG solve N_SOLVE_REPEATS times with a fresh solver each time. Returns a
-Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and iteration count."""
+"""
+Run the outer GlobalCG solve N_SOLVE_REPEATS times with a fresh solver each time. Returns a
+Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and iteration count.
+"""
 function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
     runs = NamedTuple[]
     for rep in 1:N_SOLVE_REPEATS
-        solver, numiter_store = make_global_solver(; rtol=residual_tol, maxiter=maxiter_map[N],
-                                                     maxdim=maxdims_map[N], cutoff=1e-13,
-                                                     orth_maxdim=maxdims_map[N], orth_cutoff=1e-14)
+        solver, numiter_store = make_global_solver(;
+            rtol=residual_tol,
+            maxiter=maxiter_map[N],
+            maxdim=maxdims_map[N],
+            cutoff=1e-13,
+            orth_maxdim=maxdims_map[N],
+            orth_cutoff=1e-14,
+        )
         x0 = copy(init_mps)
         # Same RNG state before every timed solve (all methods and repeats), so no random choice
         # inside the solver can differ between them.
         Random.seed!(N)
         GC.gc(true)
         stats = @timed solve_fn(solver, x0)
-        push!(runs, (; out_mps = stats.value, time = stats.time, compile_time = stats.compile_time,
-                       gc_time = stats.gctime, global_iters = numiter_store[]))
+        push!(
+            runs,
+            (;
+                out_mps=stats.value,
+                time=stats.time,
+                compile_time=stats.compile_time,
+                gc_time=stats.gctime,
+                global_iters=numiter_store[],
+            ),
+        )
         @info "solve repeat $rep" time=stats.time compile=stats.compile_time gc=stats.gctime global_iters=numiter_store[]
     end
     return runs
@@ -234,7 +231,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
     method = task.method
     key = ""
-    extra = Dict{String, Any}()
+    extra = Dict{String,Any}()
     pc = nothing
     t_build = 0.0
     build_compile = 0.0
@@ -284,9 +281,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         error("Unknown task method: $method")
     end
 
-    solve_fn = isnothing(pc) ?
-        (s, x0) -> linearsolve(s, A, rhs, x0) :
-        (s, x0) -> linearsolve(s, A, rhs, pc, x0)
+    solve_fn = isnothing(pc) ? (s, x0) -> linearsolve(s, A, rhs, x0) : (s, x0) -> linearsolve(s, A, rhs, pc, x0)
 
     runs = repeated_solves(A, rhs, init_mps, N, solve_fn)
     cold = first(runs)
@@ -307,7 +302,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         @warn "cold/warm global_iters disagree" cold=cold.global_iters warm=warm.global_iters
     end
 
-    result_dict = Dict{String, Any}(
+    result_dict = Dict{String,Any}(
         "key" => key,
         "N" => N,
         "F" => F,
@@ -323,20 +318,15 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "converged" => warm.global_iters < maxiter_map[N],
         "solution_maxdim" => maxlinkdim(out_mps),
         "solution_hit_maxdim" => maxlinkdim(out_mps) >= maxdims_map[N],
-
         "solve_time_cold" => cold.time,
         "compile_time_cold" => cold.compile_time,
         "gc_time_cold" => cold.gc_time,
         "global_iters_cold" => cold.global_iters,
-
         "compile_time" => warm.compile_time,
         "gc_time" => warm.gc_time,
-
         "n_solve_repeats" => N_SOLVE_REPEATS,
-
         "precond_build_compile_time" => build_compile,
         "precond_build_gc_time" => build_gc,
-
         "hostname" => gethostname(),
         "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
         "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
@@ -384,7 +374,7 @@ function warmup(N::Int)
         dinit = random_mps(dsites)
 
         dsinc = sincquadrature_preconditioner(dprob.arch, dsites, dprob.A_list, 1)
-        dfai  = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+        dfai = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
 
         solve_fns = (
             (s, x0) -> linearsolve(s, dA, drhs, x0),
@@ -392,7 +382,9 @@ function warmup(N::Int)
             (s, x0) -> linearsolve(s, dA, drhs, dfai, x0),
         )
         for solve_fn in solve_fns
-            solver, _ = make_global_solver(; rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, orth_maxdim=10, orth_cutoff=1e-8)
+            solver, _ = make_global_solver(;
+                rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, orth_maxdim=10, orth_cutoff=1e-8
+            )
             @timed solve_fn(solver, copy(dinit))
         end
 

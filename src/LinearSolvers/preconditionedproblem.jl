@@ -24,7 +24,9 @@ struct ReducedPreconditioner <: AbstractReducedPreconditioner
     reduced_op::ProjMPO
 end
 
-Base.copy(reduced_preconditioner::ReducedPreconditioner) = ReducedPreconditioner(copy(reduced_preconditioner.reduced_op))
+function Base.copy(reduced_preconditioner::ReducedPreconditioner)
+    ReducedPreconditioner(copy(reduced_preconditioner.reduced_op))
+end
 ITensors.contract(P::ReducedPreconditioner, v::ITensor) = ITensors.contract(P.reduced_op, v)
 ITensors.contract(P::ReducedPreconditioner) = ITensors.contract(P.reduced_op)
 ITensorMPS.product(P::ReducedPreconditioner, v::ITensor) = ITensorMPS.product(P.reduced_op, v)
@@ -34,7 +36,9 @@ struct ReducedFactorizedPreconditioner <: AbstractReducedPreconditioner
     reduced_op::ProjMPO
 end
 
-Base.copy(reduced_preconditioner::ReducedFactorizedPreconditioner) = ReducedFactorizedPreconditioner(copy(reduced_preconditioner.reduced_op))
+function Base.copy(reduced_preconditioner::ReducedFactorizedPreconditioner)
+    ReducedFactorizedPreconditioner(copy(reduced_preconditioner.reduced_op))
+end
 
 function _itensor_map(P::AbstractProjMPO)
     itensor_map = Union{ITensor,OneITensor}[lproj(P)]
@@ -61,7 +65,7 @@ end
 function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
     contractedGL = contract(P.reduced_op)
     transpose_itensor_map = _itensor_map(P.reduced_op)
-    
+
     transpose_itensor_map = [swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
 
     if dim(first(transpose_itensor_map)) == 1
@@ -95,8 +99,9 @@ Wraps a `ReducedLinearProblem` together with a `ProjMPO` preconditioner,
 enabling preconditioned iterative solvers within the `alternating_update` sweep framework.
 
 # Fields
-- `linear_problem::ReducedLinearProblem`: The underlying projected operator and RHS.
-- `preconditioner::ProjMPO`: The projected preconditioner operator.
+
+  - `linear_problem::ReducedLinearProblem`: The underlying projected operator and RHS.
+  - `preconditioner::ProjMPO`: The projected preconditioner operator.
 """
 mutable struct ReducedPrecondLinearProblem <: AbstractProjMPO
     linear_problem::ReducedLinearProblem
@@ -113,8 +118,9 @@ Wraps a `ReducedLinearProblem` together with a `ProjMPO` for the preconditioner 
 enabling preconditioned iterative solvers within the `alternating_update` sweep framework.
 
 # Fields
-- `linear_problem::ReducedLinearProblem`: The underlying projected operator and RHS.
-- `preconditioner::ProjMPO`: The projected preconditioner factor Gl operator.
+
+  - `linear_problem::ReducedLinearProblem`: The underlying projected operator and RHS.
+  - `preconditioner::ProjMPO`: The projected preconditioner factor Gl operator.
 """
 mutable struct ReducedFAIPrecondLinearProblem <: AbstractProjMPO
     linear_problem::ReducedLinearProblem
@@ -127,7 +133,9 @@ function initialize_reducedprecondlinearproblem(operator::MPO, constant_term::MP
     return ReducedPrecondLinearProblem(linear_problem, reducedMinv)
 end
 
-function initialize_reducedprecondlinearproblem(operator::MPO, constant_term::MPS, preconditioner::FactorizedPreconditioner)
+function initialize_reducedprecondlinearproblem(
+    operator::MPO, constant_term::MPS, preconditioner::FactorizedPreconditioner
+)
     linear_problem = ReducedLinearProblem(ProjMPO(operator), [ReducedConstantTerm(constant_term)])
     reducedGl = ReducedFactorizedPreconditioner(ProjMPO(preconditioner.operator))
     return ReducedFAIPrecondLinearProblem(linear_problem, reducedGl)
@@ -141,7 +149,9 @@ function initialize_reducedprecondlinearproblem(operator::MPO, constant_terms::V
     # return ReducedPrecondLinearProblem(linear_problem, projMinv)
 end
 
-function initialize_reducedprecondlinearproblem(operator::MPO, constant_terms::Vector{MPS}, Gl::FactorizedPreconditioner)
+function initialize_reducedprecondlinearproblem(
+    operator::MPO, constant_terms::Vector{MPS}, Gl::FactorizedPreconditioner
+)
     error("Not implemented yet")
     # # The residual in this case would be Σbᵢ which would have an absurd bond dimension, so...
     # linear_problem = ReducedLinearProblem(ProjMPO(operator), ReducedConstantTerm.(constant_terms))
@@ -150,9 +160,7 @@ function initialize_reducedprecondlinearproblem(operator::MPO, constant_terms::V
 end
 
 function Base.copy(reduced_problem::ReducedPrecondLinearProblem)
-    return ReducedPrecondLinearProblem(
-        copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner)
-    )
+    return ReducedPrecondLinearProblem(copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner))
 end
 
 function ITensorMPS.nsite(reduced_problem::ReducedPrecondLinearProblem)
@@ -183,11 +191,8 @@ function ITensorMPS.position!(reduced_problem::ReducedPrecondLinearProblem, stat
     return reduced_problem
 end
 
-
 function Base.copy(reduced_problem::ReducedFAIPrecondLinearProblem)
-    return ReducedFAIPrecondLinearProblem(
-        copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner)
-    )
+    return ReducedFAIPrecondLinearProblem(copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner))
 end
 
 function ITensorMPS.nsite(reduced_problem::ReducedFAIPrecondLinearProblem)

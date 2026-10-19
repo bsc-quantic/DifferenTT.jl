@@ -5,10 +5,11 @@ Configuration for the time interval and step size. It is stored in an `AbstractT
 (`ExplicitEuler`, `RK4`, ...) as `time_evol_kwargs`, from which `timestep` reads the step size.
 
 # Fields
-- `ti::Float64`: Initial time.
-- `tf::Float64`: Final time.
-- `dt::Float64`: Time step.
-- `nsteps::Int`: Number of steps.
+
+  - `ti::Float64`: Initial time.
+  - `tf::Float64`: Final time.
+  - `dt::Float64`: Time step.
+  - `nsteps::Int`: Number of steps.
 """
 struct TimeEvolArgs
     ti::Float64

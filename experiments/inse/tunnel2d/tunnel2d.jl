@@ -25,7 +25,6 @@ function circle(x, y; bx=0.5, by=0.5, rad=0.05)
     return 0.5 * (1 + tanh(500 * value))
 end
 
-
 function squares(x, y; rad=0.1, xdist=0.5, ydist=0.3, bx=0.5, by=0.5)
     square1 = abs((x - bx - xdist/2) + (y - by)) + abs((x - bx - xdist/2) - (y - by)) - rad
     square2 = abs((x - bx + xdist/2) + (y - by)) + abs((x - bx + xdist/2) - (y - by)) - rad
@@ -58,13 +57,13 @@ function symmetric_wing(x, y; bx=0.6, by=0.5, rad=0.25, k=0.2)
     c2 = -0.3516 * t
     c3 = 0.2843 * t
     c4 = -0.1015 * t
-    
+
     # Normalize position along the chord to [0,1]
     arg = abs(x - bx) <= chord/2 ? (x - x0) / chord : 0.0
-    
+
     # Airfoil half-thickness (NACA 00xx)
     v = chord * 5 * (c1 * arg + c2 * arg ^ 2 + c3 * arg ^ 3 + c4 * arg ^ 4 + csq * arg ^ 0.5)
-    
+
     # Elliptical-like boundary centered at `by`, with inclination `k`
     value = v ^ 2 - (y - by - k * (arg - 0.5)) ^ 2
     value += abs(value)
@@ -72,17 +71,19 @@ function symmetric_wing(x, y; bx=0.6, by=0.5, rad=0.25, k=0.2)
 end
 
 using Plots
-x_vals = range(0, 2, length=1000)
-y_vals = range(0, 1, length=1000)
+x_vals = range(0, 2; length=1000)
+y_vals = range(0, 1; length=1000)
 
 # Evaluate and plot the mask using a heatmap
 heatmap(
-    x_vals, y_vals, circle,
-    aspect_ratio = :equal,
-    xlabel = "x",
-    ylabel = "y",
-    color = :viridis, # or :grays for a black-and-white mask look
-    size = (2000, 1000)
+    x_vals,
+    y_vals,
+    circle;
+    aspect_ratio=:equal,
+    xlabel="x",
+    ylabel="y",
+    color=:viridis, # or :grays for a black-and-white mask look
+    size=(2000, 1000),
 )
 
 mask(x) = circle(x...)
@@ -100,7 +101,6 @@ grid = Grid(arch, box_size)
 sites = siteinds(arch)
 # sites = siteinds(kickstart_mps_vx)
 
-
 save_mask = true
 mask_name = "circle_mask"
 load_mask = false
@@ -117,7 +117,7 @@ if save_mask
     @show ranks_mask
     @show error_mask
     object_mask = replace_siteinds!(MPS(tci_mask), sites)
-    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints =  200, size = fig_size)
+    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
 
     # save(mask_path, mask_name, object_mask)
 end
@@ -127,8 +127,7 @@ if load_mask
     length(object_mask) != sum(nodes) && throw(ArgumentError("Given object_mask does not have the required length."))
     siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
 
-    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints =  200, size = fig_size)
-
+    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
 end
 
 isnothing(object_mask) && @warn "Mask was not initialized."
@@ -179,7 +178,6 @@ bcsp = BoundaryConditions(bcspx, bcspy)
 v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
 # v_field = VectorField((kickstart_mps_vx, kickstart_mps_vy), arch, (bcsvx, bcsvy))
 
-
 p_field = ScalarField(sites, arch, bcsp)
 
 # visualize_vector(v_field, grid, "experiments/inse/tunnel2d/tunnel_field.png"; npoints=512, quiver_npoints=5, arrow_scale=0.1, aspect_ratio=:equal, size = fig_size)
@@ -192,7 +190,7 @@ updater_kwargs = LocalUpdaterArgs(;
     rtol=1e-4,
     krylovdim=1,
     maxiter=500,
-    verbosity=1
+    verbosity=1,
 )
 sweep_kwargs = SweepingArgs(;
     nsweeps=5,
@@ -217,9 +215,37 @@ display(timeit_to)
 TimerOutputs.disable_debug_timings(DifferenTT)
 
 nplots = length(experiment.u_fields)
-for k in 1:plot_step:min(nplots * plot_step, length(experiment.u_fields))
+for k in 1:plot_step:min(nplots*plot_step, length(experiment.u_fields))
     evolution_step = 1 + (save_step * plot_step) * (k - 1)
-    visualize_vector(experiment.u_fields, k, grid, destination_folder*"/vector_$(evolution_step).png"; npoints=300, quiver_npoints=20, arrow_scale=0.05, aspect_ratio=:equal, size = fig_size)
-    visualize_vorticity(experiment.u_fields, k, grid, destination_folder*"/vorticity_$(evolution_step).png"; npoints=300, quiver_npoints=20, arrow_scale=0.0, aspect_ratio=:equal, size = fig_size)
-    k > 1 && visualize_scalar(experiment.p_field, k-1, grid, destination_folder*"/press_$(evolution_step - 1).png"; npoints=300, aspect_ratio=:equal, size = fig_size)
+    visualize_vector(
+        experiment.u_fields,
+        k,
+        grid,
+        destination_folder*"/vector_$(evolution_step).png";
+        npoints=300,
+        quiver_npoints=20,
+        arrow_scale=0.05,
+        aspect_ratio=:equal,
+        size=fig_size,
+    )
+    visualize_vorticity(
+        experiment.u_fields,
+        k,
+        grid,
+        destination_folder*"/vorticity_$(evolution_step).png";
+        npoints=300,
+        quiver_npoints=20,
+        arrow_scale=0.0,
+        aspect_ratio=:equal,
+        size=fig_size,
+    )
+    k > 1 && visualize_scalar(
+        experiment.p_field,
+        k-1,
+        grid,
+        destination_folder*"/press_$(evolution_step - 1).png";
+        npoints=300,
+        aspect_ratio=:equal,
+        size=fig_size,
+    )
 end

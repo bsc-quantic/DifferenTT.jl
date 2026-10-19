@@ -32,10 +32,7 @@ field = ScalarField(target_mps, arch, bc)
 
 Δ = symmetrized_laplacian(field, grid)
 
-solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=5, maxdim=50, cutoff=1e-10),
-    residual_tol = 1e-5
-)
+solver = ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=5, maxdim=50, cutoff=1e-10), residual_tol=1e-5)
 
 init_mps = zeros_mps(siteinds(target_mps))
 

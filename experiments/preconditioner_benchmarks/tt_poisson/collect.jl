@@ -2,7 +2,11 @@ using JLD2
 using DataFrames
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_poisson/results_nocond" : "experiments/preconditioner_benchmarks/tt_poisson/results"
+base_folder = if use_nocond
+    "experiments/preconditioner_benchmarks/tt_poisson/results_nocond"
+else
+    "experiments/preconditioner_benchmarks/tt_poisson/results"
+end
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()
@@ -15,8 +19,8 @@ for file in readdir(tasks_folder)
             if !haskey(result, "compute_cond")
                 result["compute_cond"] = !use_nocond
             end
-            result_sym = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in result)
-            push!(df, result_sym, cols=:union)
+            result_sym = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in result)
+            push!(df, result_sym; cols=:union)
         catch e
             println("Error loading $file: $e")
         end

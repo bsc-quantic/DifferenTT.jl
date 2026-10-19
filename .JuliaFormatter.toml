@@ -18,3 +18,4 @@ align_matrix = true
 align_struct_field = false
 align_assignment = false
 align_conditional = false
+whitespace_in_kwargs = false

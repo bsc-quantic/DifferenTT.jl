@@ -11,8 +11,8 @@ for file in readdir(tasks_folder)
         filepath = joinpath(tasks_folder, file)
         try
             result = load(filepath, "result")
-            result_sym = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in result)
-            push!(df, result_sym, cols=:union)
+            result_sym = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in result)
+            push!(df, result_sym; cols=:union)
         catch e
             println("Error loading $file: $e")
         end

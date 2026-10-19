@@ -35,11 +35,21 @@ for N in sort(unique(df.N))
     plot_speedup_vs_F(dfN, N, :solve_time, plots_dir)
     plot_speedup_vs_F(dfN, N, :total_time, plots_dir)
 
-    plot_metric_vs_F(dfN, :global_iters; title="Global CG iterations (N=$N)", ylabel="Iterations",
-                     file=joinpath(plots_dir, "iters_vs_F_N_$(N).png"))
+    plot_metric_vs_F(
+        dfN,
+        :global_iters;
+        title="Global CG iterations (N=$N)",
+        ylabel="Iterations",
+        file=joinpath(plots_dir, "iters_vs_F_N_$(N).png"),
+    )
 
-    plot_metric_vs_F(dfN, :relative_residual; title="Final relative residual (N=$N)", ylabel=L"\|Ax-b\| / \|b\|",
-                     file=joinpath(plots_dir, "residual_vs_F_N_$(N).png"))
+    plot_metric_vs_F(
+        dfN,
+        :relative_residual;
+        title="Final relative residual (N=$N)",
+        ylabel=L"\|Ax-b\| / \|b\|",
+        file=joinpath(plots_dir, "residual_vs_F_N_$(N).png"),
+    )
 
     plot_cost_vs_F(dfN, N, plots_dir)
 

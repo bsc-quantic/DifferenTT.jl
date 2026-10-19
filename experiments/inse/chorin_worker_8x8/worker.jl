@@ -16,7 +16,8 @@ LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 @info "Set BLAS threads to $cpus_per_task"
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = use_nocond ? "experiments/inse/chorin_worker_8x8/results_nocond" : "experiments/inse/chorin_worker_8x8/results"
+base_folder =
+    use_nocond ? "experiments/inse/chorin_worker_8x8/results_nocond" : "experiments/inse/chorin_worker_8x8/results"
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
@@ -27,52 +28,28 @@ const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
 
-const tf_map = Dict(
-    (8, 7) => 5.0,
-    (10, 10) => 1.0,
-    (12, 12) => 0.1
-)
+const tf_map = Dict((8, 7) => 5.0, (10, 10) => 1.0, (12, 12) => 0.1)
 
-const n_steps_map = Dict(
-    (8, 7) => 2001,
-    (10, 10) => 15,
-    (12, 12) => 10
-)
+const n_steps_map = Dict((8, 7) => 2001, (10, 10) => 15, (12, 12) => 10)
 
-const system_sizes = [(8,7), (10, 10), (12, 12)]
-const cond_nodes  = [(8,7), (10, 10), (12, 12)]
+const system_sizes = [(8, 7), (10, 10), (12, 12)]
+const cond_nodes = [(8, 7), (10, 10), (12, 12)]
 
-function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
 const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
 
-const maxdims_map = Dict(
-    (8, 7) => 200,
-    (10, 10) => 250,
-    (12, 12) => 400
-)
+const maxdims_map = Dict((8, 7) => 200, (10, 10) => 250, (12, 12) => 400)
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
-const cutoff_map = Dict(
-    (8,7) => 1e-13,
-    (10, 10) => 1e-13,
-    (12, 12) => 1e-13
-)
+const cutoff_map = Dict((8, 7) => 1e-13, (10, 10) => 1e-13, (12, 12) => 1e-13)
 
-const nsweeps_map = Dict(
-    (8,7) => 30,
-    (10, 10) => 100,
-    (12, 12) => 100
-)
+const nsweeps_map = Dict((8, 7) => 30, (10, 10) => 100, (12, 12) => 100)
 
-const tol_map = Dict(
-    (8,7) => 1e-4,
-    (10, 10) => 1e-4,
-    (12, 12) => 1e-4
-)
+const tol_map = Dict((8, 7) => 1e-4, (10, 10) => 1e-4, (12, 12) => 1e-4)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -85,14 +62,14 @@ struct TaskSpec
 end
 
 function build_task_list()
-    return [TaskSpec((8,7), true, 0.0, 0)]
+    return [TaskSpec((8, 7), true, 0.0, 0)]
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
+function build_grid(nodes::NTuple{2,Int}, max_steps::Int)
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
-    
+
     # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
     # The benchmark requires the true masks to reflect exact conditions. 
     # For now, we will create an empty mask if the file doesn't exist, to prevent crashing.
@@ -104,29 +81,40 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
         object_mask = zeros_mps(sites)
         @warn "mask not found"
     end
-    
+
     v0 = 1.0
     mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
     mps_vy = 0.0 * ones_mps(sites)
-    
+
     bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
     bcsvyx = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
     bcsvyy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    
+
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    
+
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
     bcsp = BoundaryConditions(bcspx, bcspy)
-    
+
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
-    
-    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, tf_map[nodes], max_steps), cutoff=1e-12, maxdim=maxdims_map[nodes])
-    experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-12)
+
+    time_stepper = RK4(;
+        time_evol_kwargs=TimeEvolArgs(0.0, tf_map[nodes], max_steps), cutoff=1e-12, maxdim=maxdims_map[nodes]
+    )
+    experiment = INSExperiment(
+        grid,
+        v_field,
+        p_field,
+        RE_NUM,
+        object_mask;
+        stencil_order=STENCIL_ORDER,
+        maxdim=maxdims_map[nodes],
+        cutoff=1e-12,
+    )
 
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -139,14 +127,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     regularize && error("Benchmark operator A is not regularized; pressure BCs need a Dirichlet boundary")
     cache = ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, A, regularize)
 
-    return (;
-        nodes=nodes,
-        A=A,
-        experiment=experiment,
-        time_stepper=time_stepper,
-        cache=cache,
-        object_mask=object_mask
-    )
+    return (; nodes=nodes, A=A, experiment=experiment, time_stepper=time_stepper, cache=cache, object_mask=object_mask)
 end
 
 function masked_velocity(grid)
@@ -160,33 +141,45 @@ function build_rhs(grid, masked_u)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, masked_u, dt)
 end
 
-function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing; save_residual::Bool=false)
+function chorin_step!(
+    grid,
+    sweep_kwargs,
+    compute_cond::Bool,
+    tol_val::Float64,
+    step_index::Int,
+    precond=nothing;
+    save_residual::Bool=false,
+)
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
-    
+
     numiter_store = KrylovSweepStats()
     cond_store = compute_cond ? KrylovCondStats() : nothing
     pc_cond_store = compute_cond ? KrylovCondStats() : nothing
     updater_kwargs = LocalUpdaterArgs(;
-        ishermitian = true,
-        isposdef = true,
-        rtol = 0.1 * tol_val,
+        ishermitian=true,
+        isposdef=true,
+        rtol=0.1 * tol_val,
         krylovdim=1,
         maxiter=2000,
-        numiter_store = numiter_store,
-        cond_store = cond_store,
-        pc_cond_store = pc_cond_store
+        numiter_store=numiter_store,
+        cond_store=cond_store,
+        pc_cond_store=pc_cond_store,
     )
 
     res_observer = ResidualObserver(grid.A, rhs, tol_val)
-    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
-    resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
-    amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
+    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., (observer!)=res_observer)
+    resals_solver = ResidualALS(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val
+    )
+    amen_solver = AMEn(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim=3, enrichment_cutoff=1e-10
+    )
+    als_solver = ALS(; sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = als_solver
-    
+
     dt = grid.time_stepper.time_evol_kwargs.dt
     previous_p = last(experiment.p_field)
     # previous_p = nothing
@@ -202,7 +195,7 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     else
         t = @elapsed pdt = linearsolve(solver, grid.A, rhs, precond, pdt_guess)
     end
-    
+
     # Compute relative residual using inner product to save memory
     term1 = ITensorMPS.inner(grid.A, pdt, grid.A, pdt)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
@@ -215,21 +208,21 @@ function chorin_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, 
     @info "Sol_maxdim = $sol_maxdim"
 
     residual_mps = save_residual ? +(apply(grid.A, pdt; alg="naive"), -rhs; alg="directsum") : nothing
-    
+
     divfree_p = pdt * (1/dt)
-    
+
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
     rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
     timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
-    
+
     experiment.u_fields[length(experiment.u_fields)] = timestepped_u
-    
+
     iters_per_site = DifferenTT.positions_sum(numiter_store)
-    
+
     res_dict = (; t, rel_res, sol_maxdim, iters_per_site, residual_mps)
-    
+
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
         local_cond_mean = isempty(local_conds) ? NaN : mean(local_conds)
@@ -256,12 +249,14 @@ function load_kickstart!(grid, base_folder)
                 start_step = last_step + 1
                 loaded_u = last(file["u_fields_$last_step"])
                 for m in loaded_u
-                    siteinds(m) != grid.experiment.u_fields.usites && replace_siteinds!(m, grid.experiment.u_fields.usites)
+                    siteinds(m) != grid.experiment.u_fields.usites &&
+                        replace_siteinds!(m, grid.experiment.u_fields.usites)
                 end
                 grid.experiment.u_fields[1] = loaded_u
-                
+
                 loaded_p = last(file["p_field_$last_step"])
-                siteinds(loaded_p) != grid.experiment.p_field.usites && replace_siteinds!(loaded_p, grid.experiment.p_field.usites)
+                siteinds(loaded_p) != grid.experiment.p_field.usites &&
+                    replace_siteinds!(loaded_p, grid.experiment.p_field.usites)
                 grid.experiment.p_field[1] = loaded_p
             end
         end
@@ -278,25 +273,25 @@ function run_task(task::TaskSpec)
     nsweep_val = nsweeps_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
     tol_val = tol_map[task.nodes]
-    
-    sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
+
+    sweep_kwargs = SweepingArgs(; nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
-        
+
         # Warmup
         chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0)
-        
+
         start_step = load_kickstart!(grid, base_folder)
-        
+
         solve_times = zeros(Float64, start_step - 1)
-        iters = [Float64[] for _ in 1:(start_step - 1)]
+        iters = [Float64[] for _ in 1:(start_step-1)]
         residuals = zeros(Float64, start_step - 1)
         solution_maxdims = zeros(Int, start_step - 1)
         iters_per_site = Float64[]
         conds_per_site = Float64[]
         avg_conds = Float64[]
-        
+
         for i in start_step:N_STEPS
             @info "Step $i / $N_STEPS"
 
@@ -317,13 +312,13 @@ function run_task(task::TaskSpec)
                     file["poisson_residual_$i"] = step_res.residual_mps
                 end
             end
-            
+
             if isempty(iters_per_site)
                 iters_per_site = copy(step_res.iters_per_site)
             else
                 iters_per_site .+= step_res.iters_per_site
             end
-            
+
             if compute_cond
                 # For baseline, local_conds contains the standard condition numbers
                 if isempty(conds_per_site)
@@ -333,11 +328,11 @@ function run_task(task::TaskSpec)
                 end
                 push!(avg_conds, step_res.local_cond_mean)
             end
-            
+
             GC.gc(true)
         end
-        
-        result_dict = Dict{String, Any}(
+
+        result_dict = Dict{String,Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
             "compute_cond" => compute_cond,
@@ -347,86 +342,73 @@ function run_task(task::TaskSpec)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
-            "precond_build_time" => 0.0
+            "precond_build_time" => 0.0,
         )
-        
+
         if compute_cond
             performed_steps = max(1, N_STEPS - start_step + 1)
             conds_per_site ./= performed_steps
             result_dict["conds_per_site"] = conds_per_site
             result_dict["avg_cond"] = isempty(avg_conds) ? NaN : mean(avg_conds)
         end
-        
+
         return result_dict
     else
         μ = task.mu
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
-        
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
-        
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            rtol = 1e-9,
-            krylovdim = 1,
-            maxiter = 3000
-        )
-        
-        fai_resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
+
+        fai_sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12)
+
+        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=3000)
+
+        fai_resals_solver = ResidualALS(;
+            sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
         )
 
-        fai_als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
+        fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
-        fai_amen_solver =  AMEn(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            enrichment_maxdim = 1,
-        )
+        fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
-        
+
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
+            unscaledG, D = DifferenTT.fai_dg(
+                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2
+            )
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
-        
+
         # Warmup
         chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, 0, precond)
-        
+
         start_step = load_kickstart!(grid, base_folder)
-        
+
         solve_times = zeros(Float64, start_step - 1)
-        iters = [Float64[] for _ in 1:(start_step - 1)]
+        iters = [Float64[] for _ in 1:(start_step-1)]
         residuals = zeros(Float64, start_step - 1)
         solution_maxdims = zeros(Int, start_step - 1)
         iters_per_site = Float64[]
         pc_conds_per_site = Float64[]
         avg_pc_conds = Float64[]
-        
+
         for i in start_step:N_STEPS
             @info "Step $i / $N_STEPS"
-            
+
             step_res = chorin_step!(grid, sweep_kwargs, compute_cond, tol_val, i, precond)
             push!(solve_times, step_res.t)
             push!(residuals, step_res.rel_res)
             push!(solution_maxdims, step_res.sol_maxdim)
             push!(iters, step_res.iters_per_site)
-            
+
             if isempty(iters_per_site)
                 iters_per_site = copy(step_res.iters_per_site)
             else
                 iters_per_site .+= step_res.iters_per_site
             end
-            
+
             if compute_cond
                 if isempty(pc_conds_per_site)
                     pc_conds_per_site = step_res.local_conds
@@ -435,11 +417,11 @@ function run_task(task::TaskSpec)
                 end
                 push!(avg_pc_conds, step_res.local_cond_mean)
             end
-            
+
             GC.gc(true)
         end
-        
-        result_dict = Dict{String, Any}(
+
+        result_dict = Dict{String,Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
             "compute_cond" => compute_cond,
@@ -451,16 +433,16 @@ function run_task(task::TaskSpec)
             "iters" => iters,
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
-            "solution_maxdims" => solution_maxdims
+            "solution_maxdims" => solution_maxdims,
         )
-        
+
         if compute_cond
             performed_steps = max(1, N_STEPS - start_step + 1)
             pc_conds_per_site ./= performed_steps
             result_dict["pc_conds_per_site"] = pc_conds_per_site
             result_dict["avg_pc_cond"] = isempty(avg_pc_conds) ? NaN : mean(avg_pc_conds)
         end
-        
+
         return result_dict
     end
 end
@@ -475,21 +457,17 @@ end
 task = all_tasks[task_id]
 
 @info "Running JIT warmup..."
-dummy_grid = build_grid((8,7), 1)
-dummy_solver = ResidualALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    residual_tol=1e-2
-)
-dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-dummy_als_solver = ALS(
-    sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-    updater_kwargs = dummy_updater_kwargs
+dummy_grid = build_grid((8, 7), 1)
+dummy_solver = ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), residual_tol=1e-2)
+dummy_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+dummy_als_solver = ALS(;
+    sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_updater_kwargs
 )
 DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
 
 # When running with condition numbers, compute time does not really count, so it is better to avoid
 # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-chorin_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0)
+chorin_step!(dummy_grid, SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0)
 @info "JIT warmup complete."
 
 result = run_task(task)

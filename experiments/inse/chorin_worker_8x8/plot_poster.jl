@@ -53,7 +53,9 @@ _, h_v = samples(mpss[2], grid, arch, npoints)
 mag = sqrt.(h_u .^ 2 .+ h_v .^ 2)
 
 plt = heatmap(
-    h_ranges[1], h_ranges[2], mag';
+    h_ranges[1],
+    h_ranges[2],
+    mag';
     color=poster_cmap,
     colorbar=false,
     aspect_ratio=:equal,
@@ -73,12 +75,7 @@ _, q_v = samples(mpss[2], grid, arch, quiver_npoints)
 X = [x for x in q_ranges[1], y in q_ranges[2]]
 Y = [y for x in q_ranges[1], y in q_ranges[2]]
 
-quiver!(
-    plt, X[:], Y[:];
-    quiver=(arrow_scale .* q_u[:], arrow_scale .* q_v[:]),
-    color=arrow_color,
-    linewidth=1.5,
-)
+quiver!(plt, X[:], Y[:]; quiver=(arrow_scale .* q_u[:], arrow_scale .* q_v[:]), color=arrow_color, linewidth=1.5)
 
 mkpath(plot_dir)
 savefig(plt, out_path_svg)

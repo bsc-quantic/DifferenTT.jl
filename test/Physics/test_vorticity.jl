@@ -6,6 +6,19 @@ using LinearAlgebra
 using Random
 using JLD2
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
+# The dense references contract operators with more indices than the ITensors order-warning threshold
+function dense_mpo(A::MPO)
+    previous = ITensors.disable_warn_order()
+    try
+        return contract_mpo(A)
+    finally
+        ITensors.set_warn_order(previous)
+    end
+end
+
 # -------------------------------------------------------------------------------------------------
 # Dense references of the vorticity-streamfunction scheme with general faces. Fields are stored as F[x, y]
 # on the K₁ × K₂ stored nodes. `pad` adds one ghost row per face: a value (number or profile along the face),
@@ -21,20 +34,21 @@ ghost_row(g, mirror, periodic) = g === :mirror ? mirror : (g === :periodic ? per
 
 function pad(F::AbstractMatrix, ghosts=((0.0, 0.0), (0.0, 0.0)))
     P = zeros(size(F, 1) + 2, size(F, 2) + 2)
-    P[2:end-1, 2:end-1] .= F
-    P[1, 2:end-1] .= ghost_row(ghosts[1][1], F[2, :], F[end, :])
-    P[end, 2:end-1] .= ghost_row(ghosts[1][2], F[end-1, :], F[1, :])
-    P[2:end-1, 1] .= ghost_row(ghosts[2][1], F[:, 2], F[:, end])
-    P[2:end-1, end] .= ghost_row(ghosts[2][2], F[:, end-1], F[:, 1])
+    P[2:(end-1), 2:(end-1)] .= F
+    P[1, 2:(end-1)] .= ghost_row(ghosts[1][1], F[2, :], F[end, :])
+    P[end, 2:(end-1)] .= ghost_row(ghosts[1][2], F[end-1, :], F[1, :])
+    P[2:(end-1), 1] .= ghost_row(ghosts[2][1], F[:, 2], F[:, end])
+    P[2:(end-1), end] .= ghost_row(ghosts[2][2], F[:, end-1], F[:, 1])
     return P
 end
 
-dense_dx(P, hx) = (P[3:end, 2:end-1] .- P[1:end-2, 2:end-1]) ./ (2hx)
-dense_dy(P, hy) = (P[2:end-1, 3:end] .- P[2:end-1, 1:end-2]) ./ (2hy)
+dense_dx(P, hx) = (P[3:end, 2:(end-1)] .- P[1:(end-2), 2:(end-1)]) ./ (2hx)
+dense_dy(P, hy) = (P[2:(end-1), 3:end] .- P[2:(end-1), 1:(end-2)]) ./ (2hy)
 
 function dense_laplacian(P, hx, hy)
-    C = P[2:end-1, 2:end-1]
-    return (P[1:end-2, 2:end-1] .+ P[3:end, 2:end-1] .- 2C) ./ hx^2 .+ (P[2:end-1, 1:end-2] .+ P[2:end-1, 3:end] .- 2C) ./ hy^2
+    C = P[2:(end-1), 2:(end-1)]
+    return (P[1:(end-2), 2:(end-1)] .+ P[3:end, 2:(end-1)] .- 2C) ./ hx^2 .+
+           (P[2:(end-1), 1:(end-2)] .+ P[2:(end-1), 3:end] .- 2C) ./ hy^2
 end
 
 face_ghosts(faces, ghost) = ntuple(axis -> (ghost(faces[axis][1], axis, :left), ghost(faces[axis][2], axis, :right)), 2)
@@ -42,7 +56,9 @@ closure_ghost(face) = face isa OutflowFace ? :mirror : (face isa PeriodicFace ? 
 
 psi_ghost(face, axis, side) = isnothing(closure_ghost(face)) ? face.psi : closure_ghost(face)
 homogeneous_ghost(face, axis, side) = something(closure_ghost(face), 0.0)
-flux_ghost(face, axis, side) = something(closure_ghost(face), face isa InflowFace ? face.normal_velocity .* face.omega : 0.0)
+function flux_ghost(face, axis, side)
+    something(closure_ghost(face), face isa InflowFace ? face.normal_velocity .* face.omega : 0.0)
+end
 
 # Ghost vorticity of each face. On a no-slip wall: (c₁ψ₁ + c₂ψ₂ - (c₁ + c₂)ψ_w)/h² + s c_U U_t/h, with the sign s
 # from ω = ∂ₓv - ∂ᵧu (+1 on the top and left walls)
@@ -53,18 +69,25 @@ function omega_ghosts(faces, Ψ, hx, hy; formula)
         face isa SlipWall && return 0.0
         face isa InflowFace && return face.omega
         h = axis == 1 ? hx : hy
-        ψ1, ψ2 = axis == 1 ? (side == :left ? (Ψ[1, :], Ψ[2, :]) : (Ψ[end, :], Ψ[end-1, :])) :
-                 (side == :left ? (Ψ[:, 1], Ψ[:, 2]) : (Ψ[:, end], Ψ[:, end-1]))
+        ψ1, ψ2 = if axis == 1
+            (side == :left ? (Ψ[1, :], Ψ[2, :]) : (Ψ[end, :], Ψ[end-1, :]))
+        else
+            (side == :left ? (Ψ[:, 1], Ψ[:, 2]) : (Ψ[:, end], Ψ[:, end-1]))
+        end
         s = ((axis == 2) == (side == :right)) ? 1.0 : -1.0
         return (c1 .* ψ1 .+ c2 .* ψ2 .- (c1 + c2) * face.psi) ./ h^2 .+ s * cU .* face.velocity ./ h
     end
     return face_ghosts(faces, ghost)
 end
 
-dense_full_laplacian(Ω, Ψ, hx, hy, faces::Tuple; formula) = dense_laplacian(pad(Ω, omega_ghosts(faces, Ψ, hx, hy; formula=formula)), hx, hy)
-dense_full_laplacian(Ω, Ψ, hx, hy, U::Real; formula) = dense_full_laplacian(Ω, Ψ, hx, hy, cavity_faces(U); formula=formula)
+function dense_full_laplacian(Ω, Ψ, hx, hy, faces::Tuple; formula)
+    dense_laplacian(pad(Ω, omega_ghosts(faces, Ψ, hx, hy; formula=formula)), hx, hy)
+end
+function dense_full_laplacian(Ω, Ψ, hx, hy, U::Real; formula)
+    dense_full_laplacian(Ω, Ψ, hx, hy, cavity_faces(U); formula=formula)
+end
 
-dense_velocity(Ψ, hx, hy, faces) = (P = pad(Ψ, face_ghosts(faces, psi_ghost)); (dense_dy(P, hy), -dense_dx(P, hx)))
+dense_velocity(Ψ, hx, hy, faces) = (P=pad(Ψ, face_ghosts(faces, psi_ghost)); (dense_dy(P, hy), -dense_dx(P, hx)))
 
 # Conservative advection: ghost fluxes vanish on walls, carry the inflow flux and are first-order upwind on outflows
 function dense_advection(u, v, Ω, hx, hy, faces)
@@ -82,12 +105,16 @@ function dense_transport_rhs(Ω, Ψ, hx, hy, faces::Tuple, Re; formula)
     u, v = dense_velocity(Ψ, hx, hy, faces)
     return -dense_advection(u, v, Ω, hx, hy, faces) .+ dense_full_laplacian(Ω, Ψ, hx, hy, faces; formula=formula) ./ Re
 end
-dense_transport_rhs(Ω, Ψ, hx, hy, U::Real, Re; formula) = dense_transport_rhs(Ω, Ψ, hx, hy, cavity_faces(U), Re; formula=formula)
+function dense_transport_rhs(Ω, Ψ, hx, hy, U::Real, Re; formula)
+    dense_transport_rhs(Ω, Ψ, hx, hy, cavity_faces(U), Re; formula=formula)
+end
 
 # -Δ acting on vec(F) with Dirichlet ghost walls of value 0, with x the fastest index
 function dense_poisson_matrix(K1, K2, hx, hy)
     second_derivative(n, h) = Matrix(SymTridiagonal(fill(-2.0, n), ones(n - 1))) ./ h^2
-    return -(kron(Matrix(1.0I, K2, K2), second_derivative(K1, hx)) + kron(second_derivative(K2, hy), Matrix(1.0I, K1, K1)))
+    return -(
+        kron(Matrix(1.0I, K2, K2), second_derivative(K1, hx)) + kron(second_derivative(K2, hy), Matrix(1.0I, K1, K1))
+    )
 end
 
 # Solution of -Δψ = ω with the face values of ψ (mirrored, unweighted outflow rows; not for singular systems)
@@ -95,7 +122,7 @@ function dense_poisson_solve(Ω, hx, hy, faces)
     K1, K2 = size(Ω)
     homogeneous = face_ghosts(faces, homogeneous_ghost)
     A = zeros(K1 * K2, K1 * K2)
-    for k in 1:K1*K2
+    for k in 1:(K1*K2)
         e = zeros(K1 * K2)
         e[k] = 1.0
         A[:, k] .= -vec(dense_laplacian(pad(reshape(e, K1, K2), homogeneous), hx, hy))
@@ -123,7 +150,9 @@ function dense_evolve(Ω0, nsteps, dt, hx, hy, faces::Tuple, Re; formula, scheme
     end
     return Ω, Ψ
 end
-dense_evolve(Ω0, nsteps, dt, hx, hy, U::Real, Re; formula, scheme) = dense_evolve(Ω0, nsteps, dt, hx, hy, cavity_faces(U), Re; formula=formula, scheme=scheme)
+function dense_evolve(Ω0, nsteps, dt, hx, hy, U::Real, Re; formula, scheme)
+    dense_evolve(Ω0, nsteps, dt, hx, hy, cavity_faces(U), Re; formula=formula, scheme=scheme)
+end
 
 relerr(a, b) = norm(a .- b) / norm(b)
 
@@ -138,7 +167,7 @@ function product_mps(field::ScalarField{2}, gx::AbstractVector, fy)
 end
 
 # Rotation by 90° counter-clockwise of a field on a square grid: G(x', y') = F(x, y) with (x', y') = (L - y, x)
-rotate_ccw(F) = [F[j, size(F, 1) + 1 - i] for i in axes(F, 1), j in axes(F, 2)]
+rotate_ccw(F) = [F[j, size(F, 1)+1-i] for i in axes(F, 1), j in axes(F, 2)]
 
 # Plane Poiseuille flow of a channel of height H with a left inflow: walls at the ghost rows y = 0 and y = H
 poiseuille_psi(y, U, H) = U * (2y^2 / H - 4y^3 / (3H^2))
@@ -152,14 +181,14 @@ function poiseuille_faces(arch; U=1.0, H=1.0)
     Q = poiseuille_psi(H, U, H)
     # Inflow velocity of the discrete profile (central difference with the wall values), so that the inflow flux
     # matches the advective flux of the interior velocity exactly
-    u = (vcat(ψ[2:end], Q) .- vcat(0.0, ψ[1:end-1])) ./ (2h)
-    inflow = InflowFace(psi=ψ, omega=poiseuille_omega.(y, U, H), normal_velocity=u)
-    return ((inflow, OutflowFace()), (NoSlipWall(psi=0.0), NoSlipWall(psi=Q)))
+    u = (vcat(ψ[2:end], Q) .- vcat(0.0, ψ[1:(end-1)])) ./ (2h)
+    inflow = InflowFace(; psi=ψ, omega=poiseuille_omega.(y, U, H), normal_velocity=u)
+    return ((inflow, OutflowFace()), (NoSlipWall(; psi=0.0), NoSlipWall(; psi=Q)))
 end
 
 @testset "Vorticity-streamfunction" begin
     # DirichletBC logs at every construction: build the wall conditions once
-    wall = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    wall = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
     walls = BoundaryConditions(wall, wall)
     periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
@@ -168,22 +197,51 @@ end
         grid = interior_grid(arch, (1.0, 1.0))
         omega_field = ScalarField(zeros_mps(sites), arch, bcs)
         psi_field = ScalarField(sites, arch, bcs)
-        return INSVorticityExperiment(grid, omega_field, psi_field, Re, U; wall_formula=formula, maxdim=maxdim, cutoff=cutoff)
+        return INSVorticityExperiment(
+            grid, omega_field, psi_field, Re, U; wall_formula=formula, maxdim=maxdim, cutoff=cutoff
+        )
     end
 
     # Experiment with general faces; `omega(psi_field, grid)` builds the initial vorticity
-    function face_experiment(arch, faces; domain=(1.0, 1.0), Re=100.0, formula=:jensen, omega=nothing, vmax=nothing, maxdim=256, cutoff=1e-14, bcs=vorticity_boundary_conditions(faces))
+    function face_experiment(
+        arch,
+        faces;
+        domain=(1.0, 1.0),
+        Re=100.0,
+        formula=:jensen,
+        omega=nothing,
+        vmax=nothing,
+        maxdim=256,
+        cutoff=1e-14,
+        bcs=vorticity_boundary_conditions(faces),
+    )
         sites = siteinds(arch)
         grid = vorticity_grid(arch, domain, faces)
         psi_field = ScalarField(sites, arch, bcs)
         omega_field = ScalarField(isnothing(omega) ? zeros_mps(sites) : omega(psi_field, grid), arch, bcs)
-        return INSVorticityExperiment(grid, omega_field, psi_field, Re, faces; wall_formula=formula, maxdim=maxdim, cutoff=cutoff, vmax=vmax)
+        return INSVorticityExperiment(
+            grid, omega_field, psi_field, Re, faces; wall_formula=formula, maxdim=maxdim, cutoff=cutoff, vmax=vmax
+        )
     end
     periodic_faces = ((PeriodicFace(), PeriodicFace()), (PeriodicFace(), PeriodicFace()))
 
-    exact_solver() = GlobalCG(updater_kwargs=GlobalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-13, maxiter=2000, maxdim=256, cutoff=1e-15, orth_maxdim=256, orth_cutoff=1e-15))
+    exact_solver() = GlobalCG(
+        updater_kwargs=GlobalUpdaterArgs(
+            ishermitian=true,
+            isposdef=true,
+            rtol=1e-13,
+            maxiter=2000,
+            maxdim=256,
+            cutoff=1e-15,
+            orth_maxdim=256,
+            orth_cutoff=1e-15,
+        ),
+    )
     # On a 2-site TT, a single 2-site ALS update is a direct CG solve of the full system
-    tt_direct_solver(rtol) = ALS(; sweep_kwargs=SweepingArgs(; nsweeps=1, maxdim=256, cutoff=1e-15), updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=rtol, maxiter=1000, krylovdim=1))
+    tt_direct_solver(rtol) = ALS(;
+        sweep_kwargs=SweepingArgs(; nsweeps=1, maxdim=256, cutoff=1e-15),
+        updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=rtol, maxiter=1000, krylovdim=1),
+    )
 
     qtt_archs = (QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), QTTArchitecture((4, 4); interleaved=true))
     archs = (qtt_archs..., TTArchitecture((16, 16)))
@@ -196,7 +254,9 @@ end
         @test cavity_experiment(arch) isa INSVorticityExperiment{2}
         @test_throws ArgumentError cavity_experiment(arch; formula=:unknown)
         @test_throws ArgumentError cavity_experiment(arch; bcs=BoundaryConditions(periodic, wall))
-        @test_throws ArgumentError cavity_experiment(arch; bcs=BoundaryConditions(wall, BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))))
+        @test_throws ArgumentError cavity_experiment(
+            arch; bcs=BoundaryConditions(wall, BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0)))
+        )
 
         # Stored settings; an integer lid velocity is stored as Float64
         experiment = cavity_experiment(arch; Re=250, U=2, formula=:thom, maxdim=17, cutoff=1e-9)
@@ -212,14 +272,22 @@ end
         arch_3d = QTTArchitecture((2, 2, 2))
         sites_3d = siteinds(arch_3d)
         walls_3d = BoundaryConditions(wall, wall, wall)
-        @test_throws ArgumentError INSVorticityExperiment(interior_grid(arch_3d, (1.0, 1.0, 1.0)), ScalarField(zeros_mps(sites_3d), arch_3d, walls_3d), ScalarField(sites_3d, arch_3d, walls_3d), 100.0, 1.0)
+        @test_throws ArgumentError INSVorticityExperiment(
+            interior_grid(arch_3d, (1.0, 1.0, 1.0)),
+            ScalarField(zeros_mps(sites_3d), arch_3d, walls_3d),
+            ScalarField(sites_3d, arch_3d, walls_3d),
+            100.0,
+            1.0,
+        )
 
         sites = siteinds(arch)
         grid = interior_grid(arch, (1.0, 1.0))
         omega_field = ScalarField(zeros_mps(sites), arch, walls)
         psi_field = ScalarField(sites, arch, walls)
         @test_throws ArgumentError INSVorticityExperiment(grid, omega_field, psi_field, 100.0, 1.0; stencil_order=8)
-        @test_throws ArgumentError INSVorticityExperiment(grid, omega_field, ScalarField(siteinds(arch), arch, walls), 100.0, 1.0)
+        @test_throws ArgumentError INSVorticityExperiment(
+            grid, omega_field, ScalarField(siteinds(arch), arch, walls), 100.0, 1.0
+        )
 
         # General faces: both fields must have the boundary conditions of the faces
         K1, K2 = variable_dims(arch)
@@ -228,16 +296,29 @@ end
         @test_throws ArgumentError face_experiment(arch, faces; bcs=walls) # Dirichlet on the outflow face
         @test_throws ArgumentError face_experiment(arch, cavity_faces(1.0); bcs=vorticity_boundary_conditions(faces))
         mixed_sites = siteinds(arch)
-        @test_throws ArgumentError INSVorticityExperiment(vorticity_grid(arch, (1.0, 1.0), faces), ScalarField(zeros_mps(mixed_sites), arch, walls),
-            ScalarField(mixed_sites, arch, vorticity_boundary_conditions(faces)), 100.0, faces)
+        @test_throws ArgumentError INSVorticityExperiment(
+            vorticity_grid(arch, (1.0, 1.0), faces),
+            ScalarField(zeros_mps(mixed_sites), arch, walls),
+            ScalarField(mixed_sites, arch, vorticity_boundary_conditions(faces)),
+            100.0,
+            faces,
+        )
         # Periodic faces come in pairs
-        @test_throws ArgumentError face_experiment(arch, ((PeriodicFace(), NoSlipWall()), (NoSlipWall(), NoSlipWall())); bcs=BoundaryConditions(periodic, wall))
+        @test_throws ArgumentError face_experiment(
+            arch, ((PeriodicFace(), NoSlipWall()), (NoSlipWall(), NoSlipWall())); bcs=BoundaryConditions(periodic, wall)
+        )
         # Profiles have one value per node along the face
-        @test_throws ArgumentError face_experiment(arch, ((InflowFace(psi=zeros(K2 + 1), normal_velocity=1.0), OutflowFace()), (NoSlipWall(), NoSlipWall())))
-        @test_throws ArgumentError face_experiment(arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(), NoSlipWall(velocity=ones(K2)[1:3]))))
+        @test_throws ArgumentError face_experiment(
+            arch, ((InflowFace(psi=zeros(K2 + 1), normal_velocity=1.0), OutflowFace()), (NoSlipWall(), NoSlipWall()))
+        )
+        @test_throws ArgumentError face_experiment(
+            arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(), NoSlipWall(velocity=ones(K2)[1:3])))
+        )
 
         # vmax: the largest wall or inflow speed, 1 (with an @info) if every face is at rest, or the given value
-        @test face_experiment(arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-2), NoSlipWall(velocity=1)))).vmax === 2.0
+        @test face_experiment(
+            arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-2), NoSlipWall(velocity=1)))
+        ).vmax === 2.0
         @test face_experiment(arch, faces).vmax ≈ maximum(faces[1][1].normal_velocity)
         @test_logs (:info, r"vmax") match_mode=:any face_experiment(arch, periodic_faces)
         @test face_experiment(arch, periodic_faces).vmax === 1.0
@@ -263,7 +344,8 @@ end
         # One ghost side for inflow + outflow and for periodic axes, two for walls, none for two outflows
         @test all(vorticity_grid(arch, (2.0, 1.0), faces).dx .≈ (2.0 / K1, 1.0 / K2))
         @test vorticity_grid(arch, (1.0, 1.0), cavity_faces(1.0)).dx == interior_grid(arch, (1.0, 1.0)).dx
-        @test vorticity_grid(arch, (1.0, 1.0), ((OutflowFace(), OutflowFace()), (SlipWall(), NoSlipWall()))).dx[1] ≈ 1 / (K1 - 1)
+        @test vorticity_grid(arch, (1.0, 1.0), ((OutflowFace(), OutflowFace()), (SlipWall(), NoSlipWall()))).dx[1] ≈
+            1 / (K1 - 1)
     end
 
     @testset "Poisson operator ($(arch_label(arch)))" for arch in archs
@@ -278,10 +360,10 @@ end
         A_dense = dense_poisson_matrix(K1, K2, grid.dx...)
         @test relerr(dense_field(apply(cache.poisson_op, psi), grid, arch), reshape(A_dense * vec(Ψ), K1, K2)) < 1e-10
 
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test A ≈ A'
         @test eigmin(Symmetric(A)) > 0
-        @test A ≈ -contract_mpo(cache.laplacian)
+        @test A ≈ -dense_mpo(cache.laplacian)
 
         # The right-hand side of -Δψ = ω is the vorticity itself
         @test DifferenTT.poisson_rhs(experiment, cache, psi) === psi
@@ -319,7 +401,9 @@ end
         @test isnothing(VorticityCache(cavity_experiment(arch; U=0.0)).wall_source)
 
         # No wall at all: no operator
-        @test isnothing(DifferenTT.wall_vorticity_operator(ScalarField(sites, arch, BoundaryConditions(periodic, periodic)), grid))
+        @test isnothing(
+            DifferenTT.wall_vorticity_operator(ScalarField(sites, arch, BoundaryConditions(periodic, periodic)), grid)
+        )
     end
 
     @testset "Manufactured stream function" begin
@@ -363,7 +447,9 @@ end
         @test norm(div) < 1e-9 * norm(u)
     end
 
-    @testset "Wall vorticity source and transport RHS ($(arch_label(arch)), $formula)" for arch in archs, formula in (:jensen, :thom)
+    @testset "Wall vorticity source and transport RHS ($(arch_label(arch)), $formula)" for arch in archs,
+        formula in (:jensen, :thom)
+
         Re, U = 100.0, 1.3
         experiment = cavity_experiment(arch; Re=Re, U=U, formula=formula)
         cache = VorticityCache(experiment)
@@ -379,7 +465,8 @@ end
         # Δω completed with the wall vorticity = full 5-point Laplacian with the ghost walls filled by the formula
         source = DifferenTT.wall_vorticity_source(cache, psi)
         full_laplacian = +(apply(cache.omega_laplacian, omega), source; cutoff=1e-15)
-        @test relerr(dense_field(full_laplacian, grid, arch), dense_full_laplacian(Ω, Ψ, hx, hy, U; formula=formula)) < 1e-10
+        @test relerr(dense_field(full_laplacian, grid, arch), dense_full_laplacian(Ω, Ψ, hx, hy, U; formula=formula)) <
+            1e-10
 
         u, v = streamfunction_velocity(cache, psi)
         rhs = VorticityTransportRHS(experiment, cache, u, v, source)
@@ -390,7 +477,9 @@ end
     @testset "Zero vorticity skips the solve" begin
         experiment = cavity_experiment(QTTArchitecture((4, 4)))
         cache = VorticityCache(experiment)
-        psi, residual = poisson_streamfunction(experiment, cache, zeros_mps(experiment.psi_field.usites), exact_solver())
+        psi, residual = poisson_streamfunction(
+            experiment, cache, zeros_mps(experiment.psi_field.usites), exact_solver()
+        )
         @test DifferenTT.iszero_tt(psi)
         @test residual == 0.0
     end
@@ -412,14 +501,37 @@ end
         @test residual < 1e-6 * norm(omega)
 
         # The returned residual is ||Aψ - ω||: check it on an unconverged solve, where it is large
-        one_iteration = GlobalCG(updater_kwargs=GlobalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-13, maxiter=1, maxdim=256, cutoff=1e-15, orth_maxdim=256, orth_cutoff=1e-15))
+        one_iteration = GlobalCG(
+            updater_kwargs=GlobalUpdaterArgs(
+                ishermitian=true,
+                isposdef=true,
+                rtol=1e-13,
+                maxiter=1,
+                maxdim=256,
+                cutoff=1e-15,
+                orth_maxdim=256,
+                orth_cutoff=1e-15,
+            ),
+        )
         rough_psi, rough_residual = poisson_streamfunction(experiment, cache, omega, one_iteration)
         @test rough_residual > 1e-3 * norm(omega)
         @test rough_residual ≈ norm(+(apply(cache.poisson_op, rough_psi; cutoff=1e-15), -1.0 * omega; cutoff=1e-15)) rtol=1e-6
 
         # The last stream function of the experiment is the initial guess: from the exact solution, CG returns at once
         numiter_store = Ref{Int}(-1)
-        counting_solver = GlobalCG(updater_kwargs=GlobalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-6, maxiter=2000, maxdim=256, cutoff=1e-15, orth_maxdim=256, orth_cutoff=1e-15, numiter_store=numiter_store))
+        counting_solver = GlobalCG(
+            updater_kwargs=GlobalUpdaterArgs(
+                ishermitian=true,
+                isposdef=true,
+                rtol=1e-6,
+                maxiter=2000,
+                maxdim=256,
+                cutoff=1e-15,
+                orth_maxdim=256,
+                orth_cutoff=1e-15,
+                numiter_store=numiter_store,
+            ),
+        )
         poisson_streamfunction(experiment, cache, omega, counting_solver)
         @test numiter_store[] > 0
         push!(experiment.psi_field, psi)
@@ -427,14 +539,22 @@ end
         @test numiter_store[] == 0
     end
 
-    @testset "vorticity_transport from rest (priming step) ($(arch_label(arch)), $scheme)" for arch in (QTTArchitecture((4, 4)), TTArchitecture((16, 16))), scheme in (:euler, :rk4)
+    @testset "vorticity_transport from rest (priming step) ($(arch_label(arch)), $scheme)" for arch in (
+            QTTArchitecture((4, 4)), TTArchitecture((16, 16))
+        ),
+        scheme in (:euler, :rk4)
+
         Re, U, dt = 100.0, 1.0, 0.01
         experiment = cavity_experiment(arch; Re=Re, U=U)
         cache = VorticityCache(experiment)
         grid = experiment.grid
         zero_field = zeros_mps(experiment.psi_field.usites)
         evol_args = TimeEvolArgs(0.0, dt, 1)
-        stepper = scheme == :rk4 ? RK4(; time_evol_kwargs=evol_args, cutoff=1e-14, maxdim=256) : ExplicitEuler(; time_evol_kwargs=evol_args, cutoff=1e-14, maxdim=256)
+        stepper = if scheme == :rk4
+            RK4(; time_evol_kwargs=evol_args, cutoff=1e-14, maxdim=256)
+        else
+            ExplicitEuler(; time_evol_kwargs=evol_args, cutoff=1e-14, maxdim=256)
+        end
 
         # At rest u = v = 0 and ψ = 0: only the lid drives the flow, and the zero products must not break the step
         omega_1 = DifferenTT.vorticity_transport(experiment, cache, zero_field, zero_field, stepper, 0.0)
@@ -471,12 +591,18 @@ end
         @test length(experiment.omega_field) == 1
     end
 
-    @testset "End-to-end against the dense scheme ($(arch_label(arch)), $scheme)" for (arch, scheme) in ((QTTArchitecture((4, 4)), :euler), (TTArchitecture((16, 16)), :rk4))
+    @testset "End-to-end against the dense scheme ($(arch_label(arch)), $scheme)" for (arch, scheme) in (
+        (QTTArchitecture((4, 4)), :euler), (TTArchitecture((16, 16)), :rk4)
+    )
         Re, U, dt, nsteps = 100.0, 1.0, 0.01, 3
         experiment = cavity_experiment(arch; Re=Re, U=U)
         kwargs = (; cutoff=1e-14, maxdim=256)
         evol_args = TimeEvolArgs(0.0, dt * nsteps, nsteps)
-        stepper = scheme == :rk4 ? RK4(; time_evol_kwargs=evol_args, kwargs...) : ExplicitEuler(; time_evol_kwargs=evol_args, kwargs...)
+        stepper = if scheme == :rk4
+            RK4(; time_evol_kwargs=evol_args, kwargs...)
+        else
+            ExplicitEuler(; time_evol_kwargs=evol_args, kwargs...)
+        end
 
         solver = arch isa TTArchitecture ? tt_direct_solver(1e-13) : exact_solver()
         vorticity_evolve!(experiment, solver, stepper)
@@ -484,7 +610,9 @@ end
         @test length(experiment.psi_field) == nsteps
 
         grid = experiment.grid
-        Ω, Ψ = dense_evolve(zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., U, Re; formula=:jensen, scheme=scheme)
+        Ω, Ψ = dense_evolve(
+            zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., U, Re; formula=:jensen, scheme=scheme
+        )
         # Truncation level of the randomized tt_mul; a sign or scaling error would be O(1)
         @test relerr(dense_field(last(experiment.omega_field), grid, arch), Ω) < 1e-6
         @test relerr(dense_field(last(experiment.psi_field), grid, arch), Ψ) < 1e-6
@@ -516,7 +644,13 @@ end
         solver = tt_direct_solver(1e-10)
 
         # The vorticity must be initialized
-        uninitialized = INSVorticityExperiment(interior_grid(arch, (1.0, 1.0)), ScalarField(sites, arch, walls), ScalarField(sites, arch, walls), 100.0, 1.0)
+        uninitialized = INSVorticityExperiment(
+            interior_grid(arch, (1.0, 1.0)),
+            ScalarField(sites, arch, walls),
+            ScalarField(sites, arch, walls),
+            100.0,
+            1.0,
+        )
         @test_throws ArgumentError vorticity_evolve!(uninitialized, solver, stepper)
 
         # The stream function must be empty
@@ -568,7 +702,9 @@ end
     # General faces
     # ---------------------------------------------------------------------------------------------
 
-    @testset "Outflow advection closure ($(arch_label(arch)))" for arch in (QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), TTArchitecture((16, 16)))
+    @testset "Outflow advection closure ($(arch_label(arch)))" for arch in (
+        QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), TTArchitecture((16, 16))
+    )
         faces = ((OutflowFace(), OutflowFace()), (NoSlipWall(), OutflowFace()))
         grid = vorticity_grid(arch, (1.0, 1.0), faces)
         hx, hy = grid.dx
@@ -606,15 +742,25 @@ end
         K1, K2 = variable_dims(arch)
         Random.seed!(12)
         if case == 1
-            return ((InflowFace(psi=rand(K2), omega=rand(K2), normal_velocity=1 .+ rand(K2)), OutflowFace()), (NoSlipWall(velocity=-0.7, psi=0.3), SlipWall(psi=1.1)))
+            return (
+                (InflowFace(psi=rand(K2), omega=rand(K2), normal_velocity=1 .+ rand(K2)), OutflowFace()),
+                (NoSlipWall(velocity=-0.7, psi=0.3), SlipWall(psi=1.1)),
+            )
         elseif case == 2
-            return ((NoSlipWall(velocity=rand(K2), psi=0.2), NoSlipWall(velocity=-0.5, psi=-0.4)), (InflowFace(psi=rand(K1), omega=rand(K1), normal_velocity=1.0), OutflowFace()))
+            return (
+                (NoSlipWall(velocity=rand(K2), psi=0.2), NoSlipWall(velocity=-0.5, psi=-0.4)),
+                (InflowFace(psi=rand(K1), omega=rand(K1), normal_velocity=1.0), OutflowFace()),
+            )
         else
             return (periodic_faces[1], (NoSlipWall(velocity=0.4, psi=-0.2), NoSlipWall(velocity=1.0, psi=0.5)))
         end
     end
 
-    @testset "Boundary terms and transport RHS with general faces ($(arch_label(arch)), case $case, $formula)" for arch in archs, case in 1:3, formula in (:jensen, :thom)
+    @testset "Boundary terms and transport RHS with general faces ($(arch_label(arch)), case $case, $formula)" for arch in
+                                                                                                                   archs,
+        case in 1:3,
+        formula in (:jensen, :thom)
+
         Re = 100.0
         faces = mixed_faces(arch, case)
         experiment = face_experiment(arch, faces; Re=Re, formula=formula, domain=(1.0, 1.3))
@@ -639,7 +785,9 @@ end
         W = ones(size(Ψ))
         faces[1][2] isa OutflowFace && (W[end, :] .*= 0.5)
         faces[2][2] isa OutflowFace && (W[:, end] .*= 0.5)
-        residual = +(apply(cache.poisson_op, psi), -1.0 * DifferenTT.poisson_rhs(experiment, cache, omega); cutoff=1e-15)
+        residual = +(
+            apply(cache.poisson_op, psi), -1.0 * DifferenTT.poisson_rhs(experiment, cache, omega); cutoff=1e-15
+        )
         expected_residual = W .* (-dense_laplacian(pad(Ψ, face_ghosts(faces, psi_ghost)), hx, hy) .- Ω)
         # Truncation floor of the sum ω + ℓ at experiment.cutoff (a squared relative error)
         @test relerr(dense_field(residual, grid, arch), expected_residual) < 1e-6
@@ -647,28 +795,35 @@ end
         # Δω completed with the face vorticity, and the whole transport RHS
         source = DifferenTT.wall_vorticity_source(cache, psi)
         full_laplacian = DifferenTT._nothing_sum_handler(apply(cache.omega_laplacian, omega), source; cutoff=1e-15)
-        @test relerr(dense_field(full_laplacian, grid, arch), dense_full_laplacian(Ω, Ψ, hx, hy, faces; formula=formula)) < 1e-10
+        @test relerr(
+            dense_field(full_laplacian, grid, arch), dense_full_laplacian(Ω, Ψ, hx, hy, faces; formula=formula)
+        ) < 1e-10
         tt_rhs = only(VorticityTransportRHS(experiment, cache, u, v, source)((omega,), 0.0, 1))
-        @test relerr(dense_field(tt_rhs, grid, arch), dense_transport_rhs(Ω, Ψ, hx, hy, faces, Re; formula=formula)) < 1e-8
+        @test relerr(dense_field(tt_rhs, grid, arch), dense_transport_rhs(Ω, Ψ, hx, hy, faces, Re; formula=formula)) <
+            1e-8
     end
 
-    @testset "Weighted Poisson operator with an outflow ($(arch_label(arch)))" for arch in (QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), TTArchitecture((16, 16)))
+    @testset "Weighted Poisson operator with an outflow ($(arch_label(arch)))" for arch in (
+        QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), TTArchitecture((16, 16))
+    )
         cache = VorticityCache(face_experiment(arch, poiseuille_faces(arch); domain=(2.0, 1.0)))
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test norm(A - A') < 1e-10 * norm(A)
         @test eigmin(Symmetric(A)) > 0
         # The diffusion of ω is not weighted
-        @test !(contract_mpo(cache.omega_laplacian) ≈ contract_mpo(cache.laplacian))
+        @test !(dense_mpo(cache.omega_laplacian) ≈ dense_mpo(cache.laplacian))
     end
 
-    @testset "Regularized Poisson system, doubly periodic ($(arch_label(arch)))" for arch in (QTTArchitecture((4, 4)), TTArchitecture((16, 16)))
+    @testset "Regularized Poisson system, doubly periodic ($(arch_label(arch)))" for arch in (
+        QTTArchitecture((4, 4)), TTArchitecture((16, 16))
+    )
         experiment = face_experiment(arch, periodic_faces; vmax=1.0)
         cache = VorticityCache(experiment)
         @test cache.regularize
         grid = experiment.grid
         sites = experiment.psi_field.usites
 
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test A ≈ A'
         @test eigmin(Symmetric(A)) > 0
         # The pin c 𝟏𝟏ᵀ with c = 1/(number of nodes) gives A 𝟏 = 𝟏
@@ -688,7 +843,12 @@ end
     @testset "Rotation equivariance of the moving walls" begin
         arch = TTArchitecture((16, 16))
         Re, U, dt, nsteps = 100.0, 1.0, 0.01, 3
-        lid(axis, side, velocity) = ntuple(a -> ntuple(k -> (a == axis && k == (side == :left ? 1 : 2)) ? NoSlipWall(velocity=velocity) : NoSlipWall(), 2), 2)
+        lid(axis, side, velocity) = ntuple(
+            a -> ntuple(
+                k -> (a == axis && k == (side == :left ? 1 : 2)) ? NoSlipWall(velocity=velocity) : NoSlipWall(), 2
+            ),
+            2,
+        )
         # Each configuration is the previous one rotated by 90° counter-clockwise
         configurations = (lid(2, :right, U), lid(1, :left, U), lid(2, :left, -U), lid(1, :right, -U))
         @test configurations[1] == cavity_faces(U)
@@ -697,7 +857,8 @@ end
             experiment = face_experiment(arch, faces; Re=Re)
             stepper = ExplicitEuler(; time_evol_kwargs=TimeEvolArgs(0.0, dt * nsteps, nsteps), cutoff=1e-14, maxdim=256)
             vorticity_evolve!(experiment, tt_direct_solver(1e-12), stepper)
-            return dense_field(last(experiment.omega_field), experiment.grid, arch), dense_field(last(experiment.psi_field), experiment.grid, arch)
+            return dense_field(last(experiment.omega_field), experiment.grid, arch),
+            dense_field(last(experiment.psi_field), experiment.grid, arch)
         end
         # Truncation level of the TT arithmetic; a wrong sign of a moving wall would be O(1)
         for k in 2:length(results)
@@ -709,7 +870,7 @@ end
     @testset "Doubly-driven cavity" begin
         arch = TTArchitecture((16, 16))
         Re, U, dt, nsteps = 100.0, 1.0, 0.01, 3
-        faces = ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-U), NoSlipWall(velocity=U)))
+        faces = ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=(-U)), NoSlipWall(velocity=U)))
         experiment = face_experiment(arch, faces; Re=Re)
         stepper = ExplicitEuler(; time_evol_kwargs=TimeEvolArgs(0.0, dt * nsteps, nsteps), cutoff=1e-14, maxdim=256)
         vorticity_evolve!(experiment, tt_direct_solver(1e-12), stepper)
@@ -717,7 +878,9 @@ end
         Ω = dense_field(last(experiment.omega_field), grid, arch)
         Ψ = dense_field(last(experiment.psi_field), grid, arch)
 
-        Ω_ref, Ψ_ref = dense_evolve(zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., faces, Re; formula=:jensen, scheme=:euler)
+        Ω_ref, Ψ_ref = dense_evolve(
+            zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., faces, Re; formula=:jensen, scheme=:euler
+        )
         @test relerr(Ω, Ω_ref) < 1e-6
         @test relerr(Ψ, Ψ_ref) < 1e-6
         # Symmetric under a rotation by 180°
@@ -725,7 +888,8 @@ end
         @test relerr(Ψ, rotate_ccw(rotate_ccw(Ψ))) < 1e-6
     end
 
-    @testset "Poiseuille fixed point ($(arch_label(arch)))" for arch in (QTTArchitecture((4, 4)), TTArchitecture((16, 16)))
+    @testset "Poiseuille fixed point ($(arch_label(arch)))" for arch in
+                                                                (QTTArchitecture((4, 4)), TTArchitecture((16, 16)))
         U, H, Re = 1.0, 1.0, 100.0
         faces = poiseuille_faces(arch; U=U, H=H)
         experiment = face_experiment(arch, faces; domain=(2.0, H), Re=Re)
@@ -790,7 +954,11 @@ end
         @test norm(v) < 1e-10
 
         # ω = 0 is a fixed point
-        rhs = only(VorticityTransportRHS(experiment, cache, u, v, DifferenTT.wall_vorticity_source(cache, psi))((zero_field,), 0.0, 1))
+        rhs = only(
+            VorticityTransportRHS(experiment, cache, u, v, DifferenTT.wall_vorticity_source(cache, psi))(
+                (zero_field,), 0.0, 1
+            ),
+        )
         @test norm(rhs) < 1e-12
     end
 
@@ -825,8 +993,13 @@ end
 
         # From rest, the first solve gives the potential flow of the face values
         grid = experiment.grid
-        Ω, Ψ = dense_evolve(zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., faces, Re; formula=:jensen, scheme=:euler)
-        @test relerr(dense_field(experiment.psi_field[1], grid, arch), dense_poisson_solve(zeros(variable_dims(arch)...), grid.dx..., faces)) < 1e-8
+        Ω, Ψ = dense_evolve(
+            zeros(variable_dims(arch)...), nsteps, dt, grid.dx..., faces, Re; formula=:jensen, scheme=:euler
+        )
+        @test relerr(
+            dense_field(experiment.psi_field[1], grid, arch),
+            dense_poisson_solve(zeros(variable_dims(arch)...), grid.dx..., faces),
+        ) < 1e-8
         @test relerr(dense_field(last(experiment.omega_field), grid, arch), Ω) < 1e-6
         @test relerr(dense_field(last(experiment.psi_field), grid, arch), Ψ) < 1e-6
     end

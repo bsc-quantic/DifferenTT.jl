@@ -22,7 +22,7 @@ using Printf
 using LaTeXStrings
 
 gr()
-default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
+default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 ENV["GKSwstype"] = "100"
 
 const BASE_FOLDER = "experiments/preconditioner_benchmarks/linsolve_spd"
@@ -39,36 +39,48 @@ const SECTION_TITLES = Dict(
     "chorin_linsolve_large" => "Chorin pressure Poisson: linsolve preconditioner",
 )
 
-"""Nested `section => case => entry => Dict` view of the results file."""
+"""
+Nested `section => case => entry => Dict` view of the results file.
+"""
 function load_results(file::AbstractString)
-    results = Dict{String, Dict{String, Dict{String, Any}}}()
+    results = Dict{String,Dict{String,Dict{String,Any}}}()
     jldopen(file, "r") do f
         for section in keys(f)
             section == "meta" && continue
-            results[section] = Dict(case => Dict(entry => f["$section/$case/$entry"] for entry in keys(f[section][case]))
-                                    for case in keys(f[section]))
+            results[section] = Dict(
+                case => Dict(entry => f["$section/$case/$entry"] for entry in keys(f[section][case])) for
+                case in keys(f[section])
+            )
         end
     end
     return results
 end
 
-"""Readable label of a case key: `nodes_4x4` → `(4, 4)`."""
+"""
+Readable label of a case key: `nodes_4x4` → `(4, 4)`.
+"""
 function case_label(case::AbstractString)
     m = match(r"^nodes_(\d+)x(\d+)$", case)
     isnothing(m) || return "($(m[1]), $(m[2]))"
     return case
 end
 
-"""Cases sorted by system size (number of rows)."""
-sorted_cases(section_results) = sort(collect(keys(section_results)); by = c -> begin
-    m = match(r"(\d+)\D+(\d+)$", c)
-    isnothing(m) ? (0, 0) : (parse(Int, m[1]), parse(Int, m[2]))
-end)
+"""
+Cases sorted by system size (number of rows).
+"""
+function sorted_cases(section_results)
+    sort(collect(keys(section_results)); by=c -> begin
+        m = match(r"(\d+)\D+(\d+)$", c)
+        isnothing(m) ? (0, 0) : (parse(Int, m[1]), parse(Int, m[2]))
+    end)
+end
 
-"""`χ`-sorted entries of a case (the entries named `chi_*`)."""
+"""
+`χ`-sorted entries of a case (the entries named `chi_*`).
+"""
 function chi_entries(case_results)
     entries = [v for (k, v) in case_results if startswith(k, "chi_")]
-    return sort(entries; by = e -> e["chi"])
+    return sort(entries; by=e -> e["chi"])
 end
 
 """
@@ -79,12 +91,24 @@ function signed_log_series!(p, x, y; color, label, linestyle=:solid, marker=:cir
     keep = y .!= 0 .& isfinite.(y)
     x, y = x[keep], y[keep]
     isempty(x) && return p
-    plot!(p, x, abs.(y); color, label, linestyle, marker, markersize=5, markerstrokecolor=color,
-          markercolor=[v < 0 ? color : :white for v in y])
+    plot!(
+        p,
+        x,
+        abs.(y);
+        color,
+        label,
+        linestyle,
+        marker,
+        markersize=5,
+        markerstrokecolor=color,
+        markercolor=[v < 0 ? color : :white for v in y],
+    )
     return p
 end
 
-"""Invisible series that explain the filled/hollow marker convention in the legend."""
+"""
+Invisible series that explain the filled/hollow marker convention in the legend.
+"""
 function sign_legend!(p)
     scatter!(p, [NaN], [NaN]; marker=:circle, markercolor=:black, markerstrokecolor=:black, label="negative value")
     scatter!(p, [NaN], [NaN]; marker=:circle, markercolor=:white, markerstrokecolor=:black, label="positive value")
@@ -96,8 +120,20 @@ series_color(i::Int) = palette(:default)[mod1(i, 16)]
 # ---- Dense sections ----
 
 function plot_dense_eigmin(section, res)
-    p1 = plot(; title=L"Symmetric part $S$ of the preconditioner", xlabel=L"\chi", ylabel=L"|\lambda_{\min}(S)| / \lambda_{\max}(S)", yscale=:log10, legend=:outerright)
-    p2 = plot(; title=L"Preconditioned operator $SA$", xlabel=L"\chi", ylabel=L"|\lambda_{\min}(SA)| / \lambda_{\max}(SA)", yscale=:log10, legend=false)
+    p1 = plot(;
+        title=L"Symmetric part $S$ of the preconditioner",
+        xlabel=L"\chi",
+        ylabel=L"|\lambda_{\min}(S)| / \lambda_{\max}(S)",
+        yscale=:log10,
+        legend=:outerright,
+    )
+    p2 = plot(;
+        title=L"Preconditioned operator $SA$",
+        xlabel=L"\chi",
+        ylabel=L"|\lambda_{\min}(SA)| / \lambda_{\max}(SA)",
+        yscale=:log10,
+        legend=false,
+    )
     for (i, case) in enumerate(sorted_cases(res))
         entries = chi_entries(res[case])
         isempty(entries) && continue
@@ -115,22 +151,43 @@ function plot_dense_eigmin(section, res)
 end
 
 function plot_dense_nneg(section, res)
-    p = plot(; title=SECTION_TITLES[section], xlabel=L"\chi", ylabel=L"Fraction of negative eigenvalues of $S$", legend=:topright)
+    p = plot(;
+        title=SECTION_TITLES[section],
+        xlabel=L"\chi",
+        ylabel=L"Fraction of negative eigenvalues of $S$",
+        legend=:topright,
+    )
     for (i, case) in enumerate(sorted_cases(res))
         entries = chi_entries(res[case])
         isempty(entries) && continue
-        plot!(p, [e["chi"] for e in entries], [e["nneg_S"] / e["n"] for e in entries]; color=series_color(i), marker=:circle, label=case_label(case))
+        plot!(
+            p,
+            [e["chi"] for e in entries],
+            [e["nneg_S"] / e["n"] for e in entries];
+            color=series_color(i),
+            marker=:circle,
+            label=case_label(case),
+        )
     end
     savefig(p, joinpath(PLOTS_DIR, "$(section)_nneg.png"))
 end
 
 function plot_dense_weyl(section, res)
-    p = plot(; title=SECTION_TITLES[section], xlabel=L"\chi", ylabel=L"\|S - A^{-1}\|_2", yscale=:log10, legend=:outerright)
+    p = plot(;
+        title=SECTION_TITLES[section], xlabel=L"\chi", ylabel=L"\|S - A^{-1}\|_2", yscale=:log10, legend=:outerright
+    )
     for (i, case) in enumerate(sorted_cases(res))
         entries = filter(e -> e["sym_error_2norm"] > 0, chi_entries(res[case]))
         isempty(entries) && continue
         color = series_color(i)
-        plot!(p, [e["chi"] for e in entries], [e["sym_error_2norm"] for e in entries]; color, marker=:circle, label=case_label(case))
+        plot!(
+            p,
+            [e["chi"] for e in entries],
+            [e["sym_error_2norm"] for e in entries];
+            color,
+            marker=:circle,
+            label=case_label(case),
+        )
         hline!(p, [first(entries)["eigmin_Ainv"]]; color, linestyle=:dash, label=L"\lambda_{\min}(A^{-1})")
     end
     savefig(p, joinpath(PLOTS_DIR, "$(section)_weyl.png"))
@@ -138,16 +195,27 @@ end
 
 function plot_linsolve_vs_truncinv(results)
     ls, tr = get(results, "chorin_linsolve_dense", nothing), get(results, "chorin_truncinv_dense", nothing)
-    (isnothing(ls) || isnothing(tr)) && return
-    p = plot(; title="Chorin pressure Poisson: negative eigenvalues of S",
-             xlabel=L"\chi", ylabel=L"Fraction of negative eigenvalues of $S$", legend=:outerright)
+    (isnothing(ls) || isnothing(tr)) && return nothing
+    p = plot(;
+        title="Chorin pressure Poisson: negative eigenvalues of S",
+        xlabel=L"\chi",
+        ylabel=L"Fraction of negative eigenvalues of $S$",
+        legend=:outerright,
+    )
     for (i, case) in enumerate(sorted_cases(ls))
         color = series_color(i)
         for (res, style, name) in ((ls, :solid, "linsolve"), (tr, :dash, L"truncated $A^{-1}$"))
             haskey(res, case) || continue
             entries = chi_entries(res[case])
-            plot!(p, [e["chi"] for e in entries], [e["nneg_S"] / e["n"] for e in entries]; color, linestyle=style, marker=:circle,
-                  label="$(case_label(case)), $name")
+            plot!(
+                p,
+                [e["chi"] for e in entries],
+                [e["nneg_S"] / e["n"] for e in entries];
+                color,
+                linestyle=style,
+                marker=:circle,
+                label="$(case_label(case)), $name",
+            )
         end
     end
     savefig(p, joinpath(PLOTS_DIR, "chorin_linsolve_vs_truncinv.png"))
@@ -155,7 +223,9 @@ end
 
 # ---- Large sections ----
 
-"""Solve entry of a large case: the first Chorin step."""
+"""
+Solve entry of a large case: the first Chorin step.
+"""
 solve_entry(e) = get(e, "first_step", nothing)
 
 function local_entry_label(key, e)
@@ -165,14 +235,25 @@ function local_entry_label(key, e)
 end
 
 function plot_large_spd_check(section, res)
-    p = plot(; title=SECTION_TITLES[section], xlabel=L"\chi", ylabel="Local blocks checked", yscale=:log10, legend=:outerright)
+    p = plot(;
+        title=SECTION_TITLES[section], xlabel=L"\chi", ylabel="Local blocks checked", yscale=:log10, legend=:outerright
+    )
     for (i, case) in enumerate(sorted_cases(res))
         entries = filter(e -> !isnothing(solve_entry(e)), chi_entries(res[case]))
         isempty(entries) && continue
         color = series_color(i)
         solves = solve_entry.(entries)
-        plot!(p, [e["chi"] for e in entries], [max(s["nblocks_checked"], 1) for s in solves]; color, label=case_label(case),
-              marker=:circle, markersize=6, markerstrokecolor=color, markercolor=[s["not_spd"] ? color : :white for s in solves])
+        plot!(
+            p,
+            [e["chi"] for e in entries],
+            [max(s["nblocks_checked"], 1) for s in solves];
+            color,
+            label=case_label(case),
+            marker=:circle,
+            markersize=6,
+            markerstrokecolor=color,
+            markercolor=[s["not_spd"] ? color : :white for s in solves],
+        )
     end
     scatter!(p, [NaN], [NaN]; marker=:circle, markercolor=:black, markerstrokecolor=:black, label="stopped: not SPD")
     scatter!(p, [NaN], [NaN]; marker=:circle, markercolor=:white, markerstrokecolor=:black, label="ran through")
@@ -186,19 +267,31 @@ fmt(x::Real) = isfinite(x) ? @sprintf("%.3e", x) : "–"
 function write_summary(results)
     io = IOBuffer()
     println(io, "# Linsolve preconditioner SPD benchmark: summary\n")
-    println(io, "S is the symmetric part of the preconditioner. A negative λ_min(S) (or a positive #neg) proves the preconditioner is not SPD.\n")
+    println(
+        io,
+        "S is the symmetric part of the preconditioner. A negative λ_min(S) (or a positive #neg) proves the preconditioner is not SPD.\n",
+    )
     for section in DENSE_SECTIONS
         haskey(results, section) || continue
         println(io, "## $section\n")
         for case in sorted_cases(results[section])
             op = get(results[section][case], "operator", nothing)
-            header = isnothing(op) ? "" : " (n = $(op["n"]), κ(A) = $(fmt(op["cond_A"])), λ_min(A⁻¹) = $(fmt(op["eigmin_Ainv"])))"
+            header = if isnothing(op)
+                ""
+            else
+                " (n = $(op["n"]), κ(A) = $(fmt(op["cond_A"])), λ_min(A⁻¹) = $(fmt(op["eigmin_Ainv"])))"
+            end
             println(io, "### $(case_label(case))$header\n")
-            println(io, "| χ | λ_min(S) | λ_max(S) | #neg(S) | λ_min(SA) | κ(SA) | ‖S−A⁻¹‖₂ | ‖AP+PA−2I‖/‖2I‖ | asym(P) |")
+            println(
+                io, "| χ | λ_min(S) | λ_max(S) | #neg(S) | λ_min(SA) | κ(SA) | ‖S−A⁻¹‖₂ | ‖AP+PA−2I‖/‖2I‖ | asym(P) |"
+            )
             println(io, "|---|---|---|---|---|---|---|---|---|")
             for e in chi_entries(results[section][case])
-                println(io, "| $(e["chi"]) | $(fmt(e["eigmin_S"])) | $(fmt(e["eigmax_S"])) | $(e["nneg_S"]) | $(fmt(e["eigmin_SA"])) | $(fmt(e["cond_SA"])) | ",
-                        "$(fmt(e["sym_error_2norm"])) | $(fmt(e["sylvester_residual"])) | $(fmt(e["asym_P"])) |")
+                println(
+                    io,
+                    "| $(e["chi"]) | $(fmt(e["eigmin_S"])) | $(fmt(e["eigmax_S"])) | $(e["nneg_S"]) | $(fmt(e["eigmin_SA"])) | $(fmt(e["cond_SA"])) | ",
+                    "$(fmt(e["sym_error_2norm"])) | $(fmt(e["sylvester_residual"])) | $(fmt(e["asym_P"])) |",
+                )
             end
             println(io)
         end
@@ -208,17 +301,23 @@ function write_summary(results)
         println(io, "## $section\n")
         for case in sorted_cases(results[section])
             println(io, "### $(case_label(case))\n")
-            println(io, "| preconditioner | ‖AX+XA−2I‖/‖2I‖ | SPD check | where | min Re λ(P⁻¹A) / max\\|λ\\| | blocks checked | sweeps | rel. residual | other failure |")
+            println(
+                io,
+                "| preconditioner | ‖AX+XA−2I‖/‖2I‖ | SPD check | where | min Re λ(P⁻¹A) / max\\|λ\\| | blocks checked | sweeps | rel. residual | other failure |",
+            )
             println(io, "|---|---|---|---|---|---|---|---|---|")
-            for key in sort(collect(keys(results[section][case])); by = k -> (startswith(k, "fai") ? 1 : 0, k))
+            for key in sort(collect(keys(results[section][case])); by=k -> (startswith(k, "fai") ? 1 : 0, k))
                 e = results[section][case][key]
                 solve = solve_entry(e)
                 isnothing(solve) && continue
                 outcome = solve["not_spd"] ? "**not SPD**" : (solve["failed"] ? "–" : "passed")
                 where_ = solve["not_spd"] ? "$(solve["not_spd_label"]), position $(solve["not_spd_position"])" : ""
-                println(io, "| $(local_entry_label(key, e)) | $(fmt(get(e, "sylvester_residual", NaN))) | $outcome | $where_ | ",
-                        "$(fmt(get(solve, "not_spd_eigmin_rel", NaN))) | $(solve["nblocks_checked"]) | $(solve["nsweeps_done"]) | ",
-                        "$(fmt(get(solve, "rel_res", NaN))) | $(solve["failed"] ? first(solve["error"], 80) : "") |")
+                println(
+                    io,
+                    "| $(local_entry_label(key, e)) | $(fmt(get(e, "sylvester_residual", NaN))) | $outcome | $where_ | ",
+                    "$(fmt(get(solve, "not_spd_eigmin_rel", NaN))) | $(solve["nblocks_checked"]) | $(solve["nsweeps_done"]) | ",
+                    "$(fmt(get(solve, "rel_res", NaN))) | $(solve["failed"] ? first(solve["error"], 80) : "") |",
+                )
             end
             println(io)
         end

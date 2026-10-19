@@ -22,8 +22,9 @@ abstract type AbstractImplicitSystem end
 Implicit Euler time integration scheme.
 
 # Fields
-- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
-- `linsolve_kwargs::K`: Linear solver keyword arguments (e.g., `cutoff`, `maxdim`, `nsweeps`).
+
+  - `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+  - `linsolve_kwargs::K`: Linear solver keyword arguments (e.g., `cutoff`, `maxdim`, `nsweeps`).
 """
 struct ImplicitEuler{K} <: AbstractImplicitStepper
     time_evol_kwargs::TimeEvolArgs
@@ -37,8 +38,9 @@ ImplicitEuler(; time_evol_kwargs::TimeEvolArgs, kwargs...) = ImplicitEuler(time_
 Crank-Nicolson (semi-implicit) time integration scheme.
 
 # Fields
-- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
-- `linsolve_kwargs::K`: Linear solver keyword arguments (e.g., `cutoff`, `maxdim`, `nsweeps`).
+
+  - `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+  - `linsolve_kwargs::K`: Linear solver keyword arguments (e.g., `cutoff`, `maxdim`, `nsweeps`).
 """
 struct CrankNicolson{K} <: AbstractImplicitStepper
     time_evol_kwargs::TimeEvolArgs
@@ -63,33 +65,33 @@ Advances the state `u` by one time step `stepper.time_evol_kwargs.dt` using the 
 function timestep(stepper::ImplicitEuler, u::Tuple, sys::AbstractImplicitSystem, t::Real=0.0)
     dt = stepper.time_evol_kwargs.dt
     t_next = t + dt
-    
+
     # For Implicit Euler: (I - dt * A) u_{n+1} = u_n + dt * b
     # 1. Build the LHS operator MPO: (I - dt * A)
     lhs_op = build_lhs_operator(sys, stepper, dt, t_next)
-    
+
     # 2. Build the RHS vector MPS: u_n + dt * b
     rhs_vec = build_rhs_vector(sys, stepper, u, dt, t)
-    
+
     # 3. Solve the linear system
     u_next = solve_linear_system(sys, lhs_op, rhs_vec, u, stepper.linsolve_kwargs)
-    
+
     return u_next
 end
 
 function timestep(stepper::CrankNicolson, u::Tuple, sys::AbstractImplicitSystem, t::Real=0.0)
     dt = stepper.time_evol_kwargs.dt
     t_next = t + dt
-    
+
     # For Crank-Nicolson: (I - dt/2 * A) u_{n+1} = (I + dt/2 * A) u_n + dt/2 * (b_n + b_{n+1})
     # 1. Build the LHS operator MPO: (I - dt/2 * A)
     lhs_op = build_lhs_operator(sys, stepper, dt, t_next)
-    
+
     # 2. Build the RHS vector MPS: (I + dt/2 * A) u_n + dt/2 * (b_n + b_{n+1})
     rhs_vec = build_rhs_vector(sys, stepper, u, dt, t)
-    
+
     # 3. Solve the linear system
     u_next = solve_linear_system(sys, lhs_op, rhs_vec, u, stepper.linsolve_kwargs)
-    
+
     return u_next
 end

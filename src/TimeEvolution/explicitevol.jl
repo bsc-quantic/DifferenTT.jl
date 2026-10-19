@@ -16,7 +16,7 @@ abstract type AbstractRHS end
 #     # stage is used for rk4 internal stage tracking, ut there is no need to use it internally in RHS
 #     cutoff = rhs.experiment.cutoff
 #     maxdim = rhs.experiment.maxdim
-    
+
 #     rhs_terms = rhs_custom_func(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
 
 #     rhs_corrected = ntuple(i -> begin
@@ -29,15 +29,15 @@ abstract type AbstractRHS end
 
 #################################################################
 
-
 """
     ExplicitEuler{K} <: AbstractExplicitStepper
 
 Explicit Euler time integration scheme.
 
 # Fields
-- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
-- `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
+
+  - `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+  - `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
 """
 struct ExplicitEuler{K} <: AbstractExplicitStepper
     time_evol_kwargs::TimeEvolArgs
@@ -51,8 +51,9 @@ ExplicitEuler(; time_evol_kwargs::TimeEvolArgs, kwargs...) = ExplicitEuler(time_
 Explicit Runge-Kutta 4th order time integration scheme.
 
 # Fields
-- `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
-- `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
+
+  - `time_evol_kwargs::TimeEvolArgs`: Time interval and step size configuration.
+  - `tt_kwargs::K`: TT truncation keyword arguments (e.g., `cutoff`, `maxdim`).
 """
 struct RK4{K} <: AbstractExplicitStepper
     time_evol_kwargs::TimeEvolArgs
@@ -66,40 +67,41 @@ RK4(; time_evol_kwargs::TimeEvolArgs, kwargs...) = RK4(time_evol_kwargs, NamedTu
 Advances the state `u` by one time step `stepper.time_evol_kwargs.dt` using the specified explicit `stepper`.
 
 # Arguments
-- `stepper`: The explicit time integration scheme (e.g., `ExplicitEuler`, `RK4`).
-- `u`: The current state, typically a Tuple of `MPS` for vector fields.
-- `rhs_func`: A function `rhs_func(u, t, stage)` that computes the time derivative `du/dt = F(u, t)`. 
-  The `stage` argument allows `rhs_func` to know which internal RK stage is being evaluated,
-  useful for debugging or intermediate outputs.
-- `t`: The current time.
+
+  - `stepper`: The explicit time integration scheme (e.g., `ExplicitEuler`, `RK4`).
+  - `u`: The current state, typically a Tuple of `MPS` for vector fields.
+  - `rhs_func`: A function `rhs_func(u, t, stage)` that computes the time derivative `du/dt = F(u, t)`.
+    The `stage` argument allows `rhs_func` to know which internal RK stage is being evaluated,
+    useful for debugging or intermediate outputs.
+  - `t`: The current time.
 """
 function timestep(stepper::ExplicitEuler, u::Tuple, rhs_func::AbstractRHS, t::Real=0.0)
     dt = stepper.time_evol_kwargs.dt
     k1 = rhs_func(u, t, 1)
-    
+
     u_next = ntuple(length(u)) do i
         +(u[i], dt * k1[i]; stepper.tt_kwargs...)
     end
-    
+
     return u_next
 end
 
 function timestep(stepper::RK4, u::Tuple, rhs_func::AbstractRHS, t::Real=0.0)
     dt = stepper.time_evol_kwargs.dt
     k1 = rhs_func(u, t, 1)
-    
+
     u2 = ntuple(i -> +(u[i], 0.5 * dt * k1[i]; stepper.tt_kwargs...), length(u))
     k2 = rhs_func(u2, t + 0.5 * dt, 2)
-    
+
     u3 = ntuple(i -> +(u[i], 0.5 * dt * k2[i]; stepper.tt_kwargs...), length(u))
     k3 = rhs_func(u3, t + 0.5 * dt, 3)
-    
+
     u4 = ntuple(i -> +(u[i], dt * k3[i]; stepper.tt_kwargs...), length(u))
     k4 = rhs_func(u4, t + dt, 4)
-    
+
     u_next = ntuple(length(u)) do i
         +(u[i], (1/6) * dt * k1[i], (1/3) * dt * k2[i], (1/3) * dt * k3[i], (1/6) * dt * k4[i]; stepper.tt_kwargs...)
     end
-    
+
     return u_next
 end

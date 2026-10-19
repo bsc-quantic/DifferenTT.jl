@@ -10,7 +10,9 @@ const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") * RESULTS_SUFFIX
+base_folder =
+    (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") *
+    RESULTS_SUFFIX
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 
 if !isfile(snapshots_file)
@@ -39,13 +41,48 @@ for i in 200:200:25000
         v = -1.0 * apply(diff_ops.d_ops[1], psi)
 
         # The vorticity is O(U/h) at the lid: clip the colour range to show the interior
-        visualize_scalar(omega_field, length(omega_field), grid, joinpath(plot_dir, "vorticity_$(i).svg"); npoints=256, aspect_ratio=:equal, size=fig_size, clims=(-5.0, 5.0))
-        visualize_scalar(psi_field, length(psi_field), grid, joinpath(plot_dir, "streamfunction_$(i).svg"); npoints=256, aspect_ratio=:equal, size=fig_size)
-        visualize_vector((u, v), grid, psi_field.arch, joinpath(plot_dir, "vector_$(i).svg"); npoints=256, quiver_npoints=16, arrow_scale=0.05, aspect_ratio=:equal, size=fig_size)
+        visualize_scalar(
+            omega_field,
+            length(omega_field),
+            grid,
+            joinpath(plot_dir, "vorticity_$(i).svg");
+            npoints=256,
+            aspect_ratio=:equal,
+            size=fig_size,
+            clims=(-5.0, 5.0),
+        )
+        visualize_scalar(
+            psi_field,
+            length(psi_field),
+            grid,
+            joinpath(plot_dir, "streamfunction_$(i).svg");
+            npoints=256,
+            aspect_ratio=:equal,
+            size=fig_size,
+        )
+        visualize_vector(
+            (u, v),
+            grid,
+            psi_field.arch,
+            joinpath(plot_dir, "vector_$(i).svg");
+            npoints=256,
+            quiver_npoints=16,
+            arrow_scale=0.05,
+            aspect_ratio=:equal,
+            size=fig_size,
+        )
 
         if haskey(file, "poisson_residual_$i") && !isnothing(file["poisson_residual_$i"])
             poisson_residual = file["poisson_residual_$i"]
-            visualize_scalar(poisson_residual, grid, psi_field.arch, joinpath(plot_dir, "poisson_residual_$(i).svg"); npoints=256, aspect_ratio=:equal, size=fig_size)
+            visualize_scalar(
+                poisson_residual,
+                grid,
+                psi_field.arch,
+                joinpath(plot_dir, "poisson_residual_$(i).svg");
+                npoints=256,
+                aspect_ratio=:equal,
+                size=fig_size,
+            )
         end
     end
 end

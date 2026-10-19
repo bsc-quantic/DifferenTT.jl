@@ -8,11 +8,11 @@ using DifferenTT
     ttcg = DifferenTT.TTCG(maxiter=50)
     @test ttcg.maxiter == 50
     @test ttcg isa KrylovKit.KrylovAlgorithm
-    
+
     ttgmres = DifferenTT.TTGMRES(maxiter=40)
     @test ttgmres.maxiter == 40
     @test ttgmres isa KrylovKit.KrylovAlgorithm
-    
+
     global_cg = DifferenTT.GlobalCG(DifferenTT.GlobalUpdaterArgs(isposdef=true, ishermitian=true))
     @test global_cg isa DifferenTT.AbstractGlobalSolver
 
@@ -26,10 +26,10 @@ end
     A = replaceprime(transpose(A)' * A, 2 => 1) # make it positive definite and hermitian
     b = random_mps(s)
     x0 = random_mps(s)
-    
+
     solver = DifferenTT.GlobalCG(DifferenTT.GlobalUpdaterArgs(isposdef=true, ishermitian=true, maxiter=2))
     x = DifferenTT.linearsolve(solver, A, b, x0)
-    
+
     solver_gmres = DifferenTT.GlobalGMRES(DifferenTT.GlobalUpdaterArgs(maxiter=2, krylovdim=2))
     x_g = DifferenTT.linearsolve(solver_gmres, A, b, x0)
 end

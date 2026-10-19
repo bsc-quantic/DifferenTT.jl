@@ -9,13 +9,12 @@ Contracts the projected operator and constant term into dense matrices, forms th
 `(a₀ I + a₁ A) x = b` using `coefficients = (a₀, a₁)`, and solves it via QR factorization.
 
 # Returns
-- `(x::ITensor, (; residual))`: The solution tensor and a named tuple with residual info.
+
+  - `(x::ITensor, (; residual))`: The solution tensor and a named tuple with residual info.
 """
 struct QRUpdater <: AbstractUpdater end
 
-function (up::QRUpdater)(
-    problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...
-)
+function (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     verbosity = get(kwargs, :verbosity, 0)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)

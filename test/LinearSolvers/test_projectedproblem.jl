@@ -6,10 +6,10 @@ using DifferenTT: ReducedPreconditioner, ReducedFactorizedPreconditioner
 @testset "Projected Problem" begin
     n = 4
     s = siteinds("S=1/2", n)
-    
+
     A = random_mpo(s)
     P = ProjMPO(A)
-    
+
     # Test contract for AbstractProjMPO
     b = random_mps(s)
     position!(P, b, 2)

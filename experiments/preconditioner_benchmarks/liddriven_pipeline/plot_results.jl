@@ -30,13 +30,15 @@ using Printf
 using LaTeXStrings
 
 gr()
-default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
+default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 ENV["GKSwstype"] = "100"
 include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
 
 base_folder = "experiments/preconditioner_benchmarks/liddriven_pipeline"
-const RESULTS_SUFFIX = cavity_results_suffix(s -> isfile(joinpath(base_folder, "results_nocond" * s, "collected_results.jld2")))
+const RESULTS_SUFFIX = cavity_results_suffix(
+    s -> isfile(joinpath(base_folder, "results_nocond" * s, "collected_results.jld2"))
+)
 @info "Plotting the lid-driven cavity results with folder suffix \"$RESULTS_SUFFIX\""
 nocond_folder = joinpath(base_folder, "results_nocond" * RESULTS_SUFFIX)
 plots_dir = joinpath(base_folder, "plots" * RESULTS_SUFFIX)
@@ -72,12 +74,15 @@ for row in eachrow(df_nocond)
         "total_solve_time" => row.total_solve_time,
         "solve_times" => row.solve_times,
         "iters" => [sum(step_iters) for step_iters in row.iters],
-        "iters_per_site" => hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site) ?
-                            row.iters_per_site :
-                            (hasproperty(row, :iters) ? sum(row.iters) : Float64[]),
+        "iters_per_site" =>
+            if hasproperty(row, :iters_per_site) && !ismissing(row.iters_per_site) && !isnothing(row.iters_per_site)
+                row.iters_per_site
+            else
+                (hasproperty(row, :iters) ? sum(row.iters) : Float64[])
+            end,
         "residuals" => row_vec(row, :residuals),
         "div_ratios" => row_vec(row, :div_ratios),
-        "n_steps" => length(row.solve_times)
+        "n_steps" => length(row.solve_times),
     )
     results_nocond[nodes][k] = d
 end
@@ -97,7 +102,7 @@ if !isempty(df_cond)
             "avg_cond" => hasproperty(row, :avg_cond) ? row.avg_cond : NaN,
             "avg_pc_cond" => hasproperty(row, :avg_pc_cond) ? row.avg_pc_cond : NaN,
             "conds_per_site" => row_vec(row, :conds_per_site),
-            "pc_conds_per_site" => row_vec(row, :pc_conds_per_site)
+            "pc_conds_per_site" => row_vec(row, :pc_conds_per_site),
         )
         results_cond[nodes][k] = d_cond
     end
@@ -158,7 +163,10 @@ for nodes in system_sizes
         push!(total_speedups, base_time / (v["total_solve_time"] + v["precond_build_time"]))
 
         cond_v = match_cond(grid_data_cond, v)
-        push!(cond_improvement_factors, isnothing(cond_v) ? NaN : cond_improvement_factor(cond_v; baseline_avg=base_avg_cond))
+        push!(
+            cond_improvement_factors,
+            isnothing(cond_v) ? NaN : cond_improvement_factor(cond_v; baseline_avg=base_avg_cond),
+        )
     end
 
     if isempty(mus)
@@ -188,55 +196,81 @@ for nodes in system_sizes
         Z_cond[g_idx, μ_idx] = cond_improvement_factors[i]
     end
 
-    hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+    hm_solve = heatmap(
+        string.(unique_mus),
+        string.(unique_gdims),
+        Z_solve;
         title="Aggregate Solve Speedup ($nodes, N=$n_steps)",
         xlabel="Regularization parameter (μ)",
         ylabel=L"Bond Dimension ($\chi_{max}$)",
         color=:viridis,
         clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
-        right_margin=5Plots.mm)
+        right_margin=5Plots.mm,
+    )
     savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_$(nodes[1])x$(nodes[2]).png"))
 
-    hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+    hm_total = heatmap(
+        string.(unique_mus),
+        string.(unique_gdims),
+        Z_total;
         title="Aggregate Total Speedup ($nodes, N=$n_steps)",
         xlabel="Regularization parameter (μ)",
         ylabel=L"Bond Dimension ($\chi_{max}$)",
         color=:viridis,
         clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
-        right_margin=5Plots.mm)
+        right_margin=5Plots.mm,
+    )
     savefig(hm_total, joinpath(plots_dir, "heatmap_total_$(nodes[1])x$(nodes[2]).png"))
 
     valid_conds = filter(!isnan, Z_cond)
     if !isempty(valid_conds)
-        hm_cond = heatmap(string.(unique_mus), string.(unique_gdims), Z_cond,
+        hm_cond = heatmap(
+            string.(unique_mus),
+            string.(unique_gdims),
+            Z_cond;
             title="Avg Cond Improvement ($nodes, N=$n_steps)",
             xlabel="Regularization parameter (μ)",
             ylabel=L"Bond Dimension ($\chi_{max}$)",
             color=:viridis,
             clim=(minimum(valid_conds), maximum(valid_conds)),
-            right_margin=5Plots.mm)
+            right_margin=5Plots.mm,
+        )
         savefig(hm_cond, joinpath(plots_dir, "heatmap_cond_improvement_$(nodes[1])x$(nodes[2]).png"))
     else
         @info "Skipping condition heatmap for $nodes (no FAI κ(P^{-1}A) data found)"
     end
 
-    pf_plot = plot(title="Trade-off: Build vs Total Solve Time ($nodes, N=$n_steps)",
+    pf_plot = plot(;
+        title="Trade-off: Build vs Total Solve Time ($nodes, N=$n_steps)",
         xlabel="Preconditioner Build Time (s)",
         ylabel="Aggregate Linear Solve Time (s)",
         legend=:outertopright,
-        framestyle=:box)
+        framestyle=:box,
+    )
     pf_colors = palette(:tab20)
     for (i, gdim) in enumerate(unique_gdims)
         idx = findall(x -> x == gdim, gdims)
-        scatter!(pf_plot, build_times[idx], total_solve_times[idx],
+        scatter!(
+            pf_plot,
+            build_times[idx],
+            total_solve_times[idx];
             label=latexstring("FAI \$\\chi_{max}=$(gdim)\$"),
-            color=pf_colors[mod1(i, length(pf_colors))], marker=:circle)
+            color=pf_colors[mod1(i, length(pf_colors))],
+            marker=:circle,
+        )
     end
 
-    hline!(pf_plot, [base_time], label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
-    plot!(pf_plot, [0, base_time], [base_time, 0],
-        fillrange=0, fillalpha=0.1, fillcolor=:green,
-        linealpha=0, label="Net Speedup Region")
+    hline!(pf_plot, [base_time]; label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
+    plot!(
+        pf_plot,
+        [0, base_time],
+        [base_time, 0];
+        fillrange=0,
+        fillalpha=0.1,
+        fillcolor=:green,
+        linealpha=0,
+        label="Net Speedup Region",
+    )
 
     xlims!(pf_plot, 0, maximum(build_times) * 1.05)
     ylims!(pf_plot, 0, max(maximum(total_solve_times), base_time) * 1.05)
@@ -250,41 +284,75 @@ for nodes in system_sizes
     sites_range_cond = nonempty_numeric_vec(base_conds) ? (1:length(base_conds)) : []
     base_conds_clean = nonempty_numeric_vec(base_conds) ? clean_kappa(base_conds) : nothing
 
-    p_iters_combined = plot(
+    p_iters_combined = plot(;
         title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Time Step", ylabel="Total Krylov Iterations", legend=:outertopright, yscale=:log10
+        xlabel="Time Step",
+        ylabel="Total Krylov Iterations",
+        legend=:outertopright,
+        yscale=:log10,
     )
-    p_sp_combined = plot(
+    p_sp_combined = plot(;
         title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="Time Step", ylabel="Speedup Ratio", legend=:outertopright, yscale=:log10
+        xlabel="Time Step",
+        ylabel="Speedup Ratio",
+        legend=:outertopright,
+        yscale=:log10,
     )
-    p_site_combined = plot(
+    p_site_combined = plot(;
         title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright
+        xlabel="MPS Site Index",
+        ylabel="Total Krylov Iterations",
+        legend=:outertopright,
     )
-    p_site_all_combined = plot(
+    p_site_all_combined = plot(;
         title="Site-by-Site Sum of Iterations ($nodes)\nAll Preconditioner Setups",
-        xlabel="MPS Site Index", ylabel="Total Krylov Iterations", legend=:outertopright,
-        size=(1050, 600), legendfont=font(8, "Computer Modern")
+        xlabel="MPS Site Index",
+        ylabel="Total Krylov Iterations",
+        legend=:outertopright,
+        size=(1050, 600),
+        legendfont=font(8, "Computer Modern"),
     )
-    p_conds_combined = plot(
-        yaxis=:log, title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="MPS Site Index", ylabel="Condition Number (Log Scale)", legend=:outertopright
+    p_conds_combined = plot(;
+        yaxis=:log,
+        title=latexstring("Local Condition Number Profile ($nodes)\nBest μ per \$\\chi_{max}\$"),
+        xlabel="MPS Site Index",
+        ylabel="Condition Number (Log Scale)",
+        legend=:outertopright,
     )
-    p_cond_imp_combined = plot(
+    p_cond_imp_combined = plot(;
         title=latexstring("Condition Number Improvement ($nodes)\nBest μ per \$\\chi_{max}\$"),
-        xlabel="MPS Site Index", ylabel="Improvement Factor", legend=:outertopright
+        xlabel="MPS Site Index",
+        ylabel="Improvement Factor",
+        legend=:outertopright,
     )
 
-    plot!(p_iters_combined, steps_range, base_iters, label="Baseline", color=:black, lw=3, marker=:circle)
-    hline!(p_sp_combined, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+    plot!(p_iters_combined, steps_range, base_iters; label="Baseline", color=:black, lw=3, marker=:circle)
+    hline!(p_sp_combined, [1.0]; color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
     if !isempty(sites_range_iters)
-        plot!(p_site_combined, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
-        plot!(p_site_all_combined, sites_range_iters, base_iters_per_site, label="Baseline", color=:black, lw=3, marker=:circle)
+        plot!(
+            p_site_combined,
+            sites_range_iters,
+            base_iters_per_site;
+            label="Baseline",
+            color=:black,
+            lw=3,
+            marker=:circle,
+        )
+        plot!(
+            p_site_all_combined,
+            sites_range_iters,
+            base_iters_per_site;
+            label="Baseline",
+            color=:black,
+            lw=3,
+            marker=:circle,
+        )
     end
     if !isnothing(base_conds_clean)
-        plot!(p_conds_combined, sites_range_cond, base_conds_clean, label="Baseline", color=:black, lw=3, marker=:circle)
-        hline!(p_cond_imp_combined, [1.0], color=:black, lw=3, ls=:dash, label="No improvement")
+        plot!(
+            p_conds_combined, sites_range_cond, base_conds_clean; label="Baseline", color=:black, lw=3, marker=:circle
+        )
+        hline!(p_cond_imp_combined, [1.0]; color=:black, lw=3, ls=:dash, label="No improvement")
     end
 
     colors = palette(:tab20)
@@ -307,39 +375,69 @@ for nodes in system_sizes
         out_dir = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])", "chi_$gdim")
         mkpath(out_dir)
 
-        p_iters = plot(steps_range, base_iters,
-            label="Baseline", color=:red, lw=2, marker=:circle,
-            title=latexstring("Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
+        p_iters = plot(
+            steps_range,
+            base_iters;
+            label="Baseline",
+            color=:red,
+            lw=2,
+            marker=:circle,
+            title=latexstring(
+                "Total Krylov Iterations vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"
+            ),
             xlabel="Time Step",
             ylabel="Total Krylov Iterations",
-            yscale=:log10
+            yscale=:log10,
         )
-        plot!(p_iters, steps_range, best_v["iters"],
-            label="FAI", color=:blue, lw=2, marker=:square)
-        plot!(p_iters, steps_range, base_iters, fillrange=best_v["iters"],
-            fillalpha=0.12, fillcolor=:blue, label="", linealpha=0)
+        plot!(p_iters, steps_range, best_v["iters"]; label="FAI", color=:blue, lw=2, marker=:square)
+        plot!(
+            p_iters,
+            steps_range,
+            base_iters;
+            fillrange=best_v["iters"],
+            fillalpha=0.12,
+            fillcolor=:blue,
+            label="",
+            linealpha=0,
+        )
         savefig(p_iters, joinpath(out_dir, "step_iterations.png"))
 
         per_step_speedup = base_solve_times ./ best_v["solve_times"]
-        p_sp = plot(steps_range, per_step_speedup,
-            label="FAI", color=:purple, lw=2, marker=:diamond,
-            title=latexstring("Solve Speedup vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"),
+        p_sp = plot(
+            steps_range,
+            per_step_speedup;
+            label="FAI",
+            color=:purple,
+            lw=2,
+            marker=:diamond,
+            title=latexstring(
+                "Solve Speedup vs Time Step ($nodes)\nBest FAI for \$\\chi_{max}=$(gdim)\$: μ=$(best_v["mu"])"
+            ),
             xlabel="Time Step",
             ylabel="Speedup Ratio",
             legend=:outertopright,
-            yscale=:log10)
-        hline!(p_sp, [1.0], color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
+            yscale=:log10,
+        )
+        hline!(p_sp, [1.0]; color=:red, lw=2, ls=:dash, label="Break-even (1.0x)")
         savefig(p_sp, joinpath(out_dir, "step_speedup.png"))
 
         if !isempty(sites_range_iters)
             gdim_indices = findall(==(gdim), gdims)
-            sort!(gdim_indices, by=idx -> mus[idx])
-            p_site = plot(sites_range_iters, base_iters_per_site,
-                label="Baseline", color=:black, lw=2.5, marker=:circle,
-                title=latexstring("Site-by-Site Sum of Iterations ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"),
+            sort!(gdim_indices; by=idx -> mus[idx])
+            p_site = plot(
+                sites_range_iters,
+                base_iters_per_site;
+                label="Baseline",
+                color=:black,
+                lw=2.5,
+                marker=:circle,
+                title=latexstring(
+                    "Site-by-Site Sum of Iterations ($nodes)\nPreconditioner Rank \$\\chi_{max}=$(gdim)\$"
+                ),
                 xlabel="MPS Site Index",
                 ylabel="Total Krylov Iterations",
-                legend=:outertopright)
+                legend=:outertopright,
+            )
 
             sub_colors = palette(:tab10)
             for (j, idx) in enumerate(gdim_indices)
@@ -349,50 +447,107 @@ for nodes in system_sizes
                     is_best = (idx == best_idx)
                     lbl = latexstring("FAI \$\\mu=$(v["mu"])\$" * (is_best ? " (best)" : ""))
                     c_j = sub_colors[mod1(j, length(sub_colors))]
-                    plot!(p_site, sites_range_iters, v_iters_site,
-                        label=lbl, lw=is_best ? 2.5 : 1.5, ls=is_best ? :solid : :dash,
-                        marker=is_best ? :square : :diamond, color=c_j)
+                    plot!(
+                        p_site,
+                        sites_range_iters,
+                        v_iters_site;
+                        label=lbl,
+                        lw=is_best ? 2.5 : 1.5,
+                        ls=is_best ? :solid : :dash,
+                        marker=is_best ? :square : :diamond,
+                        color=c_j,
+                    )
                 end
             end
             savefig(p_site, joinpath(out_dir, "site_iterations.png"))
         end
 
         c_color = colors[mod1(i, length(colors))]
-        plot!(p_iters_combined, steps_range, best_v["iters"],
-            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
-        plot!(p_sp_combined, steps_range, per_step_speedup,
-            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:diamond)
+        plot!(
+            p_iters_combined,
+            steps_range,
+            best_v["iters"];
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"),
+            color=c_color,
+            lw=2,
+            marker=:square,
+        )
+        plot!(
+            p_sp_combined,
+            steps_range,
+            per_step_speedup;
+            label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"),
+            color=c_color,
+            lw=2,
+            marker=:diamond,
+        )
 
         if !isempty(sites_range_iters)
             best_v_iters_site = get(best_v, "iters_per_site", nothing)
             if nonempty_numeric_vec(best_v_iters_site)
-                plot!(p_site_combined, sites_range_iters, best_v_iters_site,
-                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+                plot!(
+                    p_site_combined,
+                    sites_range_iters,
+                    best_v_iters_site;
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"),
+                    color=c_color,
+                    lw=2,
+                    marker=:square,
+                )
             end
         end
 
         if !isnothing(base_conds_clean)
-            p_conds = plot(sites_range_cond, base_conds_clean,
-                label="Baseline", color=:red, lw=2, marker=:circle, yaxis=:log,
+            p_conds = plot(
+                sites_range_cond,
+                base_conds_clean;
+                label="Baseline",
+                color=:red,
+                lw=2,
+                marker=:circle,
+                yaxis=:log,
                 title="Local Condition Number Profile ($nodes)",
                 xlabel="MPS Site Index",
                 ylabel="Condition Number (Log Scale)",
-                legend=:outertopright)
-            p_cond_imp = plot(
+                legend=:outertopright,
+            )
+            p_cond_imp = plot(;
                 title="Condition Number Improvement ($nodes)\nRatio: unpreconditioned / preconditioned",
                 xlabel="MPS Site Index",
                 ylabel="Improvement Factor",
-                legend=:outertopright)
-            hline!(p_cond_imp, [1.0], color=:red, lw=2, ls=:dash, label="No improvement")
+                legend=:outertopright,
+            )
+            hline!(p_cond_imp, [1.0]; color=:red, lw=2, ls=:dash, label="No improvement")
 
             if !isnothing(fai_kpc)
-                plot!(p_conds, sites_range_cond, fai_kpc, label="FAI", color=:blue, lw=2, marker=:square)
-                plot!(p_cond_imp, sites_range_cond, base_conds_clean ./ fai_kpc,
-                    label="FAI", color=:blue, lw=2, marker=:square)
-                plot!(p_conds_combined, sites_range_cond, fai_kpc,
-                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
-                plot!(p_cond_imp_combined, sites_range_cond, base_conds_clean ./ fai_kpc,
-                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"), color=c_color, lw=2, marker=:square)
+                plot!(p_conds, sites_range_cond, fai_kpc; label="FAI", color=:blue, lw=2, marker=:square)
+                plot!(
+                    p_cond_imp,
+                    sites_range_cond,
+                    base_conds_clean ./ fai_kpc;
+                    label="FAI",
+                    color=:blue,
+                    lw=2,
+                    marker=:square,
+                )
+                plot!(
+                    p_conds_combined,
+                    sites_range_cond,
+                    fai_kpc;
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"),
+                    color=c_color,
+                    lw=2,
+                    marker=:square,
+                )
+                plot!(
+                    p_cond_imp_combined,
+                    sites_range_cond,
+                    base_conds_clean ./ fai_kpc;
+                    label=latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))"),
+                    color=c_color,
+                    lw=2,
+                    marker=:square,
+                )
             else
                 @info "No FAI κ(P^{-1}A) for $nodes χ=$gdim; omitting FAI from condition profile"
             end
@@ -403,7 +558,7 @@ for nodes in system_sizes
     end
 
     if !isempty(sites_range_iters)
-        all_keys = sort([k for k in keys_list], by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
+        all_keys = sort([k for k in keys_list]; by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
         palette_all = palette(:tab20)
         for (j, k) in enumerate(all_keys)
             v = grid_data_nocond[k]
@@ -411,30 +566,40 @@ for nodes in system_sizes
             if nonempty_numeric_vec(v_iters_site)
                 c_k = palette_all[mod1(j, length(palette_all))]
                 lbl = latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$")
-                plot!(p_site_all_combined, sites_range_iters, v_iters_site,
-                    label=lbl, lw=1.5, color=c_k)
+                plot!(p_site_all_combined, sites_range_iters, v_iters_site; label=lbl, lw=1.5, color=c_k)
             end
         end
     end
 
     # Per-step residual and incompressibility of every configuration
-    step_keys = sort(keys_list, by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
+    step_keys = sort(keys_list; by=k -> (grid_data_nocond[k]["G_maxdim"], grid_data_nocond[k]["mu"]))
     step_colors = palette(:tab20)
     function step_series(metric)
         series = Any[(; label="Baseline", values=base[metric], color=:black, lw=3)]
         for (j, k) in enumerate(step_keys)
             v = grid_data_nocond[k]
-            push!(series, (; label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
-                values=v[metric], color=step_colors[mod1(j, length(step_colors))], lw=1.5))
+            push!(
+                series,
+                (;
+                    label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
+                    values=v[metric],
+                    color=step_colors[mod1(j, length(step_colors))],
+                    lw=1.5,
+                ),
+            )
         end
         return series
     end
-    p_res_all = step_profile_plot(step_series("residuals");
+    p_res_all = step_profile_plot(
+        step_series("residuals");
         title="Relative Residual vs Time Step ($nodes)\nAll Preconditioner Setups",
-        ylabel="Relative Residual")
-    p_div_all = step_profile_plot(step_series("div_ratios");
+        ylabel="Relative Residual",
+    )
+    p_div_all = step_profile_plot(
+        step_series("div_ratios");
         title="Incompressibility of the Stream Function Velocity ($nodes)\nAll Preconditioner Setups",
-        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖")
+        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖",
+    )
 
     out_dir_combined = joinpath(plots_dir, "$(nodes[1])x$(nodes[2])")
     mkpath(out_dir_combined)
@@ -456,17 +621,32 @@ end
 # 3. Scaling Summary
 # ---------------------------------------------------------
 if !isempty(max_total_speedups) && length(max_total_speedups) > 1
-    p_scale = plot(1:length(grid_labels), max_solve_speedups,
-        label="Max Agg. Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,
+    p_scale = plot(
+        1:length(grid_labels),
+        max_solve_speedups;
+        label="Max Agg. Solve Speedup",
+        color=:blue,
+        lw=3,
+        marker=:circle,
+        markersize=8,
         title="Scaling of Maximum Achievable Speedups (Evolution)",
         xlabel="System Size",
         ylabel="Speedup Factor",
         xticks=(1:length(grid_labels), grid_labels),
         legend=:topleft,
-        framestyle=:box)
-    plot!(p_scale, 1:length(grid_labels), max_total_speedups,
-        label="Max Agg. Total Speedup", color=:green, lw=3, marker=:square, markersize=8)
-    hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+        framestyle=:box,
+    )
+    plot!(
+        p_scale,
+        1:length(grid_labels),
+        max_total_speedups;
+        label="Max Agg. Total Speedup",
+        color=:green,
+        lw=3,
+        marker=:square,
+        markersize=8,
+    )
+    hline!(p_scale, [1.0]; label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
     savefig(p_scale, joinpath(plots_dir, "scaling_summary_evolution.png"))
 end
 

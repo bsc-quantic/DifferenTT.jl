@@ -4,7 +4,7 @@ using KrylovKit: Givens
 
 # Regular non-preconditioned implentation is taken directly from KrylovKit.jl
 
-function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number = 0, a₁::Number = 1; alg_rrule = alg)
+function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
     # Initial function operation and division defines number type
     y₀ = KrylovKit.apply(operator, x₀)
     T = typeof(KrylovKit.inner(b, y₀) / norm(b) * one(a₀) * one(a₁))
@@ -14,13 +14,13 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
     r = scale(b, one(T))
     r = iszero(α₀) ? r : add!!(r, x₀, -α₀)
     r = add!!(r, y₀, -α₁)
-    
+
     normr = norm(r)
     z = KrylovKit.apply(M⁻¹, r)
     β = norm(z)
-    
+
     x = scale!!(zerovector(r), x₀, 1)
-    
+
     S = typeof(β)
 
     # Algorithm parameters
@@ -46,14 +46,14 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
     R = fill(zero(T), (krylovdim, krylovdim))
     numiter = 0
     numops = 1 # operator has been applied once to determine T and r
-    
+
     function wrapped_op(v)
         v_out = KrylovKit.apply(operator, v, α₀, α₁)
         return KrylovKit.apply(M⁻¹, v_out)
     end
 
     iter = ArnoldiIterator(wrapped_op, z, alg.orth)
-    fact = initialize(iter; verbosity = SILENT_LEVEL)
+    fact = initialize(iter; verbosity=SILENT_LEVEL)
     sizehint!(fact, alg.krylovdim)
     numops += 1 # start applies operator once
 
@@ -72,14 +72,14 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
             if alg.verbosity >= EACHITERATION_LEVEL
                 @info "GMRES linsolve in iteration $numiter; step $k: normres = $(normres2string(β))"
             end
-            fact = expand!(iter, fact; verbosity = SILENT_LEVEL)
+            fact = expand!(iter, fact; verbosity=SILENT_LEVEL)
             numops += 1 # expand! applies the operator once
             k = length(fact)
             H = rayleighquotient(fact)
 
             # copy Arnoldi Hessenberg matrix into R
             @inbounds begin
-                for i in 1:(k - 1)
+                for i in 1:(k-1)
                     R[i, k] = H[i, k]
                 end
                 R[k, k] = H[k, k]
@@ -87,17 +87,17 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
 
             # Apply Givens rotations
             Rk = view(R, :, k)
-            @inbounds for i in 1:(k - 1)
+            @inbounds for i in 1:(k-1)
                 lmul!(gs[i], Rk)
             end
             gs[k], R[k, k] = givens(R[k, k], normres(fact), k, k + 1)
 
             # Apply Givens rotations to right hand side
-            y[k + 1] = zero(T)
+            y[k+1] = zero(T)
             lmul!(gs[k], y)
 
             # New error
-            β = convert(S, abs(y[k + 1]))
+            β = convert(S, abs(y[k+1]))
         end
 
         # Solve upper triangular system
@@ -117,7 +117,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
             for i in 1:k
                 rmul!(V, gs[i]')
             end
-            z = scale!!(z, V[k + 1], y[k + 1])
+            z = scale!!(z, V[k+1], y[k+1])
         else
             # Recompute residual and its norm explicitly, to ensure that no
             # numerical errors have accumulated
@@ -150,7 +150,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number 
 
         # Restart Arnoldi factorization with new r
         iter = ArnoldiIterator(wrapped_op, z, alg.orth)
-        fact = initialize!(iter, fact; verbosity = SILENT_LEVEL)
+        fact = initialize!(iter, fact; verbosity=SILENT_LEVEL)
     end
-    return
+    return nothing
 end

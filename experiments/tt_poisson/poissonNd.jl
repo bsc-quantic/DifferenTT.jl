@@ -10,34 +10,34 @@ function exact_solution(x)
     for i in 1:N
         val *= sin(pi * x[i])
     end
-    
+
     g = 0.0
     for i in 1:N
         g += sin(pi * x[i])
     end
-    
+
     return val * (g^2)
 end
 
 function rhs_f(x)
     N = length(x)
-    
+
     v = 1.0
     for i in 1:N
         v *= sin(pi * x[i])
     end
-    
+
     g = 0.0
     for i in 1:N
         g += sin(pi * x[i])
     end
-    
+
     delta_g2 = 0.0
     for i in 1:N
         delta_g2 += 2 * pi^2 * cos(pi * x[i])^2
     end
     delta_g2 -= 2 * pi^2 * g^2
-    
+
     grad_v_dot_grad_g2 = 0.0
     for i in 1:N
         prod_j = 1.0
@@ -48,11 +48,11 @@ function rhs_f(x)
         end
         grad_v_dot_grad_g2 += 2 * g * pi^2 * cos(pi * x[i])^2 * prod_j
     end
-    
+
     delta_v = -N * pi^2 * v
-    
+
     delta_u = v * delta_g2 + 2 * grad_v_dot_grad_g2 + g^2 * delta_v
-    
+
     return -delta_u
 end
 
@@ -75,9 +75,7 @@ grid = Grid(arch, box_size)
 
 # Cross interpolate exact solution
 sol_initialpivot = optfirstpivot(Float64, exact_solution, grid, arch)
-sol_tci, sol_ranks, sol_error = crossinterpolate2(
-    Float64, exact_solution, grid, arch; initialpivots=[sol_initialpivot]
-)
+sol_tci, sol_ranks, sol_error = crossinterpolate2(Float64, exact_solution, grid, arch; initialpivots=[sol_initialpivot])
 @show sol_ranks
 @show sol_error
 exact_mps = MPS(sol_tci)
@@ -85,9 +83,7 @@ exact_mps = MPS(sol_tci)
 # Cross interpolate RHS
 println("Cross interpolating RHS...")
 rhs_initialpivot = optfirstpivot(Float64, rhs_f, grid, arch)
-rhs_tci, rhs_ranks, rhs_error = crossinterpolate2(
-    Float64, rhs_f, grid, arch; initialpivots=[rhs_initialpivot]
-)
+rhs_tci, rhs_ranks, rhs_error = crossinterpolate2(Float64, rhs_f, grid, arch; initialpivots=[rhs_initialpivot])
 @show rhs_ranks
 @show rhs_error
 rhs_mps = MPS(rhs_tci)
@@ -107,19 +103,12 @@ A = -1.0 * Δ
 println("Setting up solver...")
 init_mps = zeros_mps(sites)
 
-sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=20, cutoff=0.0)
-updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, verbosity=2)
+sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=20, cutoff=0.0)
+updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, verbosity=2)
 
-solver1 = ResidualALS(
-    sweep_kwargs=sweep_kwargs, 
-    updater_kwargs=updater_kwargs, 
-    residual_tol=1e-4
-)
+solver1 = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-4)
 
-solver2 = ALS(
-    sweep_kwargs=sweep_kwargs, 
-    updater_kwargs=updater_kwargs, 
-)
+solver2 = ALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs)
 
 println("Solving linear system...")
 println("norm(rhs_mps) = ", norm(rhs_mps))
@@ -138,15 +127,18 @@ println("Building Sinc-Quadrature PC (M = $M)...")
 A_list = [get_1d_A(i, grid, arch) for i in 1:N]
 time_sinc_build = @elapsed sinc_pc = sincquadrature_preconditioner(arch, sites, A_list, M; maxdim=20, cutoff=1e-12)
 
-solver_sinc = ResidualALS(
-    sweep_kwargs=sweep_kwargs, 
-    updater_kwargs=updater_kwargs, 
-    residual_tol=1e-4
-)
+solver_sinc = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-4)
 time_sinc_solve = @elapsed out_mps_sinc = linearsolve(solver_sinc, A, rhs_mps, sinc_pc, init_mps)
 diff_sinc = +(out_mps_sinc, -1.0 * exact_mps; cutoff=1e-10)
 rel_error_sinc = norm(diff_sinc) / norm(exact_mps)
-println("Sinc-Quadrature relative error: ", rel_error_sinc, " | Build Time: ", time_sinc_build, " | Solve Time: ", time_sinc_solve)
+println(
+    "Sinc-Quadrature relative error: ",
+    rel_error_sinc,
+    " | Build Time: ",
+    time_sinc_build,
+    " | Solve Time: ",
+    time_sinc_solve,
+)
 println("Solution maxlinkdim: ", maxlinkdim(out_mps_sinc))
 
 println("\n--- FAI Preconditioner ---")
@@ -154,7 +146,9 @@ println("\n--- FAI Preconditioner ---")
 gdim = 5
 println("Building FAI PC (μ = $μ, gdim = $gdim)...")
 D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-fai_builder_solver = ResidualALS(sweep_kwargs=SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12), residual_tol=1e-9)
+fai_builder_solver = ResidualALS(;
+    sweep_kwargs=SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12), residual_tol=1e-9
+)
 
 time_fai_build = @elapsed begin
     unscaledG, D = DifferenTT.fai_dg(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
@@ -162,11 +156,7 @@ time_fai_build = @elapsed begin
     fai_pc = FactorizedPreconditioner(Gl)
 end
 
-solver_fai = ResidualALS(
-    sweep_kwargs=sweep_kwargs, 
-    updater_kwargs=updater_kwargs, 
-    residual_tol=1e-4
-)
+solver_fai = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-4)
 time_fai_solve = @elapsed out_mps_fai = linearsolve(solver_fai, A, rhs_mps, fai_pc, init_mps)
 diff_fai = +(out_mps_fai, -1.0 * exact_mps; cutoff=1e-10)
 rel_error_fai = norm(diff_fai) / norm(exact_mps)

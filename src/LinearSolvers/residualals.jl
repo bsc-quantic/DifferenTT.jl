@@ -21,34 +21,38 @@ Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
     residual_damp::Real = 1.1
 end
 
-function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
-    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
+    updater_kwargs = (; coefficients=(false, true), NamedTuple(solver.updater_kwargs)...)
     sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kwargs)
-    
+
     return residual_alternating_update(
-        reduced_problem, init;
-        updater = solver.updater,
+        reduced_problem,
+        init;
+        updater=solver.updater,
         updater_kwargs,
-        resid_tol = solver.residual_tol,
-        resid_damp = solver.residual_damp,
-        sweep_kwargs...
+        resid_tol=solver.residual_tol,
+        resid_damp=solver.residual_damp,
+        sweep_kwargs...,
     )
 end
 
-function linearsolve(solver::ResidualALS, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(
+    solver::ResidualALS, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...
+)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
     updater_kwargs, sweep_kwargs = precond_linearsolve_kwargs(solver, A, b, kwargs)
-    
+
     return residual_alternating_update(
-        reduced_precond_problem, init;
-        updater = solver.updater,
+        reduced_precond_problem,
+        init;
+        updater=solver.updater,
         updater_kwargs,
-        resid_tol = solver.residual_tol,
-        resid_damp = solver.residual_damp,
-        sweep_kwargs...
+        resid_tol=solver.residual_tol,
+        resid_damp=solver.residual_damp,
+        sweep_kwargs...,
     )
 end
 
@@ -64,22 +68,24 @@ function residual_replacebond!(
     b::Int,
     phi::ITensor,
     reduced_operator;  # AbstractProjMPO already positioned
-    maxdim::Int = typemax(Int),
-    mindim::Int = 1,
-    cutoff::Float64 = 0.0,    # Frobenius cutoff (fallback floor)
-    normalize::Bool = false,
-    ortho::String = "left",
-    resid_tol::Float64 = 1e-8,
-    resid_damp::Float64 = 2.0,
+    maxdim::Int=typemax(Int),
+    mindim::Int=1,
+    cutoff::Float64=0.0,    # Frobenius cutoff (fallback floor)
+    normalize::Bool=false,
+    ortho::String="left",
+    resid_tol::Float64=1e-8,
+    resid_damp::Float64=2.0,
 )
     # ── 1. Full SVD ──────────────────────────────────────────────────
     indsMb = inds(state[b])
     phi_data = array(phi)
     if !all(isfinite, phi_data)
-        throw(ArgumentError(
-            "residual_replacebond!: bond tensor at site $b contains NaN/Inf; " *
-            "refusing SVD (often caused by a broken preconditioner or Krylov update)."
-        ))
+        throw(
+            ArgumentError(
+                "residual_replacebond!: bond tensor at site $b contains NaN/Inf; " *
+                "refusing SVD (often caused by a broken preconditioner or Krylov update).",
+            ),
+        )
     end
     U_full, S_full, V_full = svd(phi, indsMb; alg="recursive")
 
@@ -99,23 +105,23 @@ function residual_replacebond!(
     # the usual cutoff = 1e-10 the floor is effectively inactive). Decide which convention is
     # intended; AMEn uses the ITensors one.
     chosen_rank, truncerr, res_exact = _residual_rank(
-        reduced_operator, phi, rhs, U_full, S_full, V_full;
-        resid_tol, resid_damp, frob_weight = cutoff^2, mindim, maxdim,
+        reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp, frob_weight=cutoff^2, mindim, maxdim
     )
 
     # ── 6. Perform the actual truncation ─────────────────────────────
     spec = replacebond!(
-        state, b, phi;
-        maxdim = chosen_rank,
+        state,
+        b,
+        phi;
+        maxdim=chosen_rank,
         mindim,
-        cutoff = 0.0,  # we already chose the rank
+        cutoff=0.0,  # we already chose the rank
         ortho,
         normalize,
     )
 
     return (; truncerr, chosen_rank, res_exact, spec)
 end
-
 
 """
     _frobenius_rank(svals, frob_weight, mindim)
@@ -153,7 +159,8 @@ On top of that, a Frobenius floor keeps every rank whose discarded weight `Σ_{k
 would exceed `frob_weight` (`0.0` disables it). The result is clamped to `[mindim, maxdim]`.
 
 # Returns
-- `(chosen_rank, truncerr, res_exact)`, with `truncerr = sqrt(discarded weight / total weight)`.
+
+  - `(chosen_rank, truncerr, res_exact)`, with `truncerr = sqrt(discarded weight / total weight)`.
 """
 function _residual_rank(
     reduced_operator,
@@ -164,9 +171,9 @@ function _residual_rank(
     V_full::ITensor;
     resid_tol::Real,
     resid_damp::Real,
-    frob_weight::Real = 0.0,
-    mindim::Int = 1,
-    maxdim::Int = typemax(Int),
+    frob_weight::Real=0.0,
+    mindim::Int=1,
+    maxdim::Int=typemax(Int),
 )
     norm_rhs = norm(rhs)
     bond_ind = commoninds(U_full, S_full)
@@ -215,19 +222,25 @@ function _residual_rank(
     return chosen_rank, _truncation_error(svals, chosen_rank), res_exact
 end
 
-"""Singular values stored in the diagonal ITensor `S` (as returned by `svd`), as a vector."""
+"""
+Singular values stored in the diagonal ITensor `S` (as returned by `svd`), as a vector.
+"""
 function _singular_values(S::ITensor)
     s_inds = inds(S)
-    return [S[s_inds[1] => k, s_inds[2] => k] for k in 1:dim(s_inds[1])]
+    return [S[s_inds[1]=>k, s_inds[2]=>k] for k in 1:dim(s_inds[1])]
 end
 
-"""Relative truncation error `sqrt(Σ_{k>r} σ_k² / Σ σ_k²)` of keeping the `r` largest singular values."""
+"""
+Relative truncation error `sqrt(Σ_{k>r} σ_k² / Σ σ_k²)` of keeping the `r` largest singular values.
+"""
 function _truncation_error(svals::AbstractVector, r::Int)
     total_weight = sum(abs2, svals)
-    return total_weight > 0 ? sqrt(sum(abs2, svals[(r + 1):end]) / total_weight) : 0.0
+    return total_weight > 0 ? sqrt(sum(abs2, svals[(r+1):end]) / total_weight) : 0.0
 end
 
-"""Compute the projected RHS b_local from the reduced operator."""
+"""
+Compute the projected RHS b_local from the reduced operator.
+"""
 function _local_rhs(reduced_operator)
     if reduced_operator isa ReducedLinearProblem
         return ITensorMPS.constant_term(reduced_operator)
@@ -238,31 +251,45 @@ function _local_rhs(reduced_operator)
     end
 end
 
-"""Compute ‖A_local * phi - b_local‖."""
+"""
+Compute ‖A_local * phi - b_local‖.
+"""
 function _local_residual_norm(reduced_operator::ReducedLinearProblem, phi::ITensor, rhs::ITensor)
     Aphi = ITensors.contract(reduced_operator, phi)
     Aphi_unprimed = noprime(Aphi)
     return norm(Aphi_unprimed - rhs)
 end
 
-"""Compute ‖A_local * phi - b_local‖."""
-function _local_residual_norm(reduced_operator::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor)
+"""
+Compute ‖A_local * phi - b_local‖.
+"""
+function _local_residual_norm(
+    reduced_operator::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor
+)
     Aphi = ITensors.contract(reduced_operator.linear_problem, phi)
     Aphi_unprimed = noprime(Aphi)
     return norm(Aphi_unprimed - rhs)
 end
 
-"""Compute the local residual tensor b_local - A_local * phi."""
+"""
+Compute the local residual tensor b_local - A_local * phi.
+"""
 function _local_residual(reduced_operator::ReducedLinearProblem, phi::ITensor, rhs::ITensor)
     return rhs - noprime(ITensors.contract(reduced_operator, phi))
 end
 
-"""Compute the local residual tensor b_local - A_local * phi (with the unpreconditioned operator)."""
-function _local_residual(reduced_operator::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor)
+"""
+Compute the local residual tensor b_local - A_local * phi (with the unpreconditioned operator).
+"""
+function _local_residual(
+    reduced_operator::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor
+)
     return rhs - noprime(ITensors.contract(reduced_operator.linear_problem, phi))
 end
 
-"""Reconstruct a rank-r truncated version of U * S * V†."""
+"""
+Reconstruct a rank-r truncated version of U * S * V†.
+"""
 function _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::Int)
     s_inds = inds(S_full)
     s_dim = dim(s_inds[1])
@@ -270,7 +297,7 @@ function _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::In
     # Build a projector that zeros out singular values beyond rank r
     S_trunc = ITensor(eltype(S_full), s_inds...)
     for k in 1:r
-        S_trunc[s_inds[1] => k, s_inds[2] => k] = S_full[s_inds[1] => k, s_inds[2] => k]
+        S_trunc[s_inds[1]=>k, s_inds[2]=>k] = S_full[s_inds[1]=>k, s_inds[2]=>k]
     end
     return U_full * S_trunc * V_full
 end
@@ -286,25 +313,25 @@ function residual_alternating_update(
     operator,
     init::MPS;
     updater,
-    updater_kwargs = (;),
-    nsweeps = ITensorMPS.default_nsweeps(),
-    checkdone = ITensorMPS.default_checkdone(),
-    write_when_maxdim_exceeds = ITensorMPS.default_write_when_maxdim_exceeds(),
-    nsite = ITensorMPS.default_nsite(),
-    reverse_step = ITensorMPS.default_reverse_step(),
-    time_start = ITensorMPS.default_time_start(),
-    time_step = ITensorMPS.default_time_step(),
-    order = ITensorMPS.default_order(),
-    (observer!) = ITensorMPS.default_observer(),
-    (sweep_observer!) = ITensorMPS.default_sweep_observer(),
-    outputlevel = ITensorMPS.default_outputlevel(),
-    normalize = ITensorMPS.default_normalize(),
-    maxdim = ITensorMPS.default_maxdim(),
-    mindim = ITensorMPS.default_mindim(),
-    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(init)),
-    noise = ITensorMPS.default_noise(),
-    resid_tol::Float64 = 1e-8,
-    resid_damp::Float64 = 2.0,
+    updater_kwargs=(;),
+    nsweeps=ITensorMPS.default_nsweeps(),
+    checkdone=ITensorMPS.default_checkdone(),
+    write_when_maxdim_exceeds=ITensorMPS.default_write_when_maxdim_exceeds(),
+    nsite=ITensorMPS.default_nsite(),
+    reverse_step=ITensorMPS.default_reverse_step(),
+    time_start=ITensorMPS.default_time_start(),
+    time_step=ITensorMPS.default_time_step(),
+    order=ITensorMPS.default_order(),
+    (observer!)=ITensorMPS.default_observer(),
+    (sweep_observer!)=ITensorMPS.default_sweep_observer(),
+    outputlevel=ITensorMPS.default_outputlevel(),
+    normalize=ITensorMPS.default_normalize(),
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(ITensors.scalartype(init)),
+    noise=ITensorMPS.default_noise(),
+    resid_tol::Float64=1e-8,
+    resid_damp::Float64=2.0,
 )
     reduced_operator = ITensorMPS.reduced_operator(operator)
     if isnothing(nsweeps)
@@ -342,48 +369,43 @@ function residual_alternating_update(
                 observer!,
                 normalize,
                 outputlevel,
-                maxdim = maxdim[sweep],
-                mindim = mindim[sweep],
-                cutoff = cutoff[sweep],
-                noise = noise[sweep],
-                resid_tol = scaled_resid_tol,
+                maxdim=maxdim[sweep],
+                mindim=mindim[sweep],
+                cutoff=cutoff[sweep],
+                noise=noise[sweep],
+                resid_tol=scaled_resid_tol,
                 resid_damp,
             )
         end
         if !isnothing(time_step)
             current_time += time_step
         end
-        ITensorMPS.update_observer!(
-            sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time
-        )
+        ITensorMPS.update_observer!(sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time)
         if outputlevel >= 1
             print("After sweep ", sweep, ":")
             print(" maxlinkdim=", maxlinkdim(state))
             @printf(" maxerr=%.2E", info.maxtruncerr)
             if !isnothing(current_time)
-                print(" current_time=", round(current_time; digits = 3))
+                print(" current_time=", round(current_time; digits=3))
             end
-            print(" time=", round(sweep_elapsed_time; digits = 3))
+            print(" time=", round(sweep_elapsed_time; digits=3))
             println()
             flush(stdout)
         end
-        isdone = checkdone(;
-            state, sweep, outputlevel, observer = (observer!), sweep_observer = (sweep_observer!), info
-        )
+        isdone = checkdone(; state, sweep, outputlevel, observer=(observer!), sweep_observer=(sweep_observer!), info)
         isdone && break
     end
     return state
 end
 
-
 function residual_sweep_update(
     order::ITensorMPS.TDVPOrder,
     reduced_operator,
     state::MPS;
-    current_time = nothing,
-    time_step = nothing,
-    resid_tol = 1e-8,
-    resid_damp = 2.0,
+    current_time=nothing,
+    time_step=nothing,
+    resid_tol=1e-8,
+    resid_damp=2.0,
     kwargs...,
 )
     order_orderings = ITensorMPS.orderings(order)
@@ -400,7 +422,7 @@ function residual_sweep_update(
             reduced_operator,
             state;
             current_time,
-            time_step = sub_time_step,
+            time_step=sub_time_step,
             resid_tol,
             resid_damp,
             kwargs...,
@@ -418,22 +440,22 @@ function residual_sub_sweep_update(
     state::MPS;
     updater,
     updater_kwargs,
-    which_decomp = nothing,
-    svd_alg = nothing,
-    sweep = ITensorMPS.default_sweep(),
-    current_time = nothing,
-    time_step = nothing,
-    nsite = ITensorMPS.default_nsite(),
-    reverse_step = ITensorMPS.default_reverse_step(),
-    normalize = ITensorMPS.default_normalize(),
-    (observer!) = ITensorMPS.default_observer(),
-    outputlevel = ITensorMPS.default_outputlevel(),
-    maxdim = ITensorMPS.default_maxdim(),
-    mindim = ITensorMPS.default_mindim(),
-    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(state)),
-    noise = ITensorMPS.default_noise(),
-    resid_tol = 1e-8,
-    resid_damp = 2.0,
+    which_decomp=nothing,
+    svd_alg=nothing,
+    sweep=ITensorMPS.default_sweep(),
+    current_time=nothing,
+    time_step=nothing,
+    nsite=ITensorMPS.default_nsite(),
+    reverse_step=ITensorMPS.default_reverse_step(),
+    normalize=ITensorMPS.default_normalize(),
+    (observer!)=ITensorMPS.default_observer(),
+    outputlevel=ITensorMPS.default_outputlevel(),
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(ITensors.scalartype(state)),
+    noise=ITensorMPS.default_noise(),
+    resid_tol=1e-8,
+    resid_damp=2.0,
 )
     reduced_operator = copy(reduced_operator)
     state = copy(state)
@@ -455,15 +477,13 @@ function residual_sub_sweep_update(
     maxtruncerr = 0.0
     info = nothing
 
-    for b in ITensorMPS.sweep_bonds(direction, N; ncenter = nsite)
+    for b in ITensorMPS.sweep_bonds(direction, N; ncenter=nsite)
         if nsite == 2
             set_nsite!(reduced_operator, 2)
             position!(reduced_operator, state, b)
-            reduced_state = state[b] * state[b + 1]
+            reduced_state = state[b] * state[b+1]
             internal_kwargs = (; current_time, time_step, outputlevel)
-            reduced_state, info = updater(
-                reduced_operator, reduced_state; internal_kwargs, updater_kwargs...
-            )
+            reduced_state, info = updater(reduced_operator, reduced_state; internal_kwargs, updater_kwargs...)
             if !isnothing(time_step)
                 current_time += time_step
             end
@@ -476,10 +496,17 @@ function residual_sub_sweep_update(
             end
 
             result = residual_replacebond!(
-                state, b, reduced_state, reduced_operator;
-                maxdim, mindim, cutoff, normalize,
-                ortho = ortho_str,
-                resid_tol, resid_damp,
+                state,
+                b,
+                reduced_state,
+                reduced_operator;
+                maxdim,
+                mindim,
+                cutoff,
+                normalize,
+                ortho=ortho_str,
+                resid_tol,
+                resid_damp,
             )
             truncerr = result isa NamedTuple ? result.truncerr : (result isa Nothing ? 0.0 : result.truncerr)
             maxtruncerr = max(maxtruncerr, truncerr)
@@ -488,11 +515,25 @@ function residual_sub_sweep_update(
         else
             # For 1-site: fall back to standard ITensorMPS logic
             current_time, maxtruncerr, spec, info = ITensorMPS.region_update!(
-                reduced_operator, state, b;
-                updater, updater_kwargs, nsite, reverse_step,
-                current_time, outputlevel, time_step, normalize,
-                direction, noise, which_decomp, svd_alg,
-                cutoff, maxdim, mindim, maxtruncerr,
+                reduced_operator,
+                state,
+                b;
+                updater,
+                updater_kwargs,
+                nsite,
+                reverse_step,
+                current_time,
+                outputlevel,
+                time_step,
+                normalize,
+                direction,
+                noise,
+                which_decomp,
+                svd_alg,
+                cutoff,
+                maxdim,
+                mindim,
+                maxtruncerr,
             )
         end
 
@@ -504,16 +545,19 @@ function residual_sub_sweep_update(
         end
 
         ITensorMPS.update_observer!(
-            observer!; state, reduced_operator,
-            bond = b, sweep,
-            half_sweep = ITensorMPS.isforward(direction) ? 1 : 2,
-            spec = nothing, outputlevel,
-            half_sweep_is_done = ITensorMPS.is_half_sweep_done(direction, b, N; ncenter = nsite),
-            current_time, info,
+            observer!;
+            state,
+            reduced_operator,
+            bond=b,
+            sweep,
+            half_sweep=ITensorMPS.isforward(direction) ? 1 : 2,
+            spec=nothing,
+            outputlevel,
+            half_sweep_is_done=ITensorMPS.is_half_sweep_done(direction, b, N; ncenter=nsite),
+            current_time,
+            info,
         )
     end
     normalize && normalize!(state)
     return state, reduced_operator, (; maxtruncerr)
 end
-
-

@@ -46,25 +46,44 @@ for N in sort(unique(df_nocond.N))
     plot_speedup_vs_F(dfN, N, :solve_time, plots_dir)
     plot_speedup_vs_F(dfN, N, :total_time, plots_dir)
 
-    plot_metric_vs_F(dfN, :total_iters; title="Total local Krylov iterations (N=$N)", ylabel="Iterations",
-                     file=joinpath(plots_dir, "iters_vs_F_N_$(N).png"))
+    plot_metric_vs_F(
+        dfN,
+        :total_iters;
+        title="Total local Krylov iterations (N=$N)",
+        ylabel="Iterations",
+        file=joinpath(plots_dir, "iters_vs_F_N_$(N).png"),
+    )
 
-    plot_metric_vs_F(dfN, :relative_residual; title="Final relative residual (N=$N)", ylabel=L"\|Ax-b\| / \|b\|",
-                     file=joinpath(plots_dir, "residual_vs_F_N_$(N).png"))
+    plot_metric_vs_F(
+        dfN,
+        :relative_residual;
+        title="Final relative residual (N=$N)",
+        ylabel=L"\|Ax-b\| / \|b\|",
+        file=joinpath(plots_dir, "residual_vs_F_N_$(N).png"),
+    )
 
     plot_cost_vs_F(dfN, N, plots_dir)
 
     if !isempty(dfN_cond) && hasproperty(dfN_cond, :avg_pc_cond)
         Fs = sort(unique(Float64.(dfN_cond.F)))
         # Baseline has no avg_pc_cond: use its unpreconditioned local κ(A) instead
-        dfN_cond = transform(dfN_cond, AsTable(:) => ByRow(r -> r.method == "baseline" ? numval(r, :avg_cond) : numval(r, :avg_pc_cond)) => :kappa)
-        plot_metric_vs_F(dfN_cond, :kappa; title="Average local condition number (N=$N)",
-                         ylabel=L"\kappa(A)\ \mathrm{(baseline)},\ \kappa(P^{-1}A)",
-                         file=joinpath(plots_dir, "cond_vs_F_N_$(N).png"),
-                         refs=p -> add_floor_refs!(p, Fs, N, discrete_floor))
+        dfN_cond = transform(
+            dfN_cond,
+            AsTable(:) => ByRow(r -> r.method == "baseline" ? numval(r, :avg_cond) : numval(r, :avg_pc_cond)) => :kappa,
+        )
+        plot_metric_vs_F(
+            dfN_cond,
+            :kappa;
+            title="Average local condition number (N=$N)",
+            ylabel=L"\kappa(A)\ \mathrm{(baseline)},\ \kappa(P^{-1}A)",
+            file=joinpath(plots_dir, "cond_vs_F_N_$(N).png"),
+            refs=p -> add_floor_refs!(p, Fs, N, discrete_floor),
+        )
         plot_sinc_plateau(dfN_cond, N, :avg_pc_cond, L"\kappa(P^{-1}A)", joinpath(plots_dir, "sinc_plateau_N_$(N).png"))
     else
-        plot_sinc_plateau(dfN, N, :total_iters, "Total local Krylov iterations", joinpath(plots_dir, "sinc_plateau_N_$(N).png"))
+        plot_sinc_plateau(
+            dfN, N, :total_iters, "Total local Krylov iterations", joinpath(plots_dir, "sinc_plateau_N_$(N).png")
+        )
     end
 end
 

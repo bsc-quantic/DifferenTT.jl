@@ -4,6 +4,9 @@ using ITensors
 using ITensorMPS
 using LinearAlgebra
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 @testset "qttconstructors.jl" begin
     n = 6
     sites = siteinds(2, n)
@@ -14,10 +17,10 @@ using LinearAlgebra
 
     short_coeffs = Dict(0 => 2.0, 1 => -1.0, -1 => -1.0)
 
-    @testset "toeplitz_mpo" begin        
+    @testset "toeplitz_mpo" begin
         # Periodic
-        bc_periodic =BoundaryCond1d(PeriodicBC(),PeriodicBC())
-        
+        bc_periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+
         eigth_order_mpo = DifferenTT.toeplitz_mpo(sites, coeffs, bc_periodic)
         @test eigth_order_mpo isa MPO
         @test length(eigth_order_mpo) == n
@@ -33,7 +36,7 @@ using LinearAlgebra
         @test_throws ArgumentError DifferenTT.toeplitz_mpo(sites, Dict(0 => 2.0, 1 => -1.0), bc_periodic)
 
         # Dirichlet
-        bc_dirichlet =BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        bc_dirichlet = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
         mpo_d = DifferenTT.toeplitz_mpo(sites, coeffs, bc_dirichlet)
         @test mpo_d isa MPO
         @test length(mpo_d) == n
@@ -44,7 +47,7 @@ using LinearAlgebra
         mpo = DifferenTT.column_pick_mpo(sites, col_idx)
         @test mpo isa MPO
         @test length(mpo) == n
-    
+
         # Test vector version
         mpo_sum = DifferenTT.column_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
@@ -53,7 +56,9 @@ using LinearAlgebra
         # Since col_idx = 2, reverse(digits(1, base=2, pad=6)) = [0, 0, 0, 0, 0, 1]
         # So sites 1-5 have matrix0 = [1.0 0.0; 1.0 0.0]
         # Site 6 has matrix1 = [0.0 1.0; 0.0 1.0]
-        @test all(array(mpo[5], sites[5]', sites[5], linkinds(mpo)[4], linkinds(mpo)[5])[:, :, 1, 1] .== [1.0 0.0; 1.0 0.0])
+        @test all(
+            array(mpo[5], sites[5]', sites[5], linkinds(mpo)[4], linkinds(mpo)[5])[:, :, 1, 1] .== [1.0 0.0; 1.0 0.0]
+        )
         @test all(array(mpo[6], sites[6]', sites[6], linkinds(mpo)[5])[:, :, 1] .== [0.0 1.0; 0.0 1.0])
     end
 
@@ -62,14 +67,16 @@ using LinearAlgebra
         mpo = DifferenTT.row_pick_mpo(sites, row_idx)
         @test mpo isa MPO
         @test length(mpo) == n
-        
+
         # Test vector version
         mpo_sum = DifferenTT.row_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
 
         # Test MPO entries
         # Transpose of column_pick_mpo
-        @test all(array(mpo[5], sites[5]', sites[5], linkinds(mpo)[4], linkinds(mpo)[5])[:, :, 1, 1] .== [1.0 1.0; 0.0 0.0])
+        @test all(
+            array(mpo[5], sites[5]', sites[5], linkinds(mpo)[4], linkinds(mpo)[5])[:, :, 1, 1] .== [1.0 1.0; 0.0 0.0]
+        )
         @test all(array(mpo[6], sites[6]', sites[6], linkinds(mpo)[5])[:, :, 1] .== [0.0 0.0; 1.0 1.0])
     end
 
@@ -97,10 +104,10 @@ using LinearAlgebra
         mpo_lower = DifferenTT.corner_pick_mpo(coefficients, sites, :lower)
         full_lower = DifferenTT.contract_mpo(mpo_lower)
         expected_corner_lower = DifferenTT.lower_toeplitz_matrix(coefficients)
-        @test full_lower[N-3:N, N-3:N] ≈ expected_corner_lower atol=1e-12
-        @test full_lower[N-3:N, N-3:N] ≈ DifferenTT.corner_pick_matrix(coefficients, :lower) atol=1e-12
-        @test all(iszero, full_lower[N-3:N, 1:N-4])
-        @test all(iszero, full_lower[1:N-4, :])
+        @test full_lower[(N-3):N, (N-3):N] ≈ expected_corner_lower atol=1e-12
+        @test full_lower[(N-3):N, (N-3):N] ≈ DifferenTT.corner_pick_matrix(coefficients, :lower) atol=1e-12
+        @test all(iszero, full_lower[(N-3):N, 1:(N-4)])
+        @test all(iszero, full_lower[1:(N-4), :])
     end
 
     @testset "entry_mpo" begin

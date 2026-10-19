@@ -7,14 +7,15 @@ Defines an Incompressible Navier-Stokes experiment configuration and state. It d
 problem only: the time integrator and the Poisson solver are passed to the solving scheme (e.g. `chorin_evolve!`).
 
 # Fields
-- `grid::Grid{N}`: The spatial grid.
-- `u_fields::VectorField{N}`: Velocity vector field.
-- `p_field::ScalarField{N}`: Pressure scalar field.
-- `Re::Number`: Reynolds number.
-- `object_mask::Union{MPS, Nothing}`: Optional mask for obstacles (MPS).
-- `stencil_order::Int`: Order of finite difference stencil.
-- `maxdim::Int`: Maximum bond dimension allowed throughout the simulation.
-- `cutoff::Float64`: SVD cutoff performed throughout the simulation.
+
+  - `grid::Grid{N}`: The spatial grid.
+  - `u_fields::VectorField{N}`: Velocity vector field.
+  - `p_field::ScalarField{N}`: Pressure scalar field.
+  - `Re::Number`: Reynolds number.
+  - `object_mask::Union{MPS, Nothing}`: Optional mask for obstacles (MPS).
+  - `stencil_order::Int`: Order of finite difference stencil.
+  - `maxdim::Int`: Maximum bond dimension allowed throughout the simulation.
+  - `cutoff::Float64`: SVD cutoff performed throughout the simulation.
 """
 struct INSExperiment{N} <: INSExperimentBase
     grid::Grid{N}
@@ -49,25 +50,15 @@ struct INSExperiment{N} <: INSExperimentBase
         object_mask::Union{MPS,Nothing};
         stencil_order::Int=8,
         maxdim::Int=100,
-        cutoff::Float64=1e-8
-    ) where N
-
+        cutoff::Float64=1e-8,
+    ) where {N}
         if !isnothing(object_mask) && !(u_fields.usites == p_field.usites == siteinds(object_mask))
             throw(ArgumentError("Physical sites for velocity, pressure and mask fields do not match"))
         end
 
         check_kolmogorov_scale(grid, Re)
 
-        return new{N}(
-            grid,
-            u_fields,
-            p_field,
-            Re,
-            object_mask,
-            stencil_order,
-            maxdim,
-            cutoff
-        )
+        return new{N}(grid, u_fields, p_field, Re, object_mask, stencil_order, maxdim, cutoff)
     end
 end
 
@@ -83,7 +74,8 @@ The bound is exact for diffusion (the second-derivative coefficients alternate i
 the highest wavenumber) and conservative for advection.
 
 # Returns
-- `(adv_eig, diff_eig)`: bounds for the advection term (with velocity magnitude `vmax`) and the diffusion term.
+
+  - `(adv_eig, diff_eig)`: bounds for the advection term (with velocity magnitude `vmax`) and the diffusion term.
 """
 function cfl_spectral_radii(experiment::INSExperimentBase; vmax::Real=1.0)
     grid = experiment.grid
@@ -91,7 +83,7 @@ function cfl_spectral_radii(experiment::INSExperimentBase; vmax::Real=1.0)
     s1 = sum(abs, values(derivative_coefficients(1; stencil_order=experiment.stencil_order)))  # advection
     s2 = sum(abs, values(derivative_coefficients(2; stencil_order=experiment.stencil_order)))  # diffusion
 
-    adv_eig  = sum(vmax * s1 / grid.dx[i]                for i in 1:N)
+    adv_eig = sum(vmax * s1 / grid.dx[i] for i in 1:N)
     diff_eig = sum((1/experiment.Re) * s2 / grid.dx[i]^2 for i in 1:N)
     return adv_eig, diff_eig
 end
@@ -118,7 +110,7 @@ function check_cfl(experiment::INSExperimentBase, stepper::RK4; vmax::Real=1.0)
 
     # RK4 stability boundaries: |z|<=2√2 on the imaginary axis (advection is skew-symmetric),
     # |z|<=2.785 on the negative real axis (diffusion is symmetric negative-definite).
-    dt_adv_max  = 2*sqrt(2) / adv_eig
+    dt_adv_max = 2*sqrt(2) / adv_eig
     dt_diff_max = 2.785 / diff_eig
     dt_max = min(dt_adv_max, dt_diff_max)
 
@@ -156,7 +148,7 @@ function check_cfl(experiment::INSExperimentBase, stepper::ExplicitEuler; vmax::
     _report_cfl(dt, dt_max)
 end
 
-function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where N 
+function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where {N}
     kolmogorov_scale = Re ^ (-3/4)
     too_coarse = false
     for i in 1:N

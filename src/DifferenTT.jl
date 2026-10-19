@@ -2,7 +2,6 @@ module DifferenTT
 
 using Adapt
 using ITensors
-using Statistics
 using Printf
 using Random
 using ITensorMPS
@@ -68,7 +67,6 @@ include("Physics/NavierStokes/vorticity.jl")
 include("Utils/logging.jl")
 include("Utils/visualization.jl")
 
-
 # Export types and functions from TimeEvolution
 export TimeEvolArgs, AbstractTimeStepper, AbstractExplicitStepper
 export AbstractRHS
@@ -77,7 +75,7 @@ export ExplicitEuler, RK4, timestep
 
 # Export types and functions from TensorTrains
 export QTTArchitecture, TTArchitecture
-export nsites_per_variable, total_sites, sited_dim, site_dims, variable_dims
+export nsites_per_variable, total_sites, site_dim, site_dims, variable_dims
 export backend_type
 export ndim_operator_mpo, diagmpo, diagmps
 export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps, mat2tensor, mat2mpo
@@ -90,7 +88,8 @@ export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d,
 export ScalarField, VectorField, Grid, interior_grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
-export divergence_dirichlet_correction, scalar_dirichlet_correction, symmetrize_rhs, neumann_weight_mpo, face_dirichlet_lift
+export divergence_dirichlet_correction,
+    scalar_dirichlet_correction, symmetrize_rhs, neumann_weight_mpo, face_dirichlet_lift
 
 # Export types and functions from Physics
 export advection, diffusion, divergence, gradient, symmetrized_laplacian, kronecker_laplacian, equicorrelated_laplacian
@@ -113,10 +112,14 @@ export KrylovSpectrumStats, spectrum_table, NotSPDError
 
 # Include and Export Logging
 
-export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timings!
+export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timings!, disable_debug_timings!
 
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity
 
+function __init__()
+    _register_plots_error_hint()
+    return nothing
 end
 
+end

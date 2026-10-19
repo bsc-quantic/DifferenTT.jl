@@ -23,8 +23,7 @@ using LaTeXStrings
 
 # Use GR backend
 gr()
-default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
-
+default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 # Configuration
 ENV["GKSwstype"] = "100"
@@ -53,7 +52,7 @@ for row in eachrow(df)
         "mu" => hasproperty(row, :mu) && !ismissing(row.mu) ? row.mu : NaN,
         "G_maxdim" => hasproperty(row, :G_maxdim) && !ismissing(row.G_maxdim) ? row.G_maxdim : 0,
         "M" => hasproperty(row, :M) && !ismissing(row.M) ? Int(row.M) : 0,
-        "global_iters" => hasproperty(row, :global_iters) ? row.global_iters : nothing
+        "global_iters" => hasproperty(row, :global_iters) ? row.global_iters : nothing,
     )
     results_dict[nodes][k] = d
 end
@@ -70,12 +69,12 @@ min_iters_fai = Float64[]
 min_iters_sinc = Float64[]
 grid_labels = String[]
 
-detailed_fai_solve = Dict{Tuple{Int, Float64}, Vector{Float64}}()
-detailed_fai_total = Dict{Tuple{Int, Float64}, Vector{Float64}}()
-detailed_fai_iters = Dict{Tuple{Int, Float64}, Vector{Float64}}()
-detailed_sinc_solve = Dict{Int, Vector{Float64}}()
-detailed_sinc_total = Dict{Int, Vector{Float64}}()
-detailed_sinc_iters = Dict{Int, Vector{Float64}}()
+detailed_fai_solve = Dict{Tuple{Int,Float64},Vector{Float64}}()
+detailed_fai_total = Dict{Tuple{Int,Float64},Vector{Float64}}()
+detailed_fai_iters = Dict{Tuple{Int,Float64},Vector{Float64}}()
+detailed_sinc_solve = Dict{Int,Vector{Float64}}()
+detailed_sinc_total = Dict{Int,Vector{Float64}}()
+detailed_sinc_iters = Dict{Int,Vector{Float64}}()
 
 for (node_idx, nodes) in enumerate(system_sizes)
     @info "Generating plots for system size $nodes"
@@ -169,8 +168,8 @@ for (node_idx, nodes) in enumerate(system_sizes)
     end
 
     # Sort FAI and Sinc keys so bar plots are ordered by chi and M
-    sort!(fai_keys, by = k -> (get(grid_data[k], "G_maxdim", 0), get(grid_data[k], "mu", NaN)))
-    sort!(sinc_keys, by = k -> get(grid_data[k], "M", 0))
+    sort!(fai_keys; by=k -> (get(grid_data[k], "G_maxdim", 0), get(grid_data[k], "mu", NaN)))
+    sort!(sinc_keys; by=k -> get(grid_data[k], "M", 0))
 
     # Track for scaling plot
     push!(grid_labels, "N_$(nodes)")
@@ -204,26 +203,33 @@ for (node_idx, nodes) in enumerate(system_sizes)
             Z_total[g_idx, μ_idx] = fai_total_speedups[i]
         end
 
-        hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+        hm_solve = heatmap(
+            string.(unique_mus),
+            string.(unique_gdims),
+            Z_solve;
             title="Solve Speedup ($nodes)",
             xlabel="Regularization parameter (μ)",
             ylabel=L"Bond Dimension ($\chi_{max}$)",
             color=:viridis,
             clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
-            right_margin=5Plots.mm)
+            right_margin=5Plots.mm,
+        )
 
         savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_N_$(nodes).png"))
 
-        hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+        hm_total = heatmap(
+            string.(unique_mus),
+            string.(unique_gdims),
+            Z_total;
             title="Total Speedup ($nodes)",
             xlabel="Regularization parameter (μ)",
             ylabel=L"Bond Dimension ($\chi_{max}$)",
             color=:viridis,
             clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
-            right_margin=5Plots.mm)
+            right_margin=5Plots.mm,
+        )
 
         savefig(hm_total, joinpath(plots_dir, "heatmap_total_N_$(nodes).png"))
-
 
     else
         @info "Skipping FAI heatmaps for $nodes (no FAI runs)"
@@ -234,31 +240,51 @@ for (node_idx, nodes) in enumerate(system_sizes)
     # ---------------------------------------------------------
     all_build = vcat(fai_build_times, sinc_build_times)
     all_solve = vcat(fai_solve_times, sinc_solve_times)
-    pf_plot = plot(title="Trade-off: Build vs Solve Time ($nodes)",
+    pf_plot = plot(;
+        title="Trade-off: Build vs Solve Time ($nodes)",
         xlabel="Preconditioner Build Time (s)",
         ylabel="Linear Solve Time (s)",
         legend=:outertopright,
-        framestyle=:box)
+        framestyle=:box,
+    )
     pf_colors = palette(:tab20)
     for (i, gdim) in enumerate(unique_gdims)
         idx = findall(x -> x == gdim, gdims)
-        scatter!(pf_plot, fai_build_times[idx], fai_solve_times[idx],
+        scatter!(
+            pf_plot,
+            fai_build_times[idx],
+            fai_solve_times[idx];
             label=latexstring("FAI \$\\chi_{max}=$(gdim)\$"),
-            color=pf_colors[mod1(i, length(pf_colors))], marker=:circle)
+            color=pf_colors[mod1(i, length(pf_colors))],
+            marker=:circle,
+        )
     end
     sinc_colors = palette(:Dark2)
     for (i, M) in enumerate(sort(unique(sinc_Ms)))
         idx = findall(x -> x == M, sinc_Ms)
-        scatter!(pf_plot, sinc_build_times[idx], sinc_solve_times[idx],
+        scatter!(
+            pf_plot,
+            sinc_build_times[idx],
+            sinc_solve_times[idx];
             label="Sinc M=$(M)",
-            color=sinc_colors[mod1(i, length(sinc_colors))], marker=:diamond, markersize=8)
+            color=sinc_colors[mod1(i, length(sinc_colors))],
+            marker=:diamond,
+            markersize=8,
+        )
     end
 
-    hline!(pf_plot, [base_time], label="Baseline Solve Time", color=:red, lw=2, ls=:dash)
+    hline!(pf_plot, [base_time]; label="Baseline Solve Time", color=:red, lw=2, ls=:dash)
 
-    plot!(pf_plot, [0, base_time], [base_time, 0],
-        fillrange=0, fillalpha=0.1, fillcolor=:green,
-        linealpha=0, label="Net Speedup Region")
+    plot!(
+        pf_plot,
+        [0, base_time],
+        [base_time, 0];
+        fillrange=0,
+        fillalpha=0.1,
+        fillcolor=:green,
+        linealpha=0,
+        label="Net Speedup Region",
+    )
 
     if !isempty(all_build)
         xlims!(pf_plot, 0, maximum(all_build) * 1.05)
@@ -296,14 +322,17 @@ for (node_idx, nodes) in enumerate(system_sizes)
             end
         end
 
-        p_iters = bar(labels, iters,
+        p_iters = bar(
+            labels,
+            iters;
             title="Global Iterations (N=$(nodes), d=8)",
             ylabel="Total Krylov Iterations",
             color=bar_colors,
             legend=false,
             yscale=:log10,
             xrotation=45,
-            bottom_margin=15Plots.mm)
+            bottom_margin=15Plots.mm,
+        )
 
         savefig(p_iters, joinpath(plots_dir, "global_iterations_N_$(nodes).png"))
     end
@@ -337,14 +366,17 @@ for (node_idx, nodes) in enumerate(system_sizes)
             end
         end
 
-        p_times = bar(labels_st, stimes,
+        p_times = bar(
+            labels_st,
+            stimes;
             title="Solve Time (N=$(nodes), d=8)",
             ylabel="Time (s)",
             color=bar_colors_st,
             legend=false,
             xrotation=45,
             yscale=:log10,
-            bottom_margin=15Plots.mm)
+            bottom_margin=15Plots.mm,
+        )
 
         savefig(p_times, joinpath(plots_dir, "solve_times_N_$(nodes).png"))
     end
@@ -354,109 +386,218 @@ end
 # 4. Scaling View
 # ---------------------------------------------------------
 if !isempty(grid_labels)
-    p_scale = plot(1:length(grid_labels), max_solve_speedups_fai,
-        label="Max FAI Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,
+    p_scale = plot(
+        1:length(grid_labels),
+        max_solve_speedups_fai;
+        label="Max FAI Solve Speedup",
+        color=:blue,
+        lw=3,
+        marker=:circle,
+        markersize=8,
         title="Scaling of Maximum Achievable Speedups",
         xlabel="System Size",
         ylabel="Speedup Factor",
         xticks=(1:length(grid_labels), grid_labels),
         legend=:topright,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
-    plot!(p_scale, 1:length(grid_labels), max_total_speedups_fai,
-        label="Max FAI Total Speedup", color=:green, lw=3, marker=:square, markersize=8)
-    plot!(p_scale, 1:length(grid_labels), max_solve_speedups_sinc,
-        label="Max Sinc Solve Speedup", color=:darkorange, lw=3, marker=:diamond, markersize=8)
-    plot!(p_scale, 1:length(grid_labels), max_total_speedups_sinc,
-        label="Max Sinc Total Speedup", color=:brown, lw=3, marker=:utriangle, markersize=8)
+    plot!(
+        p_scale,
+        1:length(grid_labels),
+        max_total_speedups_fai;
+        label="Max FAI Total Speedup",
+        color=:green,
+        lw=3,
+        marker=:square,
+        markersize=8,
+    )
+    plot!(
+        p_scale,
+        1:length(grid_labels),
+        max_solve_speedups_sinc;
+        label="Max Sinc Solve Speedup",
+        color=:darkorange,
+        lw=3,
+        marker=:diamond,
+        markersize=8,
+    )
+    plot!(
+        p_scale,
+        1:length(grid_labels),
+        max_total_speedups_sinc;
+        label="Max Sinc Total Speedup",
+        color=:brown,
+        lw=3,
+        marker=:utriangle,
+        markersize=8,
+    )
 
-    hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    hline!(p_scale, [1.0]; label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
 
     savefig(p_scale, joinpath(plots_dir, "scaling_summary.png"))
 
-    p_scale_iters = plot(
+    p_scale_iters = plot(;
         title="Scaling of Iterations",
         xlabel="System Size",
         ylabel="Total Krylov Iterations",
         yscale=:log10,
         xticks=(1:length(grid_labels), grid_labels),
         legend=:topleft,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
     if any(!isnan, baseline_iters_list)
-        plot!(p_scale_iters, 1:length(grid_labels), baseline_iters_list,
-            label="Baseline", color=:black, lw=3, marker=:circle, markersize=8)
+        plot!(
+            p_scale_iters,
+            1:length(grid_labels),
+            baseline_iters_list;
+            label="Baseline",
+            color=:black,
+            lw=3,
+            marker=:circle,
+            markersize=8,
+        )
     end
-    plot!(p_scale_iters, 1:length(grid_labels), min_iters_fai,
-        label="Min FAI Iterations", color=:blue, lw=3, marker=:square, markersize=8)
-    plot!(p_scale_iters, 1:length(grid_labels), min_iters_sinc,
-        label="Min Sinc Iterations", color=:darkorange, lw=3, marker=:diamond, markersize=8)
+    plot!(
+        p_scale_iters,
+        1:length(grid_labels),
+        min_iters_fai;
+        label="Min FAI Iterations",
+        color=:blue,
+        lw=3,
+        marker=:square,
+        markersize=8,
+    )
+    plot!(
+        p_scale_iters,
+        1:length(grid_labels),
+        min_iters_sinc;
+        label="Min Sinc Iterations",
+        color=:darkorange,
+        lw=3,
+        marker=:diamond,
+        markersize=8,
+    )
 
     savefig(p_scale_iters, joinpath(plots_dir, "scaling_summary_iters.png"))
 
-    p_scale_det_solve = plot(
+    p_scale_det_solve = plot(;
         title="Detailed Scaling of Solve Speedups",
         xlabel="System Size",
         ylabel="Speedup Factor",
         xticks=(1:length(grid_labels), grid_labels),
         legend=:outertopright,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
-    p_scale_det_total = plot(
+    p_scale_det_total = plot(;
         title="Detailed Scaling of Total Speedups",
         xlabel="System Size",
         ylabel="Speedup Factor",
         xticks=(1:length(grid_labels), grid_labels),
         legend=:outertopright,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
-    p_scale_det_iters = plot(
+    p_scale_det_iters = plot(;
         title="Detailed Scaling of Iterations",
         xlabel="System Size",
         ylabel="Total Krylov Iterations",
         yscale=:log10,
         xticks=(1:length(grid_labels), grid_labels),
         legend=:outertopright,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
     if any(!isnan, baseline_iters_list)
-        plot!(p_scale_det_iters, 1:length(grid_labels), baseline_iters_list,
-              label="Baseline", color=:black, lw=3, marker=:circle, markersize=6)
+        plot!(
+            p_scale_det_iters,
+            1:length(grid_labels),
+            baseline_iters_list;
+            label="Baseline",
+            color=:black,
+            lw=3,
+            marker=:circle,
+            markersize=6,
+        )
     end
 
     fai_cfgs = sort(collect(keys(detailed_fai_solve)))
     sinc_cfgs = sort(collect(keys(detailed_sinc_solve)))
-    
-    fai_colors = [cgrad(:Blues)[z] for z in range(0.45, 1.0, length=max(2, length(fai_cfgs)))]
-    sinc_colors = [cgrad(:Oranges)[z] for z in range(0.45, 1.0, length=max(2, length(sinc_cfgs)))]
+
+    fai_colors = [cgrad(:Blues)[z] for z in range(0.45, 1.0; length=max(2, length(fai_cfgs)))]
+    sinc_colors = [cgrad(:Oranges)[z] for z in range(0.45, 1.0; length=max(2, length(sinc_cfgs)))]
 
     for (i, cfg) in enumerate(fai_cfgs)
         g, m = cfg
         c = fai_colors[mod1(i, length(fai_colors))]
-        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_fai_solve[cfg], 
-              label="FAI χ=$(g)", lw=2.5, marker=:circle, color=c)
-        plot!(p_scale_det_total, 1:length(grid_labels), detailed_fai_total[cfg], 
-              label="FAI χ=$(g)", lw=2.5, marker=:square, color=c)
+        plot!(
+            p_scale_det_solve,
+            1:length(grid_labels),
+            detailed_fai_solve[cfg];
+            label="FAI χ=$(g)",
+            lw=2.5,
+            marker=:circle,
+            color=c,
+        )
+        plot!(
+            p_scale_det_total,
+            1:length(grid_labels),
+            detailed_fai_total[cfg];
+            label="FAI χ=$(g)",
+            lw=2.5,
+            marker=:square,
+            color=c,
+        )
         if haskey(detailed_fai_iters, cfg)
-            plot!(p_scale_det_iters, 1:length(grid_labels), detailed_fai_iters[cfg], 
-                  label="FAI χ=$(g)", lw=2.5, marker=:circle, color=c)
-        end
-    end
-    
-    for (i, m_val) in enumerate(sinc_cfgs)
-        c = sinc_colors[mod1(i, length(sinc_colors))]
-        plot!(p_scale_det_solve, 1:length(grid_labels), detailed_sinc_solve[m_val], 
-              label="Sinc M=$(m_val)", lw=2.5, marker=:diamond, color=c)
-        plot!(p_scale_det_total, 1:length(grid_labels), detailed_sinc_total[m_val], 
-              label="Sinc M=$(m_val)", lw=2.5, marker=:utriangle, color=c)
-        if haskey(detailed_sinc_iters, m_val)
-            plot!(p_scale_det_iters, 1:length(grid_labels), detailed_sinc_iters[m_val], 
-                  label="Sinc M=$(m_val)", lw=2.5, marker=:diamond, color=c)
+            plot!(
+                p_scale_det_iters,
+                1:length(grid_labels),
+                detailed_fai_iters[cfg];
+                label="FAI χ=$(g)",
+                lw=2.5,
+                marker=:circle,
+                color=c,
+            )
         end
     end
 
-    hline!(p_scale_det_solve, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
-    hline!(p_scale_det_total, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    for (i, m_val) in enumerate(sinc_cfgs)
+        c = sinc_colors[mod1(i, length(sinc_colors))]
+        plot!(
+            p_scale_det_solve,
+            1:length(grid_labels),
+            detailed_sinc_solve[m_val];
+            label="Sinc M=$(m_val)",
+            lw=2.5,
+            marker=:diamond,
+            color=c,
+        )
+        plot!(
+            p_scale_det_total,
+            1:length(grid_labels),
+            detailed_sinc_total[m_val];
+            label="Sinc M=$(m_val)",
+            lw=2.5,
+            marker=:utriangle,
+            color=c,
+        )
+        if haskey(detailed_sinc_iters, m_val)
+            plot!(
+                p_scale_det_iters,
+                1:length(grid_labels),
+                detailed_sinc_iters[m_val];
+                label="Sinc M=$(m_val)",
+                lw=2.5,
+                marker=:diamond,
+                color=c,
+            )
+        end
+    end
+
+    hline!(p_scale_det_solve, [1.0]; label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    hline!(p_scale_det_total, [1.0]; label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
 
     savefig(p_scale_det_solve, joinpath(plots_dir, "scaling_summary_detailed_solve.png"))
     savefig(p_scale_det_total, joinpath(plots_dir, "scaling_summary_detailed_total.png"))

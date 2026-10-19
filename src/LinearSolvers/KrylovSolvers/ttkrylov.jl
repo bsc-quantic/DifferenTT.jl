@@ -8,9 +8,11 @@ function _assign_ref_store!(store::Any, value, field::Symbol)::Nothing
         store[] = value
     catch e
         e isa ArgumentError && rethrow()
-        throw(ArgumentError(
-            "GlobalUpdaterArgs.$(field) must be `nothing` or support `store[] = value` (e.g. a `Ref`). Got $(typeof(store))."
-        ))
+        throw(
+            ArgumentError(
+                "GlobalUpdaterArgs.$(field) must be `nothing` or support `store[] = value` (e.g. a `Ref`). Got $(typeof(store)).",
+            ),
+        )
     end
     return nothing
 end
@@ -28,7 +30,7 @@ end
     TTCG <: KrylovKit.KrylovAlgorithm
 
 Tensor Train Conjugate Gradient (CG) algorithm for linear systems.
-This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters 
+This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters
 to keep bond dimensions bounded.
 """
 Base.@kwdef struct TTCG <: KrylovKit.KrylovAlgorithm
@@ -57,20 +59,21 @@ Base.@kwdef struct GlobalCG <: AbstractGlobalSolver
     end
 end
 
-function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
 
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
-    
-    alg = TTCG(; maxiter = merged_kwargs.maxiter,
-                 tol = merged_kwargs.rtol,
-                 verbosity = merged_kwargs.verbosity,
-                 maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                 cutoff = get(merged_kwargs, :cutoff, 1e-8),
-                 orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
-                 orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
+
+    alg = TTCG(;
+        maxiter=merged_kwargs.maxiter,
+        tol=merged_kwargs.rtol,
+        verbosity=merged_kwargs.verbosity,
+        maxdim=get(merged_kwargs, :maxdim, typemax(Int)),
+        cutoff=get(merged_kwargs, :cutoff, 1e-8),
+        orth_maxdim=get(merged_kwargs, :orth_maxdim, typemax(Int)),
+        orth_cutoff=get(merged_kwargs, :orth_cutoff, 1e-12),
     )
-                     
+
     x, info = KrylovKit.linsolve(A, b, init, alg)
     if !isnothing(merged_kwargs.numiter_store)
         merged_kwargs.numiter_store[] = info.numiter
@@ -78,20 +81,21 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS, Nothing}; 
     return x
 end
 
-function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
 
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
-    
-    alg = TTCG(; maxiter = merged_kwargs.maxiter,
-                 tol = merged_kwargs.rtol,
-                 verbosity = merged_kwargs.verbosity,
-                 maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                 cutoff = get(merged_kwargs, :cutoff, 1e-8),
-                 orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
-                 orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12)
-)
-                     
+
+    alg = TTCG(;
+        maxiter=merged_kwargs.maxiter,
+        tol=merged_kwargs.rtol,
+        verbosity=merged_kwargs.verbosity,
+        maxdim=get(merged_kwargs, :maxdim, typemax(Int)),
+        cutoff=get(merged_kwargs, :cutoff, 1e-8),
+        orth_maxdim=get(merged_kwargs, :orth_maxdim, typemax(Int)),
+        orth_cutoff=get(merged_kwargs, :orth_cutoff, 1e-12),
+    )
+
     x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
     if !isnothing(merged_kwargs.numiter_store)
         merged_kwargs.numiter_store[] = info.numiter
@@ -99,12 +103,11 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPrecondit
     return x
 end
 
-
 """
     TTGMRES <: KrylovKit.KrylovAlgorithm
 
 Tensor Train Generalized Minimal Residual Method (GMRES) algorithm for linear systems.
-This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters 
+This is a helper struct in order for KrylovKit to know which algo + parameters to run. Includes truncation parameters
 for application and orthogonalization steps.
 """
 Base.@kwdef struct TTGMRES <: KrylovKit.KrylovAlgorithm
@@ -127,20 +130,22 @@ Base.@kwdef struct GlobalGMRES <: AbstractGlobalSolver
     updater_kwargs::GlobalUpdaterArgs = GlobalUpdaterArgs()
 end
 
-function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
 
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
-    
-    alg = TTGMRES(; krylovdim = merged_kwargs.krylovdim,
-                    maxiter = merged_kwargs.maxiter,
-                    tol = merged_kwargs.rtol,
-                    verbosity = merged_kwargs.verbosity,
-                    maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                    cutoff = get(merged_kwargs, :cutoff, 1e-8),
-                    orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
-                    orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
-                    
+
+    alg = TTGMRES(;
+        krylovdim=merged_kwargs.krylovdim,
+        maxiter=merged_kwargs.maxiter,
+        tol=merged_kwargs.rtol,
+        verbosity=merged_kwargs.verbosity,
+        maxdim=get(merged_kwargs, :maxdim, typemax(Int)),
+        cutoff=get(merged_kwargs, :cutoff, 1e-8),
+        orth_maxdim=get(merged_kwargs, :orth_maxdim, typemax(Int)),
+        orth_cutoff=get(merged_kwargs, :orth_cutoff, 1e-12),
+    )
+
     x, info = KrylovKit.linsolve(A, b, init, alg)
     if !isnothing(merged_kwargs.numiter_store)
         merged_kwargs.numiter_store[] = info.numiter
@@ -148,20 +153,24 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS, Nothing
     return x
 end
 
-function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(
+    solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...
+)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
 
     merged_kwargs = merge(NamedTuple(solver.updater_kwargs), values(kwargs))
-    
-    alg = TTGMRES(; krylovdim = merged_kwargs.krylovdim,
-                    maxiter = merged_kwargs.maxiter,
-                    tol = merged_kwargs.rtol,
-                    verbosity = merged_kwargs.verbosity,
-                    maxdim = get(merged_kwargs, :maxdim, typemax(Int)),
-                    cutoff = get(merged_kwargs, :cutoff, 1e-8),
-                    orth_maxdim = get(merged_kwargs, :orth_maxdim, typemax(Int)),
-                    orth_cutoff = get(merged_kwargs, :orth_cutoff, 1e-12))
-                        
+
+    alg = TTGMRES(;
+        krylovdim=merged_kwargs.krylovdim,
+        maxiter=merged_kwargs.maxiter,
+        tol=merged_kwargs.rtol,
+        verbosity=merged_kwargs.verbosity,
+        maxdim=get(merged_kwargs, :maxdim, typemax(Int)),
+        cutoff=get(merged_kwargs, :cutoff, 1e-8),
+        orth_maxdim=get(merged_kwargs, :orth_maxdim, typemax(Int)),
+        orth_cutoff=get(merged_kwargs, :orth_cutoff, 1e-12),
+    )
+
     x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
     if !isnothing(merged_kwargs.numiter_store)
         merged_kwargs.numiter_store[] = info.numiter

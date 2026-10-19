@@ -54,7 +54,11 @@ const GC_BALLAST = allocate_ballast(GC_BALLAST_GB)
 flush(stderr)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-const default_base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_anisotropy/results_nocond" : "experiments/preconditioner_benchmarks/tt_anisotropy/results"
+const default_base_folder = if use_nocond
+    "experiments/preconditioner_benchmarks/tt_anisotropy/results_nocond"
+else
+    "experiments/preconditioner_benchmarks/tt_anisotropy/results"
+end
 base_folder = get(ENV, "TT_ANISOTROPY_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -81,26 +85,11 @@ const residual_tol = 1e-3
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
-const maxdims_map = Dict(
-    5 => 50,
-    10 => 70,
-    15 => 100,
-    20 => 150
-)
+const maxdims_map = Dict(5 => 50, 10 => 70, 15 => 100, 20 => 150)
 
-const nsweeps_map = Dict(
-    5 => 30,
-    10 => 30,
-    15 => 40,
-    20 => 50
-)
+const nsweeps_map = Dict(5 => 30, 10 => 30, 15 => 40, 20 => 50)
 
-const pc_tol_map = Dict(
-    5 => 1e-3,
-    10 => 1e-3,
-    15 => 1e-3,
-    20 => 1e-2
-)
+const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-2)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
@@ -145,7 +134,9 @@ function build_task_list()
     return tasks
 end
 
-problem(N::Int, F::Real) = build_problem(N, F; nodes_per_dim=N_NODES_PER_DIM, rhs_kind=RHS_KIND, sol_maxdim=get(maxdims_map, N, 10))
+function problem(N::Int, F::Real)
+    build_problem(N, F; nodes_per_dim=N_NODES_PER_DIM, rhs_kind=RHS_KIND, sol_maxdim=get(maxdims_map, N, 10))
+end
 
 """
     make_outer_solver(A, rhs; nsweeps, maxdim)
@@ -156,24 +147,24 @@ types), so no keyword-method compilation is deferred into the timed solve.
 """
 function make_outer_solver(A::MPO, rhs::MPS; nsweeps::Int, maxdim::Int)
     residual_observer = ResidualObserver(A, rhs, residual_tol)
-    sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=maxdim, cutoff=1e-13, observer! = residual_observer)
+    sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=maxdim, cutoff=1e-13, (observer!)=residual_observer)
 
     numiter_store = KrylovSweepStats()
-    cond_store    = use_nocond ? nothing : KrylovCondStats()
+    cond_store = use_nocond ? nothing : KrylovCondStats()
     pc_cond_store = use_nocond ? nothing : KrylovCondStats()
 
-    updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = 0.1*residual_tol,
-        krylovdim = 1,
-        maxiter = 3000,
-        numiter_store = numiter_store,
-        cond_store = cond_store,
-        pc_cond_store = pc_cond_store
+    updater_kwargs = LocalUpdaterArgs(;
+        ishermitian=true,
+        isposdef=true,
+        rtol=0.1*residual_tol,
+        krylovdim=1,
+        maxiter=3000,
+        numiter_store=numiter_store,
+        cond_store=cond_store,
+        pc_cond_store=pc_cond_store,
     )
 
-    solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5*residual_tol)
+    solver = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5*residual_tol)
     return solver, (; numiter_store, cond_store, pc_cond_store)
 end
 
@@ -185,31 +176,26 @@ with the same keyword set as the real build (including `residual_tol`), so the
 `sweep_observer!` path inside `fai_dg` is compiled ahead of time.
 """
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
-    fai_sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
+    fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
 
-    fai_updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = 1e-5,
-        krylovdim = 1,
-        maxiter = 2000
-    )
+    fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
 
-    fai_als_solver = ALS(
-        sweep_kwargs = fai_sweep_kwargs,
-        updater_kwargs = fai_updater_kwargs,
-    )
+    fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
     D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
 
-    return fai_preconditioner(A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build)
+    return fai_preconditioner(
+        A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build
+    )
 end
 
-"""Summarize a `KrylovSweepStats` store: per-site iteration totals, grand total, and sweep count."""
+"""
+Summarize a `KrylovSweepStats` store: per-site iteration totals, grand total, and sweep count.
+"""
 function krylov_iters_summary(stats_store::KrylovSweepStats)
     per_site = DifferenTT.positions_sum(stats_store)
     nsweeps = isempty(stats_store.numiters) ? 0 : maximum(length, stats_store.numiters)
-    return (; iters_per_site = per_site, total_iters = sum(per_site; init=0.0), nsweeps)
+    return (; iters_per_site=per_site, total_iters=sum(per_site; init=0.0), nsweeps)
 end
 
 """
@@ -231,14 +217,17 @@ function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
         GC.gc(true)
         stats = @timed solve_fn(solver, x0)
         numiters = krylov_iters_summary(stores.numiter_store)
-        push!(runs, (;
-            out_mps = stats.value,
-            time = stats.time,
-            compile_time = stats.compile_time,
-            gc_time = stats.gctime,
-            stores = stores,
-            numiters...
-        ))
+        push!(
+            runs,
+            (;
+                out_mps=stats.value,
+                time=stats.time,
+                compile_time=stats.compile_time,
+                gc_time=stats.gctime,
+                stores=stores,
+                numiters...,
+            ),
+        )
         @info "solve repeat $rep" time=stats.time compile=stats.compile_time gc=stats.gctime total_iters=numiters.total_iters nsweeps=numiters.nsweeps
     end
     return runs
@@ -260,7 +249,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
     method = task.method
     key = ""
-    extra = Dict{String, Any}()
+    extra = Dict{String,Any}()
     pc = nothing
     t_build = 0.0
     build_compile = 0.0
@@ -310,9 +299,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         error("Unknown task method: $method")
     end
 
-    solve_fn = isnothing(pc) ?
-        (s, x0) -> linearsolve(s, A, rhs, x0) :
-        (s, x0) -> linearsolve(s, A, rhs, pc, x0)
+    solve_fn = isnothing(pc) ? (s, x0) -> linearsolve(s, A, rhs, x0) : (s, x0) -> linearsolve(s, A, rhs, pc, x0)
 
     runs = repeated_solves(A, rhs, init_mps, N, solve_fn)
     cold = first(runs)
@@ -329,7 +316,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     @info "Residual $rel_residual"
     @info "Max bond dimension = $(maxlinkdim(out_mps))"
 
-    result_dict = Dict{String, Any}(
+    result_dict = Dict{String,Any}(
         "key" => key,
         "N" => N,
         "F" => F,
@@ -351,17 +338,13 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "compile_time_cold" => cold.compile_time,
         "gc_time_cold" => cold.gc_time,
         "total_iters_cold" => cold.total_iters,
-
         "compile_time" => warm.compile_time,
         "gc_time" => warm.gc_time,
         "total_iters" => warm.total_iters,
         "nsweeps" => warm.nsweeps,
-
         "n_solve_repeats" => N_SOLVE_REPEATS,
-
         "precond_build_compile_time" => build_compile,
         "precond_build_gc_time" => build_gc,
-
         "hostname" => gethostname(),
         "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
         "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
@@ -426,7 +409,7 @@ function warmup(N::Int)
         dinit = random_mps(dsites)
 
         dsinc = sincquadrature_preconditioner(dprob.arch, dsites, dprob.A_list, 1)
-        dfai  = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+        dfai = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
 
         solve_fns = (
             (s, x0) -> linearsolve(s, dA, drhs, x0),

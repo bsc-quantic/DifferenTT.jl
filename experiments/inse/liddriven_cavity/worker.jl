@@ -30,7 +30,9 @@ CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder = (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") * RESULTS_SUFFIX
+base_folder =
+    (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") *
+    RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
@@ -43,20 +45,17 @@ const SAVE_EVERY = 200
 
 # Four no-slip walls with ψ = 0, the top one moving in +x and, for two lids, the bottom one moving in -x.
 # DirichletBC logs at every construction: build the boundary conditions once
-const FACES = CAVITY_LIDS == 1 ? cavity_faces(U_LID) :
-    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-U_LID), NoSlipWall(velocity=U_LID)))
+const FACES = if CAVITY_LIDS == 1
+    cavity_faces(U_LID)
+else
+    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(; velocity=(-U_LID)), NoSlipWall(; velocity=U_LID)))
+end
 const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
-const tf_map = Dict(
-    (7, 7) => 40.0,
-    (8, 8) => 40.0
-)
+const tf_map = Dict((7, 7) => 40.0, (8, 8) => 40.0)
 
 # RK4: dt = 0.005 at 128² and 0.002 at 256², about half the CFL bound
-const n_steps_map = Dict(
-    (7, 7) => 8000,
-    (8, 8) => 20000
-)
+const n_steps_map = Dict((7, 7) => 8000, (8, 8) => 20000)
 
 # Overridable for fast verification only: stops the run after the given number of steps, keeping the time step
 # tf_map[nodes] / n_steps_map[nodes]. The default reproduces n_steps_map[nodes] exactly.
@@ -66,39 +65,27 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
 end
 
 const system_sizes = [(7, 7), (8, 8)]
-const cond_nodes  = [(7, 7), (8, 8)]
+const cond_nodes = [(7, 7), (8, 8)]
 
-function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
 const mu_values = [5e6, 1e7, 5e7, 1e8]
 const g_maxdims = 2:10
 
-const maxdims_map = Dict(
-    (7, 7) => 50,
-    (8, 8) => 70
-)
+const maxdims_map = Dict((7, 7) => 50, (8, 8) => 70)
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
 # const cutoff_map = Dict(
 #     (7, 7) => 1e-13,
 #     (8, 8) => 1e-13
 # )
-const cutoff_map = Dict(
-    (7, 7) => 0.0,
-    (8, 8) => 0.0
-)
+const cutoff_map = Dict((7, 7) => 0.0, (8, 8) => 0.0)
 
-const nsweeps_map = Dict(
-    (7, 7) => 30,
-    (8, 8) => 100
-)
+const nsweeps_map = Dict((7, 7) => 30, (8, 8) => 100)
 
-const tol_map = Dict(
-    (7, 7) => 1e-3,
-    (8, 8) => 1e-3
-)
+const tol_map = Dict((7, 7) => 1e-3, (8, 8) => 1e-3)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -114,7 +101,7 @@ function build_task_list()
     return [TaskSpec((7, 7), true, 0.0, 0)]
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
+function build_grid(nodes::NTuple{2,Int}, max_steps::Int)
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
     # Walls are ghost nodes: 2^n interior nodes per axis with h = L / (2^n + 1)
@@ -124,31 +111,47 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int)
     omega_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
     psi_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
 
-    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, tf_map[nodes], max_steps), cutoff=1e-12, maxdim=maxdims_map[nodes])
-    experiment = INSVorticityExperiment(grid, omega_field, psi_field, RE_NUM, FACES; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-12)
+    time_stepper = RK4(;
+        time_evol_kwargs=TimeEvolArgs(0.0, tf_map[nodes], max_steps), cutoff=1e-12, maxdim=maxdims_map[nodes]
+    )
+    experiment = INSVorticityExperiment(
+        grid,
+        omega_field,
+        psi_field,
+        RE_NUM,
+        FACES;
+        wall_formula=WALL_FORMULA,
+        stencil_order=STENCIL_ORDER,
+        maxdim=maxdims_map[nodes],
+        cutoff=1e-12,
+    )
     check_cfl(experiment, time_stepper; vmax=experiment.vmax)
 
     cache = VorticityCache(experiment)
 
     # Priming step: at rest ω = 0, so ψ = 0 and the first Poisson system is trivial. Advance one untimed step
     # with ψ = 0 (no solve) so that every solved step has a nonzero right-hand side.
-    omega_primed = DifferenTT.vorticity_transport(experiment, cache, last(experiment.omega_field), last(experiment.psi_field), time_stepper, 0.0)
+    omega_primed = DifferenTT.vorticity_transport(
+        experiment, cache, last(experiment.omega_field), last(experiment.psi_field), time_stepper, 0.0
+    )
     experiment.omega_field[length(experiment.omega_field)] = omega_primed
 
-    return (;
-        nodes=nodes,
-        A=cache.poisson_op,
-        experiment=experiment,
-        time_stepper=time_stepper,
-        cache=cache
-    )
+    return (; nodes=nodes, A=cache.poisson_op, experiment=experiment, time_stepper=time_stepper, cache=cache)
 end
 
 function build_rhs(grid, omega)
     return DifferenTT.poisson_rhs(grid.experiment, grid.cache, omega)
 end
 
-function liddriven_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float64, step_index::Int, precond=nothing; save_residual::Bool=false)
+function liddriven_step!(
+    grid,
+    sweep_kwargs,
+    compute_cond::Bool,
+    tol_val::Float64,
+    step_index::Int,
+    precond=nothing;
+    save_residual::Bool=false,
+)
     experiment = grid.experiment
     omega = last(experiment.omega_field)
     rhs = build_rhs(grid, omega)
@@ -157,22 +160,26 @@ function liddriven_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float6
     cond_store = compute_cond ? KrylovCondStats() : nothing
     pc_cond_store = compute_cond ? KrylovCondStats() : nothing
     updater_kwargs = LocalUpdaterArgs(;
-        ishermitian = true,
-        isposdef = true,
-        rtol = 0.1 * tol_val,
+        ishermitian=true,
+        isposdef=true,
+        rtol=0.1 * tol_val,
         krylovdim=1,
         maxiter=2000,
-        numiter_store = numiter_store,
-        cond_store = cond_store,
-        pc_cond_store = pc_cond_store
+        numiter_store=numiter_store,
+        cond_store=cond_store,
+        pc_cond_store=pc_cond_store,
     )
 
     # A and b are bound by linearsolve to the system grid.A * psi = rhs of this step
-    res_observer = ResidualObserver(rtol=tol_val)
-    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
-    resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
-    amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
+    res_observer = ResidualObserver(; rtol=tol_val)
+    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., (observer!)=res_observer)
+    resals_solver = ResidualALS(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val
+    )
+    amen_solver = AMEn(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim=3, enrichment_cutoff=1e-10
+    )
+    als_solver = ALS(; sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = resals_solver
 
@@ -224,7 +231,7 @@ function liddriven_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float6
 end
 
 function snapshot_steps(file, prefix::String)
-    return [parse(Int, k[length(prefix)+1:end]) for k in keys(file) if startswith(k, prefix)]
+    return [parse(Int, k[(length(prefix)+1):end]) for k in keys(file) if startswith(k, prefix)]
 end
 
 function load_kickstart!(grid, base_folder)
@@ -274,7 +281,7 @@ function run_task(task::TaskSpec)
     cutoff_val = cutoff_map[task.nodes]
     tol_val = tol_map[task.nodes]
 
-    sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
+    sweep_kwargs = SweepingArgs(; nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
@@ -282,7 +289,7 @@ function run_task(task::TaskSpec)
         start_step = load_kickstart!(grid, base_folder)
 
         solve_times = zeros(Float64, start_step - 1)
-        iters = [Float64[] for _ in 1:(start_step - 1)]
+        iters = [Float64[] for _ in 1:(start_step-1)]
         residuals = zeros(Float64, start_step - 1)
         solution_maxdims = zeros(Int, start_step - 1)
         omega_maxdims = zeros(Int, start_step - 1)
@@ -322,7 +329,7 @@ function run_task(task::TaskSpec)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
             "cavity_lids" => CAVITY_LIDS,
@@ -334,7 +341,7 @@ function run_task(task::TaskSpec)
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
             "omega_maxdims" => omega_maxdims,
-            "precond_build_time" => 0.0
+            "precond_build_time" => 0.0,
         )
 
         if compute_cond
@@ -350,38 +357,25 @@ function run_task(task::TaskSpec)
         gdim = task.gdim
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
 
-        fai_sweep_kwargs = SweepingArgs(nsweeps=30, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12)
 
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            rtol = 1e-9,
-            krylovdim = 1,
-            maxiter = 3000
+        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=3000)
+
+        fai_resals_solver = ResidualALS(;
+            sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
         )
 
-        fai_resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
-        )
+        fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
-        fai_als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
-
-        fai_amen_solver =  AMEn(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            enrichment_maxdim = 1,
-        )
+        fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
 
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2)
+            unscaledG, D = DifferenTT.fai_dg(
+                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2
+            )
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -389,7 +383,7 @@ function run_task(task::TaskSpec)
         start_step = load_kickstart!(grid, base_folder)
 
         solve_times = zeros(Float64, start_step - 1)
-        iters = [Float64[] for _ in 1:(start_step - 1)]
+        iters = [Float64[] for _ in 1:(start_step-1)]
         residuals = zeros(Float64, start_step - 1)
         solution_maxdims = zeros(Int, start_step - 1)
         omega_maxdims = zeros(Int, start_step - 1)
@@ -428,7 +422,7 @@ function run_task(task::TaskSpec)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
             "cavity_lids" => CAVITY_LIDS,
@@ -442,7 +436,7 @@ function run_task(task::TaskSpec)
             "iters_per_site" => iters_per_site,
             "residuals" => residuals,
             "solution_maxdims" => solution_maxdims,
-            "omega_maxdims" => omega_maxdims
+            "omega_maxdims" => omega_maxdims,
         )
 
         if compute_cond
@@ -460,16 +454,17 @@ function warmup()
     @info "Running JIT warmup..."
     # A throwaway grid with the physical time step (the solves of the real run never see it)
     dummy_grid = build_grid((7, 7), n_steps_map[(7, 7)])
-    dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
-    dummy_als_solver = ALS(
-        sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-        updater_kwargs = dummy_updater_kwargs
+    dummy_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+    dummy_als_solver = ALS(;
+        sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_updater_kwargs
     )
-    DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false)
+    DifferenTT.fai_dg(
+        dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false
+    )
 
     # When running with condition numbers, compute time does not really count, so it is better to avoid
     # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
-    liddriven_step!(dummy_grid, SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0)
+    liddriven_step!(dummy_grid, SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), false, 1e-3, 0)
     @info "JIT warmup complete."
 end
 

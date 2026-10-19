@@ -64,60 +64,15 @@ const system_dims = [5, 10, 15, 20, 25]
 
 const N_NODES_PER_DIM = 15
 
-const maxdims_map = Dict(
-    5 => 20,
-    10 => 25,
-    15 => 25,
-    20 => 30,
-    25 => 30,
-    30 => 50,
-    40 => 50,
-    50 => 50
-)
+const maxdims_map = Dict(5 => 20, 10 => 25, 15 => 25, 20 => 30, 25 => 30, 30 => 50, 40 => 50, 50 => 50)
 
-const nsweeps_map = Dict(
-    5 => 50,
-    10 => 50,
-    15 => 50,
-    20 => 60,
-    25 => 60,
-    30 => 80,
-    40 => 100,
-    50 => 120
-)
+const nsweeps_map = Dict(5 => 50, 10 => 50, 15 => 50, 20 => 60, 25 => 60, 30 => 80, 40 => 100, 50 => 120)
 
-const rtol_map = Dict(
-    5 => 1e-4,
-    10 => 1e-4,
-    15 => 1e-4,
-    20 => 1e-4,
-    25 => 1e-4,
-    30 => 1e-4,
-    40 => 1e-4,
-    50 => 1e-4
-)
+const rtol_map = Dict(5 => 1e-4, 10 => 1e-4, 15 => 1e-4, 20 => 1e-4, 25 => 1e-4, 30 => 1e-4, 40 => 1e-4, 50 => 1e-4)
 
-const maxiter_map = Dict(
-    5 => 2000,
-    10 => 2000,
-    15 => 2000,
-    20 => 3000,
-    25 => 3000,
-    30 => 3000,
-    40 => 5000,
-    50 => 5000
-)
+const maxiter_map = Dict(5 => 2000, 10 => 2000, 15 => 2000, 20 => 3000, 25 => 3000, 30 => 3000, 40 => 5000, 50 => 5000)
 
-const pc_tol_map = Dict(
-    5 => 1e-3,
-    10 => 1e-3,
-    15 => 1e-3,
-    20 => 1e-2,
-    25 => 1e-1,
-    30 => 2e-1,
-    40 => 2e-1,
-    50 => 2e-1
-)
+const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-2, 25 => 1e-1, 30 => 2e-1, 40 => 2e-1, 50 => 2e-1)
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
@@ -139,12 +94,12 @@ function build_task_list()
     for N in system_dims
         # Baseline
         push!(tasks, TaskSpec(N, "baseline", 0.0, 0))
-        
+
         # Sinc Quadrature
         for M in sinc_M_values
             push!(tasks, TaskSpec(N, "sinc", Float64(M), 0))
         end
-        
+
         # FAI
         for (μ, gdim) in fai_configs
             push!(tasks, TaskSpec(N, "fai", μ, gdim))
@@ -168,13 +123,13 @@ function get_gaussian_sol(N::Int, R::Int)
     Random.seed!(42)
     centers = rand(R, N) .* 0.6 .+ 0.2
     alphas = rand(R, N) .* 4.0 .+ 1.0
-    
+
     function sol(x)
         val = 0.0
         for k in 1:R
             term = 1.0
             for j in 1:N
-                term *= exp(-alphas[k,j] * (x[j] - centers[k,j])^2)
+                term *= exp(-alphas[k, j] * (x[j] - centers[k, j])^2)
             end
             val += term
         end
@@ -199,53 +154,53 @@ function get_coulomb_sol(N::Int, ε::Float64=0.05)
 end
 
 function build_problem(N::Int)
-
     box_size = ntuple(i -> 1.0, N)
     nodes = ntuple(i -> N_NODES_PER_DIM, N)
-    
+
     arch = TTArchitecture(nodes)
     grid = Grid(arch, box_size)
-    
+
     # Boundary conditions
     bcs = ntuple(i -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)
     bc = BoundaryConditions(bcs...)
-    
+
     sites = siteinds(arch)
-    
+
     # sol_func = get_gaussian_sol(N, 30)
     sol_func = get_coulomb_sol(N, 0.2)
-    
+
     maxdim_N = get(maxdims_map, N, 10)
-    
+
     sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
     # Cap ttcross by maxdim_N to avoid OOM
-    sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=maxdim_N, tolerance=1e-12)
+    sol_tci, _ = crossinterpolate2(
+        Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=maxdim_N, tolerance=1e-12
+    )
     sol_mps = MPS(sol_tci)
     replace_siteinds!(sol_mps, sites)
-    
+
     field = ScalarField(sol_mps, arch, bc)
     Δ = symmetrized_laplacian(field, grid; stencil_order=2)
     @show maxlinkdim(Δ)
 
     A = -1.0 * Δ
-    
+
     # Discrete RHS A * sol_mps so FD truncation error does not dominate the solve error.
     rhs_mps = apply(A, sol_mps; alg="naive")
-    
+
     # Incorporate Dirichlet boundary corrections through library functions (even if they do not do anything)
     # Do not cap maxdim here so we don't truncate rhs_mps and mix truncation error with linsolve error
     Δ_correction_mpo = scalar_dirichlet_correction(field, grid, 2; stencil_order=2, cutoff=0.0)
     Δ_correction = isnothing(Δ_correction_mpo) ? nothing : apply(Δ_correction_mpo, ones_mps(field.usites); alg="naive")
     rhs_mps = isnothing(Δ_correction) ? rhs_mps : +(rhs_mps, Δ_correction; alg="directsum")
-    
+
     # Symmetrize the RHS
     rhs_mps = symmetrize_rhs(field, rhs_mps)
-    
+
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
-    
+
     return A, rhs_mps, sol_mps, A_list, grid, arch
 end
-
 
 """
     make_global_solver(; rtol, maxiter, maxdim, cutoff, orth_maxdim, orth_cutoff)
@@ -254,20 +209,22 @@ Build the outer GlobalCG solver and its iteration-count `Ref`. Used both by the 
 and by every timed task, with identical argument *types*, so no keyword-method compilation is
 deferred into the timed solve.
 """
-function make_global_solver(; rtol::Float64, maxiter::Int, maxdim::Int, cutoff::Float64, orth_maxdim::Int, orth_cutoff::Float64)
+function make_global_solver(;
+    rtol::Float64, maxiter::Int, maxdim::Int, cutoff::Float64, orth_maxdim::Int, orth_cutoff::Float64
+)
     numiter_store = Ref{Int}(0)
-    updater_kwargs = GlobalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = rtol,
-        maxiter = maxiter,
-        maxdim = maxdim,
-        cutoff = cutoff,
-        orth_maxdim = orth_maxdim,
-        orth_cutoff = orth_cutoff,
-        numiter_store = numiter_store,
+    updater_kwargs = GlobalUpdaterArgs(;
+        ishermitian=true,
+        isposdef=true,
+        rtol=rtol,
+        maxiter=maxiter,
+        maxdim=maxdim,
+        cutoff=cutoff,
+        orth_maxdim=orth_maxdim,
+        orth_cutoff=orth_cutoff,
+        numiter_store=numiter_store,
     )
-    return GlobalCG(updater_kwargs=updater_kwargs), numiter_store
+    return GlobalCG(; updater_kwargs=updater_kwargs), numiter_store
 end
 
 """
@@ -278,33 +235,46 @@ with the same keyword set as the real build (including `residual_tol`), so the
 `sweep_observer!` path inside `fai_dg` is compiled ahead of time.
 """
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
-    fai_sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
-    fai_updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true, isposdef = true,
-        rtol = 1e-5, krylovdim = 1, maxiter = 2000,
-    )
-    fai_als_solver = ALS(sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
+    fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
+    fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
+    fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
     D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-    return fai_preconditioner(A, μ, fai_als_solver, D_kwargs_local;
-                              totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build)
+    return fai_preconditioner(
+        A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build
+    )
 end
 
-"""Run the outer GlobalCG solve N_SOLVE_REPEATS times with a fresh solver each time. Returns a
-Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and iteration count."""
+"""
+Run the outer GlobalCG solve N_SOLVE_REPEATS times with a fresh solver each time. Returns a
+Vector{NamedTuple} — one entry per repeat, holding the solution, timings, and iteration count.
+"""
 function repeated_solves(A::MPO, rhs::MPS, init_mps::MPS, N::Int, solve_fn)
     runs = NamedTuple[]
     for rep in 1:N_SOLVE_REPEATS
-        solver, numiter_store = make_global_solver(; rtol=rtol_map[N], maxiter=maxiter_map[N],
-                                                     maxdim=maxdims_map[N], cutoff=1e-13,
-                                                     orth_maxdim=maxdims_map[N], orth_cutoff=1e-14)
+        solver, numiter_store = make_global_solver(;
+            rtol=rtol_map[N],
+            maxiter=maxiter_map[N],
+            maxdim=maxdims_map[N],
+            cutoff=1e-13,
+            orth_maxdim=maxdims_map[N],
+            orth_cutoff=1e-14,
+        )
         x0 = copy(init_mps)
         # Same RNG state before every timed solve (all methods and repeats), so no random choice
         # inside the solver can differ between them.
         Random.seed!(N)
         GC.gc(true)
         stats = @timed solve_fn(solver, x0)
-        push!(runs, (; out_mps = stats.value, time = stats.time, compile_time = stats.compile_time,
-                       gc_time = stats.gctime, global_iters = numiter_store[]))
+        push!(
+            runs,
+            (;
+                out_mps=stats.value,
+                time=stats.time,
+                compile_time=stats.compile_time,
+                gc_time=stats.gctime,
+                global_iters=numiter_store[],
+            ),
+        )
         @info "solve repeat $rep" time=stats.time compile=stats.compile_time gc=stats.gctime global_iters=numiter_store[]
     end
     return runs
@@ -323,7 +293,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
     method = task.method
     key = ""
-    extra = Dict{String, Any}()
+    extra = Dict{String,Any}()
     pc = nothing
     t_build = 0.0
     build_compile = 0.0
@@ -371,9 +341,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         error("Unknown task method: $method")
     end
 
-    solve_fn = isnothing(pc) ?
-        (s, x0) -> linearsolve(s, A, rhs, x0) :
-        (s, x0) -> linearsolve(s, A, rhs, pc, x0)
+    solve_fn = isnothing(pc) ? (s, x0) -> linearsolve(s, A, rhs, x0) : (s, x0) -> linearsolve(s, A, rhs, pc, x0)
 
     runs = repeated_solves(A, rhs, init_mps, N, solve_fn)
     cold = first(runs)
@@ -393,7 +361,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         @warn "cold/warm global_iters disagree" cold=cold.global_iters warm=warm.global_iters
     end
 
-    result_dict = Dict{String, Any}(
+    result_dict = Dict{String,Any}(
         "key" => key,
         "N" => N,
         "method" => method,
@@ -403,20 +371,15 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         "relative_residual" => rel_residual,
         "global_iters" => warm.global_iters,
         "solution_maxdim" => maxlinkdim(out_mps),
-
         "solve_time_cold" => cold.time,
         "compile_time_cold" => cold.compile_time,
         "gc_time_cold" => cold.gc_time,
         "global_iters_cold" => cold.global_iters,
-
         "compile_time" => warm.compile_time,
         "gc_time" => warm.gc_time,
-
         "n_solve_repeats" => N_SOLVE_REPEATS,
-
         "precond_build_compile_time" => build_compile,
         "precond_build_gc_time" => build_gc,
-
         "hostname" => gethostname(),
         "slurm_job_id" => get(ENV, "SLURM_JOB_ID", ""),
         "blas_threads" => LinearAlgebra.BLAS.get_num_threads(),
@@ -458,7 +421,7 @@ function warmup(N::Int)
         dinit = random_mps(dsites)
 
         dsinc = sincquadrature_preconditioner(darch, dsites, dA_list, 1)
-        dfai  = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+        dfai = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
 
         solve_fns = (
             (s, x0) -> linearsolve(s, dA, drhs, x0),
@@ -466,7 +429,9 @@ function warmup(N::Int)
             (s, x0) -> linearsolve(s, dA, drhs, dfai, x0),
         )
         for solve_fn in solve_fns
-            solver, _ = make_global_solver(; rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, orth_maxdim=10, orth_cutoff=1e-8)
+            solver, _ = make_global_solver(;
+                rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, orth_maxdim=10, orth_cutoff=1e-8
+            )
             @timed solve_fn(solver, copy(dinit))
         end
 

@@ -59,17 +59,9 @@ const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
 
-const dt_map = Dict(
-    (8, 8) => 0.001,
-    (10, 10) => 0.0002,
-    (12, 12) => 0.00001
-)
+const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002, (12, 12) => 0.00001)
 
-const n_steps_map = Dict(
-    (8, 8) => 50,
-    (10, 10) => 20,
-    (12, 12) => 5
-)
+const n_steps_map = Dict((8, 8) => 50, (10, 10) => 20, (12, 12) => 5)
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -85,35 +77,15 @@ const mu_values = [1e7]
 
 const g_maxdims = 2:10
 
-const maxdims_map = Dict(
-    (8, 8) => 150,
-    (10, 10) => 200,
-    (12, 12) => 250
-)
+const maxdims_map = Dict((8, 8) => 150, (10, 10) => 200, (12, 12) => 250)
 
-const cutoff_map = Dict(
-    (8, 8) => 1e-13,
-    (10, 10) => 1e-13,
-    (12, 12) => 1e-13
-)
+const cutoff_map = Dict((8, 8) => 1e-13, (10, 10) => 1e-13, (12, 12) => 1e-13)
 
-const maxiter_map = Dict(
-    (8, 8) => 3000,
-    (10, 10) => 3000,
-    (12, 12) => 5000
-)
+const maxiter_map = Dict((8, 8) => 3000, (10, 10) => 3000, (12, 12) => 5000)
 
-const tol_map = Dict(
-    (8, 8) => 1e-2,
-    (10, 10) => 1e-2,
-    (12, 12) => 1e-2
-)
+const tol_map = Dict((8, 8) => 1e-2, (10, 10) => 1e-2, (12, 12) => 1e-2)
 
-const fai_tol_map = Dict(
-    (8, 8) => 0.1,
-    (10, 10) => 0.1,
-    (12, 12) => 0.2
-)
+const fai_tol_map = Dict((8, 8) => 0.1, (10, 10) => 0.1, (12, 12) => 0.2)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -138,7 +110,7 @@ function build_task_list()
     return tasks
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
+function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
     # `siteinds` mints fresh, uniquely-tagged Index objects on every call. A throwaway warmup
     # grid built independently from the real grid would therefore carry *different* site
     # indices even with identical nodes/mask — any MPO built against one (e.g. a FAI
@@ -148,7 +120,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
     sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
-    
+
     if isfile(MASK_FILE)
         mask_key = "mask_$(nodes[1])_$(nodes[2])"
         object_mask = load(MASK_FILE, mask_key)
@@ -157,11 +129,11 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
         object_mask = ones_mps(sites)
         @warn "mask not found; using ones_mps (all fluid)"
     end
-    
+
     v0 = 1.0
     mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
     mps_vy = 0.0 * ones_mps(sites)
-    
+
     bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
@@ -170,28 +142,45 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
 
     bcspx = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
     bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-    
+
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
     bcsp = BoundaryConditions(bcspx, bcspy)
-    
+
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
-    
-    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
-    experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
-    
+
+    time_stepper = RK4(;
+        time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes]
+    )
+    experiment = INSExperiment(
+        grid,
+        v_field,
+        p_field,
+        RE_NUM,
+        object_mask;
+        stencil_order=STENCIL_ORDER,
+        maxdim=maxdims_map[nodes],
+        cutoff=1e-11,
+    )
+
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
     p_diff_ops = DifferentialOpsScalar(grid, experiment.p_field; stencil_order=STENCIL_ORDER)
-    Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=cutoff_map[nodes])
+    Δ_cache = symmetrized_laplacian(
+        experiment.p_field,
+        experiment.grid;
+        stencil_order=STENCIL_ORDER,
+        maxdim=maxdims_map[nodes],
+        cutoff=cutoff_map[nodes],
+    )
     A = -1.0 * Δ_cache
-    
+
     # The pressure has a Dirichlet boundary, so A is not pinned and the RHS needs no mean removal
     regularize = DifferenTT.regularization_check(experiment)
     regularize && error("Benchmark operator A is not regularized; pressure BCs need a Dirichlet boundary")
     cache = ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, A, regularize)
-    
+
     return (;
         nodes=nodes,
         A=A,
@@ -199,7 +188,7 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
         time_stepper=time_stepper,
         cache=cache,
         object_mask=object_mask,
-        sites=sites
+        sites=sites,
     )
 end
 
@@ -220,7 +209,9 @@ function velocity_divergence_norm(grid, u)
     experiment = grid.experiment
     cutoff, maxdim = experiment.cutoff, experiment.maxdim
     ∇u = DifferenTT.divergence(u, grid.cache.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-    correction = DifferenTT.divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+    correction = DifferenTT.divergence_dirichlet_correction(
+        experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim
+    )
     ∇u = isnothing(correction) ? ∇u : apply(correction, ∇u; cutoff=cutoff, maxdim=maxdim)
     return norm(∇u)
 end
@@ -230,9 +221,9 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     experiment = grid.experiment
     masked_u = masked_velocity(grid)
     rhs = build_rhs(grid, masked_u)
-    
-    solver = GlobalCG(updater_kwargs=global_updater_kwargs)
-    
+
+    solver = GlobalCG(; updater_kwargs=global_updater_kwargs)
+
     dt = grid.time_stepper.time_evol_kwargs.dt
     previous_p = last(experiment.p_field)
     if isnothing(previous_p)
@@ -256,7 +247,7 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     end
     pdt = stats.value
     t = stats.time
-    
+
     # Compute relative residual using inner product to save memory
     term1 = ITensorMPS.inner(grid.A, pdt, grid.A, pdt)
     term2 = 2 * real(ITensorMPS.inner(rhs', grid.A, pdt))
@@ -267,9 +258,9 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     flush(stderr)
 
     sol_maxdim = maxlinkdim(pdt)
-    
+
     divfree_p = pdt * (1/dt)
-    
+
     # Overwrite in place: p_field keeps only the latest physical p (not a time series).
     experiment.p_field[length(experiment.p_field)] = divfree_p
     div_free_u = DifferenTT.∇p_correction(masked_u, experiment, grid.cache, divfree_p, dt)
@@ -280,17 +271,26 @@ function chorin_step!(grid, global_updater_kwargs, step_index::Int, precond=noth
     div_ratio = div_norm_after / div_norm_before
     @info "Divergence norm ratio (after / before) $div_ratio"
     flush(stderr)
-    
+
     rhs_func = NavierStokesPredictorRHS(experiment, grid.cache.u_diff_ops, grid.cache.u_boundary_null)
     timestepped_u = timestep(grid.time_stepper, div_free_u, rhs_func, 0.0)
-    
+
     experiment.u_fields[length(experiment.u_fields)] = timestepped_u
-    
+
     global_iters = global_updater_kwargs.numiter_store[]
-    
-    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, global_iters,
-                  div_norm_before, div_norm_after, div_ratio)
-    
+
+    res_dict = (;
+        t,
+        compile_t=stats.compile_time,
+        gc_t=stats.gctime,
+        rel_res,
+        sol_maxdim,
+        global_iters,
+        div_norm_before,
+        div_norm_after,
+        div_ratio,
+    )
+
     return res_dict
 end
 
@@ -303,17 +303,17 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     rtol = tol_map[task.nodes]
     fai_rtol = fai_tol_map[task.nodes]
     cutoff_val = cutoff_map[task.nodes]
-    
-    global_updater_kwargs = GlobalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        rtol = rtol,
-        maxiter = maxiter_val,
-        maxdim = maxdim_val,
-        cutoff = cutoff_val,
-        orth_maxdim = maxdim_val,
-        orth_cutoff = 0.1 * cutoff_val,
-        numiter_store = Ref{Int}(0)
+
+    global_updater_kwargs = GlobalUpdaterArgs(;
+        ishermitian=true,
+        isposdef=true,
+        rtol=rtol,
+        maxiter=maxiter_val,
+        maxdim=maxdim_val,
+        cutoff=cutoff_val,
+        orth_maxdim=maxdim_val,
+        orth_cutoff=0.1 * cutoff_val,
+        numiter_store=Ref{Int}(0),
     )
 
     if task.is_baseline
@@ -348,7 +348,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
             "total_solve_time" => sum(solve_times),
@@ -384,39 +384,28 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         flush(stderr)
 
-        global_fai_solver = GlobalCG(
-            updater_kwargs = GlobalUpdaterArgs(
-                ishermitian = true,
-                isposdef = true,
-                rtol = 1e-9,
-                maxiter = 3000,
-                maxdim = gdim,
-                cutoff = 1e-12,
-                orth_maxdim = gdim,
-                orth_cutoff = 1e-12
-            )
+        global_fai_solver = GlobalCG(;
+            updater_kwargs=GlobalUpdaterArgs(;
+                ishermitian=true,
+                isposdef=true,
+                rtol=1e-9,
+                maxiter=3000,
+                maxdim=gdim,
+                cutoff=1e-12,
+                orth_maxdim=gdim,
+                orth_cutoff=1e-12,
+            ),
         )
 
-        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
-        
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            rtol = 1e-5,
-            krylovdim = 1,
-            maxiter = 3000
-        )
-        
-        resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
+        fai_sweep_kwargs = SweepingArgs(; nsweeps=100, maxdim=gdim, cutoff=1e-12)
+
+        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=3000)
+
+        resals_solver = ResidualALS(;
+            sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
         )
 
-        als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
+        als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
         fai_builder_solver = als_solver
 
@@ -427,7 +416,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol)
+            unscaledG, D = DifferenTT.fai_dg(
+                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol
+            )
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -461,7 +452,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
             "mu" => μ,
@@ -502,17 +493,22 @@ function warmup()
     t = @elapsed begin
         dummy_grid = build_grid((8, 8), 1)
         dummy_updater_kwargs = GlobalUpdaterArgs(
-            ishermitian = true, isposdef = true, rtol = 1e-2, maxiter = 2,
-            maxdim = 10, cutoff = 1e-8, numiter_store = Ref{Int}(0),
+            ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, maxdim=10, cutoff=1e-8, numiter_store=Ref{Int}(0)
         )
-        dummy_solver = GlobalCG(updater_kwargs = dummy_updater_kwargs)
+        dummy_solver = GlobalCG(updater_kwargs=dummy_updater_kwargs)
 
         dummy_als_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
         dummy_als_solver = ALS(
-            sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-            updater_kwargs = dummy_als_updater_kwargs,
+            sweep_kwargs=SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_als_updater_kwargs
         )
-        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false, residual_tol=fai_tol_map[(8,8)])
+        unscaledG, D = DifferenTT.fai_dg(
+            dummy_grid.A,
+            1.0,
+            dummy_als_solver,
+            (; cutoff=1e-11, oversample=2, maxdim=2);
+            preconditioning=false,
+            residual_tol=fai_tol_map[(8, 8)],
+        )
         dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         chorin_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)

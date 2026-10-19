@@ -109,5 +109,5 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
             @info "CG linsolve in iteration $numiter: normres = $(normres2string(normr))"
         end
     end
-    return
+    return nothing
 end
