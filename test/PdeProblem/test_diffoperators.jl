@@ -4,6 +4,9 @@ using DifferenTT
 using Test
 using LinearAlgebra
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 # Helper function to generate expected dense matrix for 1D derivative
 function expected_diff_matrix(derivative_order::Int, dim::Int, bcs::BoundaryCond1d; stencil_order::Int=8)
     coeffs = DifferenTT.derivative_coefficients(derivative_order; stencil_order=stencil_order)
@@ -53,7 +56,7 @@ end
             for order in [1, 2]
                 for (name, bc1d) in [
                     ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
-                    ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+                    ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))),
                     ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
                 ]
                     @testset "Derivative $order, Stencil $stencil_order, BC $name" begin
@@ -116,7 +119,7 @@ end
         qtt_arch = QTTArchitecture((nsite_x, nsite_y))
         grid = Grid(qtt_arch, (1.0, 1.0))
         bc1d_x = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-        bc1d_y = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
+        bc1d_y = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0))
         bcs = BoundaryConditions(bc1d_x, bc1d_y)
 
         # We need a ScalarField to create the ops

@@ -6,6 +6,19 @@ using LinearAlgebra
 using Random
 using JLD2
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
+# The dense references contract operators with more indices than the ITensors order-warning threshold
+function dense_mpo(A::MPO)
+    previous = ITensors.disable_warn_order()
+    try
+        return contract_mpo(A)
+    finally
+        ITensors.set_warn_order(previous)
+    end
+end
+
 # -------------------------------------------------------------------------------------------------
 # Dense references of the vorticity-streamfunction scheme with general faces. Fields are stored as F[x, y]
 # on the K₁ × K₂ stored nodes. `pad` adds one ghost row per face: a value (number or profile along the face),
@@ -175,7 +188,7 @@ end
 
 @testset "Vorticity-streamfunction" begin
     # DirichletBC logs at every construction: build the wall conditions once
-    wall = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    wall = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
     walls = BoundaryConditions(wall, wall)
     periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
@@ -347,10 +360,10 @@ end
         A_dense = dense_poisson_matrix(K1, K2, grid.dx...)
         @test relerr(dense_field(apply(cache.poisson_op, psi), grid, arch), reshape(A_dense * vec(Ψ), K1, K2)) < 1e-10
 
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test A ≈ A'
         @test eigmin(Symmetric(A)) > 0
-        @test A ≈ -contract_mpo(cache.laplacian)
+        @test A ≈ -dense_mpo(cache.laplacian)
 
         # The right-hand side of -Δψ = ω is the vorticity itself
         @test DifferenTT.poisson_rhs(experiment, cache, psi) === psi
@@ -794,11 +807,11 @@ end
         QTTArchitecture((4, 4)), QTTArchitecture((4, -4)), TTArchitecture((16, 16))
     )
         cache = VorticityCache(face_experiment(arch, poiseuille_faces(arch); domain=(2.0, 1.0)))
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test norm(A - A') < 1e-10 * norm(A)
         @test eigmin(Symmetric(A)) > 0
         # The diffusion of ω is not weighted
-        @test !(contract_mpo(cache.omega_laplacian) ≈ contract_mpo(cache.laplacian))
+        @test !(dense_mpo(cache.omega_laplacian) ≈ dense_mpo(cache.laplacian))
     end
 
     @testset "Regularized Poisson system, doubly periodic ($(arch_label(arch)))" for arch in (
@@ -810,7 +823,7 @@ end
         grid = experiment.grid
         sites = experiment.psi_field.usites
 
-        A = contract_mpo(cache.poisson_op)
+        A = dense_mpo(cache.poisson_op)
         @test A ≈ A'
         @test eigmin(Symmetric(A)) > 0
         # The pin c 𝟏𝟏ᵀ with c = 1/(number of nodes) gives A 𝟏 = 𝟏

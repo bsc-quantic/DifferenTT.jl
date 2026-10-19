@@ -39,8 +39,6 @@ using ITensorMPS
     @testset "INSExperiment validation" begin
         # Invalid object mask
         mask = random_mps(siteinds("S=1/2", 3)) # wrong sites
-        @show !isnothing(mask)
-        @show vfield.usites != sfield.usites != siteinds(mask)
         @test_throws ArgumentError DifferenTT.INSExperiment(grid, vfield, sfield, 100.0, mask)
     end
 end

@@ -7,6 +7,9 @@ using DifferenTT: FactorizedPreconditioner
 using LinearAlgebra: norm, normalize!
 using Random: Random
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 # Counts the sweeps performed by an alternating update
 mutable struct AMEnSweepCounter <: ITensorMPS.AbstractObserver
     nsweeps::Int
@@ -17,7 +20,7 @@ ITensorMPS.update_observer!(o::AMEnSweepCounter; kwargs...) = (o.nsweeps += 1; o
 function amen_poisson_2d(nx, ny)
     arch = QTTArchitecture((nx, ny); interleaved=false)
     grid = Grid(arch, (1.0, 1.0))
-    bc1 = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    bc1 = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
     s = siteinds(arch)
     field = ScalarField(zeros_mps(s), arch, BoundaryConditions(bc1, bc1))
     return -1.0 * symmetrized_laplacian(field, grid), s
@@ -55,7 +58,7 @@ amen_relres(A, x, b) = norm(apply(A, x; alg="naive", truncate=false) - b) / norm
         N = 5
         arch = QTTArchitecture((N,))
         grid = Grid(arch, (1.0,))
-        bc = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+        bc = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))))
         s = siteinds(arch)
         dummy_mps = zeros_mps(s)
         field = ScalarField(dummy_mps, arch, bc)

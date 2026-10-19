@@ -3,6 +3,9 @@ using Test
 using ITensors
 using ITensorMPS
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 @testset "NavierStokes & Chorin" begin
     arch_2d = (4, 4)
     arch_3d = (4, 4, 4)
@@ -127,7 +130,7 @@ using ITensorMPS
         exp_periodic = INSExperiment(grid, u_fields, p_field_periodic, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_periodic) == true
 
-        dirichlet_bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        dirichlet_bc1d = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
         dirichlet_bc2d = BoundaryConditions(dirichlet_bc1d, dirichlet_bc1d)
         p_field_dirichlet = ScalarField(TTArchitecture(arch_2d), dirichlet_bc2d)
 

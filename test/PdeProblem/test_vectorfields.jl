@@ -3,9 +3,8 @@ using ITensorMPS
 using DifferenTT
 using Test
 
-function Base.:(==)(a::ITensorMPS.AbstractMPS, b::ITensorMPS.AbstractMPS)
-    return all(a .== b)
-end
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
 
 @testset "vectorfields.jl" begin
     bcu1d = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -27,12 +26,12 @@ end
         @test length(field.components) == 2
         @test length(field) == 1
 
-        @test last(field) == u_init
+        @test mps_equal(last(field), u_init)
         @test field[1] isa ScalarField{2}
 
         u_new = (random_mps(sites), random_mps(sites))
         push!(field, u_new)
-        @test last(field) == u_new
+        @test mps_equal(last(field), u_new)
         @test length(field) == 2
 
         bad_sites = [Index(2, "Site,n=$i") for i in 1:n_sites]
@@ -41,8 +40,8 @@ end
         @test_throws ArgumentError push!(field, u_bad)
 
         field[1] = u_new
-        @test field.components[1][1] == u_new[1]
-        @test field.components[2][1] == u_new[2]
+        @test mps_equal(field.components[1][1], u_new[1])
+        @test mps_equal(field.components[2][1], u_new[2])
 
         empty_field = VectorField(arch, bcs2d)
         @test empty_field.arch == arch
@@ -68,12 +67,12 @@ end
         @test field.arch == arch
         @test length(field) == 1
 
-        @test last(field) == u_init
+        @test mps_equal(last(field), u_init)
         @test field[1] isa ScalarField{2}
 
         u_new = (random_mps(sites), random_mps(sites))
         push!(field, u_new)
-        @test last(field) == u_new
+        @test mps_equal(last(field), u_new)
         @test length(field) == 2
 
         bad_sites = [Index(var_dims[i], "Site,n=$i") for i in 1:n_sites]

@@ -1,10 +1,13 @@
 using DifferenTT
 using Test
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 @testset "boundaryconditions.jl" begin
     bc_value = 5.0
     neumann_value = 0.0
-    dirichlet_bc = DirichletBC(bc_value)
+    dirichlet_bc = quietly(() -> DirichletBC(bc_value))
     neumann_bc = NeumannBC(neumann_value)
     periodic_bc = PeriodicBC()
     open_bc = OpenBC()

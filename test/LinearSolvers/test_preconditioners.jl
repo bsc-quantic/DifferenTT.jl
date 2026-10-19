@@ -4,6 +4,9 @@ using ITensors
 using ITensorMPS
 using LinearAlgebra
 
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
 @testset "preconditioners.jl" begin
     n = 4
     sites = siteinds("S=1/2", n)
@@ -166,8 +169,8 @@ using LinearAlgebra
         test_sites = [Index(2, "Site,n=$i") for i in 1:4]
         grid = Grid(arch, (1.0,))
 
-        bc_dd = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
-        bc_dn = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)))
+        bc_dd = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))))
+        bc_dn = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)))
 
         # Dirichlet-Dirichlet case
         inv_dd_prec = DifferenTT.inverse_laplacian_preconditioner(test_sites, arch, grid, bc_dd)

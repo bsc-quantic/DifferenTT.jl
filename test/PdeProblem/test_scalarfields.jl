@@ -3,9 +3,8 @@ using ITensorMPS
 using DifferenTT
 using Test
 
-function Base.:(==)(a::ITensorMPS.AbstractMPS, b::ITensorMPS.AbstractMPS)
-    return all(a .== b)
-end
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
 
 @testset "scalarfields.jl" begin
     # 2D BCs
@@ -29,12 +28,12 @@ end
         @test length(field.u) == 1
         @test field.u[1] == u_init
 
-        @test last(field) == u_init
+        @test mps_equal(last(field), u_init)
         @test field.u[1] == field[1]
 
         u_new = random_mps(sites)
         push!(field, u_new)
-        @test last(field) == u_new
+        @test mps_equal(last(field), u_new)
 
         bad_sites = [Index(2, "Site,n=$i") for i in 1:n_sites]
         u_bad = random_mps(bad_sites)
@@ -47,7 +46,7 @@ end
         @test length(field) == 2
 
         field[1] = u_new
-        @test field[1] == u_new
+        @test mps_equal(field[1], u_new)
 
         empty_field = ScalarField(arch, bcu2d)
         @test empty_field.arch == arch
@@ -75,12 +74,12 @@ end
         @test length(field.u) == 1
         @test field.u[1] == u_init
 
-        @test last(field) == u_init
+        @test mps_equal(last(field), u_init)
         @test field.u[1] == field[1]
 
         u_new = random_mps(sites)
         push!(field, u_new)
-        @test last(field) == u_new
+        @test mps_equal(last(field), u_new)
 
         bad_sites = [Index(var_dims[i], "Site,n=$i") for i in 1:n_sites]
         u_bad = random_mps(bad_sites)
