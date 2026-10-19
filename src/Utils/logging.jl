@@ -18,7 +18,9 @@ timed methods are recompiled at their next call. Call it once, before the run to
 again with [`disable_debug_timings!`](@ref).
 """
 function enable_debug_timings!()
-    TimerOutputs.enable_debug_timings(@__MODULE__)
+    # invokelatest: TimerOutputs reads the current switch before redefining it, and a caller running in an older world
+    # (e.g. inside one testset or script block) would otherwise see a stale value
+    Base.invokelatest(TimerOutputs.enable_debug_timings, @__MODULE__)
     return nothing
 end
 
@@ -28,7 +30,7 @@ end
 Turn off the `@timeit_debug` sections of DifferenTT that [`enable_debug_timings!`](@ref) turned on.
 """
 function disable_debug_timings!()
-    TimerOutputs.disable_debug_timings(@__MODULE__)
+    Base.invokelatest(TimerOutputs.disable_debug_timings, @__MODULE__)
     return nothing
 end
 
