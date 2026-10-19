@@ -1,17 +1,23 @@
 """
-    (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    QRUpdater() <: AbstractUpdater
 
-Local updater for `alternating_update` that solves the reduced linear system via QR decomposition.
+Local solver that solves each local problem exactly, by a dense QR factorization.
 
-Contracts the projected operator and constant term into dense matrices, forms the shifted system
-`(a₀ I + a₁ A) x = b` using `coefficients = (a₀, a₁)`, and solves it via QR factorization.
-
-# Returns
-
-  - `(x::ITensor, (; residual))`: The solution tensor and a named tuple with residual info.
+We contract the projected operator into a dense ``n_{\\text{loc}} \\times n_{\\text{loc}}`` matrix, where
+``n_{\\text{loc}}`` is the dimension of the local tensor, and solve ``(a_0 + a_1 A_{\\text{loc}}) \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}`` by QR, at a cost of ``\\mathcal{O}(n_{\\text{loc}}^3)``. Since
+``n_{\\text{loc}} = \\chi^2 d^2`` for a 2-site problem with bond dimension ``\\chi`` and site dimension ``d``, this is
+only affordable for small bond dimensions, where it serves as an exact reference for the Krylov solves. It works on
+unpreconditioned local problems only, and reads `verbosity`, `numiter_store` (which records one iteration per
+solve) and `cond_store` from [`LocalUpdaterArgs`](@ref).
 """
 struct QRUpdater <: AbstractUpdater end
 
+"""
+    (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...) -> (x, (; info, residual))
+
+Solve the local problem `problem` by QR, with `coefficients = (a₀, a₁)`. Return the local tensor and a `NamedTuple`
+whose `info` has `numiter = 1` and whose `residual` is the relative residual of the dense solve.
+"""
 function (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     verbosity = get(kwargs, :verbosity, 0)
     numiter_store = get(kwargs, :numiter_store, nothing)

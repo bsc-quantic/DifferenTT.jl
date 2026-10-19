@@ -1,15 +1,55 @@
 """
     AbstractALSExpansion
 
-Abstract type for tensor train expansion strategies in `ExpandedALS`.
+Supertype of the basis expansions of [`ExpandedALS`](@ref): [`NullExpansion`](@ref), [`RandomSPSDexpansion`](@ref),
+[`RandomLTexpansion`](@ref) and [`ResidualExpansion`](@ref).
+
+An expansion is a callable `(expansion)(state::MPS) -> MPS` that returns an MPS on the same sites as `state`, usually
+the direct sum of `state` with another tensor train, so that its bond dimensions grow by those of the added one.
 """
 abstract type AbstractALSExpansion end
 
 """
-    ExpandedALS <: AbstractDMRGSolver
+    ExpandedALS(; sweep_kwargs=SweepingArgs(nsite=1), updater_kwargs=LocalUpdaterArgs(), expander_func=NullExpansion(),
+                updater=KrylovUpdater()) <: AbstractDMRGSolver
 
-ALS(t + z) for solving linear systems. It executes a 1-site DMRG and at the end of the sweep, expands the current
-tensor train with another one given by the expander func.
+One-site ALS whose basis is expanded between sweeps, in the spirit of the ALS(t+z) method of Dolgov & Savostyanov
+(2014).
+
+The one-site ALS is cheaper per step than MALS, since its local problems have dimension ``\\chi^2 d`` instead of
+``\\chi^2 d^2``, but it cannot change the bond dimension of the solution, so it stalls whenever the initial guess
+lacks rank. We therefore expand the tensor train before every sweep after the first, as long as its maximum bond
+dimension is below `sweep_kwargs.maxdim`: `expander_func` returns a larger tensor train, which we orthogonalize (and
+normalize, if `normalize = true` is passed to [`linearsolve`](@ref)) before the sweep. With
+[`ResidualExpansion`](@ref), the added directions come from the residual, as in ALS(t+z); [`NullExpansion`](@ref)
+recovers the plain one-site ALS. Unlike [`AMEn`](@ref), which enriches every bond within the sweep, the expansion
+here happens once per sweep and on the whole tensor train. Note that the expansion is not truncated, so each one
+adds the full bond dimension of the expanding tensor train, and that every sweep deep-copies the projected problem
+and rebuilds its environments from scratch.
+
+# Fields
+
+  - `sweep_kwargs::SweepingArgs`: sweeps and observers; `nsite` must be 1.
+  - `updater_kwargs::LocalUpdaterArgs`: local Krylov solver and diagnostics.
+  - `expander_func::AbstractALSExpansion`: the expansion applied before each sweep after the first.
+  - `updater::AbstractUpdater`: local solver.
+
+# Throws
+
+  - `ArgumentError`: if `sweep_kwargs.nsite != 1`.
+
+# Examples
+
+```julia
+solver = ExpandedALS(;
+    sweep_kwargs=SweepingArgs(; nsite=1, nsweeps=6, maxdim=20),
+    updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true),
+    expander_func=ResidualExpansion(A, b; maxdim=4),
+)
+x = linearsolve(solver, A, b, nothing)
+```
+
+See also [`linearsolve`](@ref), [`AMEn`](@ref).
 """
 Base.@kwdef struct ExpandedALS <: AbstractDMRGSolver
     sweep_kwargs::SweepingArgs = SweepingArgs(nsite=1)
@@ -25,6 +65,13 @@ Base.@kwdef struct ExpandedALS <: AbstractDMRGSolver
     end
 end
 
+"""
+    linearsolve(solver::ExpandedALS, A, b, x0; kwargs...) -> MPS
+
+Solve ``A \\mathbf{x} = \\mathbf{b}`` by one-site ALS sweeps from `x0`, expanding the basis with
+`solver.expander_func` before every sweep after the first. The keywords override the fields of `solver.sweep_kwargs`
+(see [`linearsolve`](@ref)).
+"""
 function linearsolve(solver::ExpandedALS, A, b, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
@@ -35,7 +82,13 @@ function linearsolve(solver::ExpandedALS, A, b, x0; kwargs...)
     )
 end
 
-# TODO Check if this works
+"""
+    linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; preconditioner_sites=nothing, kwargs...) -> MPS
+
+Preconditioned variant of `linearsolve(::ExpandedALS, A, b, x0)`: each local problem is preconditioned with the
+projection of `M⁻¹` (Sec. 4 of Torrente et al.), and only those whose site is in `preconditioner_sites` when it is
+given.
+"""
 function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
@@ -46,9 +99,9 @@ function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
 end
 
 """
-    NullExpansion <: AbstractALSExpansion
+    NullExpansion() <: AbstractALSExpansion
 
-An expansion strategy that does nothing.
+Expansion that returns the state unchanged, so that [`ExpandedALS`](@ref) runs the plain one-site ALS.
 """
 struct NullExpansion <: AbstractALSExpansion end
 (expander::NullExpansion)(state::MPS) = state
@@ -56,8 +109,14 @@ struct NullExpansion <: AbstractALSExpansion end
 """
     RandomSPSDexpansion(; rng::AbstractRNG=Random.default_rng()) <: AbstractALSExpansion
 
-An expansion strategy that expands the tensor train with a random symmetric positive semi-definite (SPSD) tensor
-train, drawn from `rng`.
+Expansion that adds to the state the vectorization of a random symmetric positive semidefinite (SPSD) operator,
+drawn from `rng`.
+
+It is meant for unknowns that are themselves vectorized operators on QTT sites, such as the approximate inverse
+``\\tilde{G}_L`` of [`fai_preconditioner`](@ref): we draw a random MPO ``R`` with sites of dimension 2, form the
+SPSD ``R R^\\top``, and fuse its input and output indices into one index of dimension 4 per site. The state must
+therefore have sites of dimension 4. The result is the direct sum of the state and this tensor train, so it changes
+the state as well as its basis, and the next sweep re-solves the local problems from there.
 """
 struct RandomSPSDexpansion{R<:AbstractRNG} <: AbstractALSExpansion
     rng::R
@@ -85,7 +144,12 @@ end
 """
     RandomLTexpansion(; rng::AbstractRNG=Random.default_rng()) <: AbstractALSExpansion
 
-An expansion strategy that expands the tensor train with a random lower triangular tensor train, drawn from `rng`.
+Expansion that adds to the state the vectorization of a random lower-triangular operator, drawn from `rng`.
+
+As [`RandomSPSDexpansion`](@ref), it is meant for vectorized operators on QTT sites, and requires sites of dimension
+4: we take the element-wise product of a random MPO with sites of dimension 2 and the lower-triangular mask
+[`lower_triang_mpo`](@ref), which makes the expansion lower-triangular, as ``\\tilde{G}_L`` is, and fuse the indices
+of each site. The result is the direct sum of the state and this tensor train.
 """
 struct RandomLTexpansion{R<:AbstractRNG} <: AbstractALSExpansion
     rng::R
@@ -110,6 +174,30 @@ function (expander::RandomLTexpansion)(state::MPS)
     return +(state, expansion; alg="directsum")
 end
 
+"""
+    ResidualExpansion(A::MPO, b::MPS; cutoff=1e-8, maxdim=5) <: AbstractALSExpansion
+
+Expansion that enriches the basis of the state with the residual ``\\mathbf{r} = \\mathbf{b} - A\\mathbf{x}``,
+truncated to `cutoff` and `maxdim`, without changing the represented vector.
+
+We form the direct sum of ``\\mathbf{x}`` and ``\\mathbf{r}`` after setting the first core of ``\\mathbf{r}`` to zero:
+the result still represents ``\\mathbf{x}``, but its bond spaces contain those of the residual, which are the
+directions that the next one-site sweep most needs, as in the ALS(t+z) method of Dolgov & Savostyanov (2014). Each
+expansion adds at most `maxdim` to every bond dimension.
+
+# Arguments
+
+  - `A::MPO`, `b::MPS`: the system of the solve; `A` must act on the sites of `b`.
+
+# Keywords
+
+  - `cutoff::Float64=1e-8`: SVD cutoff of the truncation of the residual.
+  - `maxdim::Int=5`: maximum bond dimension of the truncated residual.
+
+# Throws
+
+  - `ArgumentError`: if the input sites of `A` are not the sites of `b`.
+"""
 struct ResidualExpansion <: AbstractALSExpansion
     A::MPO
     b::MPS
@@ -118,7 +206,7 @@ struct ResidualExpansion <: AbstractALSExpansion
     function ResidualExpansion(A::MPO, b::MPS; cutoff=1e-8, maxdim=5)
         siteinds_A = only.(siteinds(A; plev=0))
         siteinds_b = siteinds(b)
-        siteinds_A != siteinds_b && error("Operator and rhs sites do not match")
+        siteinds_A != siteinds_b && throw(ArgumentError("ResidualExpansion: the sites of A and b do not match"))
         return new(A, b, cutoff, maxdim)
     end
 end
@@ -133,6 +221,14 @@ function (expander::ResidualExpansion)(state::MPS)
     return +(state, residual; alg="directsum")
 end
 
+"""
+    ITensorMPS.alternating_update(operator, init::MPS, expander_func::AbstractALSExpansion; updater, updater_kwargs,
+                                  kwargs...)
+
+Sweeping loop of [`ExpandedALS`](@ref): a copy of `ITensorMPS.alternating_update` for `nsite = 1` that applies
+`expander_func` before every sweep after the first, while the maximum bond dimension is below `maxdim`. Returns the
+final MPS.
+"""
 function ITensorMPS.alternating_update(
     operator,
     init::MPS,
@@ -169,7 +265,7 @@ function ITensorMPS.alternating_update(
     sites = siteinds(init)
 
     for sweep in 1:nsweeps
-        # TODO This is quite expensive -> Set up an environment cleaner for the reduced_operator instead of a full deepcopy
+        # TODO(release): this deepcopy is expensive; reset the environments of reduced_operator instead
         reduced_operator = deepcopy(ITensorMPS.reduced_operator(operator))
         if maxlinkdim(state) < maxdim[sweep] && sweep > 1
             state = expander_func(state)

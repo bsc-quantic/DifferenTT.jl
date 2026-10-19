@@ -1,32 +1,141 @@
+"""
+    AbstractLinearSolver
+
+Supertype of every solver of the linear system ``A \\mathbf{x} = \\mathbf{b}`` in the TT format, where `A` is an MPO
+and ``\\mathbf{b}`` an MPS. Each concrete solver stores its own configuration and is run by [`linearsolve`](@ref).
+
+We distinguish two classes of solvers, as in Sec. 2.1 of Torrente et al., *Factorized approximate inverse
+preconditioners in the tensor train format*. The DMRG-type solvers ([`AbstractDMRGSolver`](@ref)) project the system
+onto one or two sites at a time and solve each local problem with a classical iterative method, while the global
+solvers ([`AbstractGlobalSolver`](@ref)) run a Krylov method on the whole tensor train and truncate its iterates.
+"""
 abstract type AbstractLinearSolver end
 
-# DMRG-based linear solvers
+"""
+    AbstractDMRGSolver <: AbstractLinearSolver
+
+Supertype of the solvers that proceed in an alternating fashion along the tensor train: [`ALS`](@ref),
+[`ResidualALS`](@ref), [`AMEn`](@ref) and [`ExpandedALS`](@ref).
+
+At each step, we use the current solution guess, orthogonalized so that its orthogonality center lies on the sites
+being optimized, to project the global system onto a local problem ``A_{\\text{loc}} \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}`` on one or two sites (Sec. 2.1, Fig. 2 of the paper). The local problem is solved by an
+[`AbstractUpdater`](@ref), and the TT format is then recovered by an SVD that also sets the new bond dimension. Since
+the local solve is exact within the current subspace, its convergence is not affected by truncation errors, which is
+what makes these solvers robust for CG. Every concrete subtype has the fields `sweep_kwargs::SweepingArgs`,
+`updater_kwargs::LocalUpdaterArgs` and `updater::AbstractUpdater`.
+"""
 abstract type AbstractDMRGSolver <: AbstractLinearSolver end
 
-# TT-manifold global solvers
+"""
+    AbstractGlobalSolver <: AbstractLinearSolver
+
+Supertype of the solvers that run a Krylov method on the whole tensor train: [`GlobalCG`](@ref) and
+[`GlobalGMRES`](@ref).
+
+Their iterates are sums and operator products of tensor trains, whose bond dimensions are truncated after every
+operation in order to keep the cost bounded. These truncations perturb the Krylov recurrences: for CG in particular,
+they can destroy the conjugacy of the search directions, so convergence is not guaranteed when the truncation is
+severe (Sec. 2.1 of the paper). Every concrete subtype has the field `updater_kwargs::GlobalUpdaterArgs`.
+"""
 abstract type AbstractGlobalSolver <: AbstractLinearSolver end
 
 """
-    linearsolve(solver::AbstractLinearSolver, A, b, x0; kwargs...)
-    linearsolve(solver::AbstractLinearSolver, A, b, M⁻¹, x0; kwargs...)
+    linearsolve(solver::AbstractLinearSolver, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...) -> MPS
+    linearsolve(solver::AbstractLinearSolver, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...) -> MPS
 
-Solve the linear system `A x = b` using the specified `solver`.
+Solve ``A \\mathbf{x} = \\mathbf{b}`` with `solver`, optionally preconditioned by `M⁻¹`, starting from `x0`.
+
+The operator `A` must share its site indices with `b`, with prime level 0 for the input and 1 for the output. If `x0`
+is `nothing`, we start from the zero MPS of bond dimension 1 ([`zeros_mps`](@ref)) on the sites of `b`. The second
+method applies the preconditioner `M⁻¹`, a [`Preconditioner`](@ref) (an approximate inverse) or a
+[`FactorizedPreconditioner`](@ref) (the factor ``G_L`` of ``M^{-1} = G_L^\\top G_L``). The DMRG-type solvers apply it
+to the local problems, in the projected form of Sec. 4 of the paper, while the global solvers apply it to the whole
+residual.
+
+The keywords given at call time override the solver's stored configuration for this call only, which lets one solver
+object be reused with different settings:
+
+  - DMRG-type solvers ([`AbstractDMRGSolver`](@ref)): any field of [`SweepingArgs`](@ref) (`nsweeps`, `maxdim`,
+    `cutoff`, `nsite`, `outputlevel`, `observer!`, `sweep_observer!`, `checkdone`), and the other keywords of
+    `ITensorMPS.alternating_update` (e.g. `mindim`). An observer without an operator or right-hand side, such as
+    `ResidualObserver(rtol=1e-6)`, is bound to `A` and `b` of this call (see [`bind_observer`](@ref)). The
+    preconditioned method also accepts `preconditioner_sites`, a collection of site indices in `1:length(b)`: only
+    the local problems whose first site is in it are preconditioned, and the others are solved with `A` alone.
+  - Global solvers ([`AbstractGlobalSolver`](@ref)): any field of [`GlobalUpdaterArgs`](@ref) (e.g. `rtol`,
+    `maxiter`, `maxdim`). Other keywords are ignored.
 
 # Returns
 
-  - `x`: the solved state.
+  - `MPS`: the approximate solution ``\\mathbf{x}``.
+
+# Throws
+
+  - `ArgumentError`: if `preconditioner_sites` has an entry outside `1:length(b)`, or a [`ResidualObserver`](@ref)
+    has no operator and right-hand side when it is checked.
+
+# Examples
+
+```julia
+A, sites = …                                  # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+b = random_mps(sites; linkdims=2)
+solver = ResidualALS(;
+    sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=50, (observer!)=ResidualObserver(; rtol=1e-6)),
+    updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-8),
+)
+x = linearsolve(solver, A, b, nothing)
+x = linearsolve(solver, A, b, fai_preconditioner(A; μ=1e7, solver=ResidualALS()), nothing; nsweeps=4)
+```
+
+See also [`ALS`](@ref), [`ResidualALS`](@ref), [`AMEn`](@ref), [`ExpandedALS`](@ref), [`GlobalCG`](@ref),
+[`GlobalGMRES`](@ref).
 """
 function linearsolve end
 
 """
-    LocalUpdaterArgs
+    LocalUpdaterArgs(; ishermitian=false, isposdef=false, rtol=1e-8, krylovdim=30, maxiter=100, verbosity=0,
+                     numiter_store=nothing, cond_store=nothing, pc_cond_store=nothing, spectrum_store=nothing,
+                     spd_tol=nothing)
 
-Configuration for the local subspace updater used in DMRG-based linear solvers.
+Configuration of the local solver of a DMRG-type solver ([`AbstractDMRGSolver`](@ref)), stored in its
+`updater_kwargs` field and read by its [`AbstractUpdater`](@ref) at every local problem.
 
-The local diagnostics are switched on by what is attached, each with a single role: `cond_store` / `pc_cond_store`
-record the local condition numbers, `spectrum_store` records the sign-aware local spectra, `numiter_store` the Krylov
-iteration counts, and `spd_tol` (CG only) stops the solve with a `NotSPDError` at the first local block that is
-clearly not SPD. `verbosity > 0` logs the condition numbers that were computed.
+The first six fields set the Krylov method of [`KrylovUpdater`](@ref), which passes them to `KrylovKit.linsolve`.
+KrylovKit selects CG when `ishermitian && isposdef`, and restarted GMRES otherwise, so an SPD system must set both
+flags to be solved by CG. The other fields attach optional diagnostics. Each one has a single role and costs nothing
+when it is `nothing`, since the dense local spectrum, of cost ``\\mathcal{O}(n_{\\text{loc}}^3)`` for a local block
+of dimension ``n_{\\text{loc}}``, is computed only when `cond_store`, `pc_cond_store`, `spectrum_store` or `spd_tol`
+asks for it. A local block that is not SPD raises no warning: it is detected only by `spd_tol`, which stops the
+solve, or recorded by `spectrum_store`.
+
+# Fields
+
+  - `ishermitian::Bool=false`, `isposdef::Bool=false`: properties of the local operator, used to select CG.
+  - `rtol::Float64=1e-8`: relative tolerance of the local solve. KrylovKit stops at
+    ``\\|\\mathbf{r}_{\\text{loc}}\\| \\le \\max(10^{-12}, \\texttt{rtol}\\, \\|\\mathbf{b}_{\\text{loc}}\\|)``.
+  - `krylovdim::Int=30`: Krylov dimension of GMRES before a restart.
+  - `maxiter::Int=100`: maximum number of GMRES restarts. KrylovKit gives CG `krylovdim * maxiter` iterations (3000 by
+    default).
+  - `verbosity::Int=0`: KrylovKit verbosity; with `verbosity > 0` we also log the local condition numbers we compute.
+  - `numiter_store=nothing`: a [`KrylovSweepStats`](@ref) that records the iteration count of every local solve.
+  - `cond_store=nothing`: a [`KrylovCondStats`](@ref) that records ``\\kappa(A_{\\text{loc}})`` for every local
+    problem.
+  - `pc_cond_store=nothing`: a [`KrylovCondStats`](@ref) that records ``\\kappa(M^{-1}_{\\text{loc}} A_{\\text{loc}})``
+    for every local problem of a preconditioned solve, and ``\\kappa(A_{\\text{loc}})`` for the local problems that
+    `preconditioner_sites` leaves unpreconditioned, so that it stays aligned with `cond_store`.
+  - `spectrum_store=nothing`: a [`KrylovSpectrumStats`](@ref) that records the sign-aware spectra of the local
+    operator and preconditioner.
+  - `spd_tol::Union{Nothing,Float64}=nothing`: if set, a local ``A_{\\text{loc}}`` or
+    ``M^{-1}_{\\text{loc}} A_{\\text{loc}}`` with an eigenvalue whose real part is below ``-\\texttt{spd\\_tol} \\max|\\lambda|`` throws a [`NotSPDError`](@ref). It requires CG.
+
+The condition numbers are ``\\kappa = \\max|\\lambda| / \\min|\\lambda|`` of the dense local operator, which is the
+spectral condition number that bounds the convergence of CG and PCG. For GMRES it is only a heuristic indicator,
+because it is a lower bound on ``\\kappa_2`` for non-normal operators.
+
+[`QRUpdater`](@ref) reads only `verbosity`, `numiter_store` and `cond_store`.
+
+# Throws
+
+  - `ArgumentError`: if `spd_tol` is set without `ishermitian=true` and `isposdef=true`.
 """
 Base.@kwdef struct LocalUpdaterArgs
     ishermitian::Bool = false
@@ -78,9 +187,35 @@ Base.@kwdef struct LocalUpdaterArgs
 end
 
 """
-    GlobalUpdaterArgs
+    GlobalUpdaterArgs(; ishermitian=false, isposdef=false, krylovdim=30, maxiter=100, rtol=1e-8, verbosity=0,
+                      maxdim=typemax(Int), cutoff=1e-8, orth_maxdim=typemax(Int), orth_cutoff=1e-12,
+                      numiter_store=nothing, converged_store=nothing)
 
-Configuration for the global truncated updaters runnin on the TT-Manifold
+Configuration of a global solver ([`GlobalCG`](@ref) or [`GlobalGMRES`](@ref)), stored in its `updater_kwargs` field.
+[`linearsolve`](@ref) copies it into a [`TTCG`](@ref) or [`TTGMRES`](@ref) algorithm, and any field can be overridden
+at call time.
+
+The two pairs of truncation parameters control the bond dimension of the iterates. Since every operator application
+and every sum of tensor trains increases the bond dimension, we truncate after each of them, and these truncations
+are the price paid for running a Krylov method on the whole tensor train (see [`AbstractGlobalSolver`](@ref)).
+
+# Fields
+
+  - `ishermitian::Bool=false`, `isposdef::Bool=false`: properties of `A`. [`GlobalCG`](@ref) requires both to be
+    `true`; [`GlobalGMRES`](@ref) does not read them.
+  - `krylovdim::Int=30`: Krylov dimension of TT-GMRES before a restart (not read by TT-CG).
+  - `maxiter::Int=100`: maximum number of TT-CG iterations, or of TT-GMRES restart cycles.
+  - `rtol::Float64=1e-8`: relative tolerance; the solve stops at ``\\|\\mathbf{b} - A\\mathbf{x}\\| \\le \\texttt{rtol}\\, \\|\\mathbf{b}\\|``, where the residual is the truncated one of the recurrence.
+  - `verbosity::Int=0`: KrylovKit verbosity levels (1: warn on no convergence, 2: start and end, 3: every iteration).
+  - `maxdim::Int=typemax(Int)`, `cutoff::Float64=1e-8`: truncation of the operator applications and of the updates of
+    ``\\mathbf{x}`` and of the residual.
+  - `orth_maxdim::Int=typemax(Int)`, `orth_cutoff::Float64=1e-12`: truncation of the new search direction (TT-CG) or of
+    the Gram–Schmidt orthogonalization (TT-GMRES).
+  - `numiter_store=nothing`: a `Ref{Int}` (or anything that supports `store[] = value`) that receives the number of
+    iterations.
+  - `converged_store=nothing`: a `Ref{Bool}` that receives whether the solve converged.
+
+A solve that stops without converging always logs a warning, whether or not `converged_store` is set.
 """
 Base.@kwdef struct GlobalUpdaterArgs
     ishermitian::Bool = false
@@ -97,7 +232,14 @@ Base.@kwdef struct GlobalUpdaterArgs
     converged_store::Any = nothing
 end
 
-# Bridge beween DifferenTT and ITensorMPS to avoid crashes in the observer pipeline
+"""
+    default_differenTT_checkdone(; observer, sweep_observer, kwargs...) -> Bool
+
+Default `checkdone` of [`SweepingArgs`](@ref). Return whether the sweep observer or the bond observer asks to stop,
+by calling `ITensorMPS.checkdone!` on each of them that is not ITensorMPS's default (empty) observer. The keywords
+`state`, `sweep`, `outputlevel`, … are forwarded to `checkdone!`, as `ITensorMPS.alternating_update` passes them at
+the end of every sweep.
+"""
 function default_differenTT_checkdone(; kwargs...)
     obs = get(kwargs, :observer, get(kwargs, :observer!, ITensorMPS.default_observer()))
     sweep_obs = get(kwargs, :sweep_observer, get(kwargs, :sweep_observer!, ITensorMPS.default_sweep_observer()))
@@ -116,9 +258,37 @@ function default_differenTT_checkdone(; kwargs...)
 end
 
 """
-    SweepingArgs
+    SweepingArgs(; nsweeps=5, maxdim=30, cutoff=1e-10, nsite=2, outputlevel=0,
+                 observer! = ITensorMPS.default_observer(), sweep_observer! = ITensorMPS.default_sweep_observer(),
+                 checkdone = default_differenTT_checkdone)
 
-Configuration for the sweeps in DMRG-based linear solvers.
+Configuration of the sweeps of a DMRG-type solver ([`AbstractDMRGSolver`](@ref)), stored in its `sweep_kwargs` field.
+[`linearsolve`](@ref) passes the fields to the sweeping loop as keywords, and any of them can be overridden at call
+time.
+
+A sweep is one forward half-sweep, from the first site to the last, followed by one reverse half-sweep. The solve
+stops after `nsweeps` sweeps, or earlier when `checkdone`, evaluated at the end of every sweep, returns `true`. Note
+that the residual is therefore checked only once per sweep, so a solve that narrowly misses its tolerance pays for a
+whole extra sweep (Sec. 5.1 of Torrente et al.).
+
+# Fields
+
+  - `nsweeps::Int=5`: maximum number of sweeps.
+  - `maxdim::Int=30`: maximum bond dimension of the solution after each SVD.
+  - `cutoff::Float64=1e-10`: SVD cutoff. [`ALS`](@ref) follows the ITensors convention and discards the smallest
+    singular values whose relative weight ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff`.
+    [`ResidualALS`](@ref) and [`AMEn`](@ref) choose the rank by the local residual instead, and use the cutoff only as
+    a floor on the rank: [`AMEn`](@ref) keeps the weight at most `cutoff`, as ITensors does, while
+    [`ResidualALS`](@ref) keeps it at most `cutoff^2` (see its docstring).
+  - `nsite::Int=2`: number of sites of the local problem. [`ALS`](@ref) accepts 1 or 2, but only the 2-site variant
+    (MALS) can change the bond dimension. [`ResidualALS`](@ref) truncates by the residual only for `nsite = 2`;
+    [`AMEn`](@ref) ignores it; [`ExpandedALS`](@ref) requires 1.
+  - `outputlevel::Int=0`: printed output of the sweeping loop (1: one line per sweep).
+  - `observer!`: observer updated after every local step, and checked by `checkdone`. A
+    [`ResidualObserver`](@ref) stops the solve once the global relative residual is below its `rtol`.
+  - `sweep_observer!`: observer updated after every sweep, and checked by `checkdone`.
+  - `checkdone`: function of the keywords `state`, `sweep`, `outputlevel`, `observer` and `sweep_observer` that
+    returns `true` to stop; the default is [`default_differenTT_checkdone`](@ref).
 """
 Base.@kwdef struct SweepingArgs
     nsweeps::Int = 5
@@ -132,9 +302,9 @@ Base.@kwdef struct SweepingArgs
 end
 
 """
-    Base.NamedTuple(args::LocalUpdaterArgs)
+    NamedTuple(args::LocalUpdaterArgs)
 
-Convert `LocalUpdaterArgs` to a `NamedTuple`.
+Return the fields of `args` as a `NamedTuple`, to be splatted as keywords into the local updater.
 """
 function Base.NamedTuple(args::LocalUpdaterArgs)
     return (;
@@ -153,9 +323,9 @@ function Base.NamedTuple(args::LocalUpdaterArgs)
 end
 
 """
-    Base.NamedTuple(args::GlobalUpdaterArgs)
+    NamedTuple(args::GlobalUpdaterArgs)
 
-Convert `GlobalUpdaterArgs` to a `NamedTuple`.
+Return the fields of `args` as a `NamedTuple`, to be merged with the call-time keywords of a global solve.
 """
 function Base.NamedTuple(args::GlobalUpdaterArgs)
     return (;
@@ -175,9 +345,9 @@ function Base.NamedTuple(args::GlobalUpdaterArgs)
 end
 
 """
-    Base.NamedTuple(args::SweepingArgs)
+    NamedTuple(args::SweepingArgs)
 
-Convert `SweepingArgs` to a `NamedTuple`.
+Return the fields of `args` as a `NamedTuple`, to be merged with the call-time keywords of a DMRG-type solve.
 """
 function Base.NamedTuple(args::SweepingArgs)
     return (;
@@ -193,9 +363,10 @@ function Base.NamedTuple(args::SweepingArgs)
 end
 
 """
-    default_linearsolve_init(const_term::MPS)
+    default_linearsolve_init(const_term::MPS) -> MPS
 
-Generate a default initial guess of zeros for the linear system solver.
+Return the initial guess used when `x0 = nothing`: the zero MPS of bond dimension 1 on the sites of `const_term`, with
+its array backend.
 """
 function default_linearsolve_init(const_term::MPS)
     return zeros_mps(siteinds(const_term), backend_type(const_term))
@@ -204,20 +375,45 @@ end
 """
     AbstractUpdater
 
-Abstract type for local updaters used in alternating linear schemes.
+Supertype of the local solvers of the DMRG-type solvers: [`KrylovUpdater`](@ref) (the default) and
+[`QRUpdater`](@ref).
+
+An updater is a callable `(updater)(problem, init; internal_kwargs, coefficients, kwargs...)`. It receives the local
+problem `problem` (an `ITensorMPS.ReducedLinearProblem`, or its preconditioned counterpart), the current local tensor
+`init` as initial guess, and the fields of [`LocalUpdaterArgs`](@ref) as `kwargs`. It solves
+``(a_0 + a_1 A_{\\text{loc}}) \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}``, with `coefficients = (a₀, a₁)`
+(always `(false, true)` in [`linearsolve`](@ref)), and returns the new local tensor and a `NamedTuple` with an `info`
+entry.
 """
 abstract type AbstractUpdater end
 
 """
-    ResidualObserver <: AbstractObserver
+    ResidualObserver(; A=nothing, b=nothing, rtol=1e-8) <: ITensorMPS.AbstractObserver
+    ResidualObserver(A, b, rtol)
 
-An observer that computes the relative global residual norm `||A * x - b||/||b||`
-and terminates the DMRG/ALS sweeps early if the residual falls below a given tolerance.
+Observer that stops the sweeps of a DMRG-type solver once the global relative residual
+``\\|A\\mathbf{x} - \\mathbf{b}\\| / \\|\\mathbf{b}\\|`` falls below `rtol`. Pass it as `observer!` in
+[`SweepingArgs`](@ref).
 
-`A` and `b` can be left as `nothing`: the sweep-based `linearsolve` methods then bind them to the
-operator and right-hand side of that call (always the unpreconditioned ones, never `M⁻¹`), so one
-observer stored in `SweepingArgs` can be reused across solves with different right-hand sides.
-Global solvers (`GlobalCG`, `GlobalGMRES`) do not use observers; they stop on their own `rtol`.
+The local problems are solved to their own tolerance, but nothing in the sweeps controls the global residual, so
+without an observer [`ALS`](@ref) and [`ResidualALS`](@ref) always run `nsweeps` sweeps. We evaluate the residual at
+the end of every sweep, from the expansion ``\\|A\\mathbf{x} - \\mathbf{b}\\|^2 = \\langle A\\mathbf{x}, A\\mathbf{x}\\rangle - 2\\,\\mathrm{Re} \\langle \\mathbf{b}, A\\mathbf{x}\\rangle + \\langle \\mathbf{b}, \\mathbf{b}\\rangle``, which costs three TT inner products and never forms ``A\\mathbf{x}``. Note that this expansion
+suffers from cancellation: its rounding error is of order ``\\sqrt{\\epsilon}\\, \\|\\mathbf{b}\\| \\approx 1.5 \\cdot 10^{-8} \\|\\mathbf{b}\\|``, so a tolerance below about ``10^{-8}`` is checked against rounding noise.
+
+`A` and `b` can be left as `nothing`: the DMRG-type [`linearsolve`](@ref) methods then bind them to the operator and
+right-hand side of each call (always the unpreconditioned ones, never `M⁻¹`), so that one observer stored in
+[`SweepingArgs`](@ref) can be reused across solves with different right-hand sides (see [`bind_observer`](@ref)). The
+global solvers do not use observers; they stop on their own `rtol`.
+
+# Fields
+
+  - `A`: the operator, an MPO, or `nothing`.
+  - `b::Union{MPS,Nothing}`: the right-hand side, or `nothing`.
+  - `rtol::Float64=1e-8`: tolerance on the relative residual.
+
+# Throws
+
+  - `ArgumentError`: from `ITensorMPS.checkdone!`, if `A` or `b` is still `nothing` when the residual is checked.
 """
 Base.@kwdef struct ResidualObserver <: AbstractObserver
     A::Any = nothing
@@ -228,8 +424,8 @@ end
 """
     bind_observer(observer, A, b)
 
-Return `observer` with any unset operator / right-hand side filled in from `A` and `b`. Observers
-without such fields are returned unchanged. The input observer is never mutated.
+Return `observer` with its unset operator and right-hand side taken from `A` and `b`. A [`ResidualObserver`](@ref)
+keeps the `A` and `b` it already has; any other observer is returned unchanged. The input observer is never mutated.
 """
 bind_observer(observer, A, b) = observer
 
@@ -238,10 +434,10 @@ function bind_observer(o::ResidualObserver, A, b)
 end
 
 """
-    linearsolve_sweep_kwargs(solver, A, b, kwargs)
+    linearsolve_sweep_kwargs(solver, A, b, kwargs) -> NamedTuple
 
-Merge the solver's `SweepingArgs` with the call-time `kwargs` and bind the observers to the
-system `A x = b` of this call.
+Merge the solver's [`SweepingArgs`](@ref) with the call-time `kwargs`, which take precedence, and bind both observers
+to the system `A x = b` of this call with [`bind_observer`](@ref).
 """
 function linearsolve_sweep_kwargs(solver, A, b, kwargs)
     sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
@@ -255,21 +451,12 @@ function linearsolve_sweep_kwargs(solver, A, b, kwargs)
 end
 
 """
-    precond_linearsolve_kwargs(solver, A, b, kwargs)
+    _checked_preconditioner_sites(preconditioner_sites, n) -> Union{Nothing,Vector{Int}}
 
-Split the call-time `kwargs` of a preconditioned sweep-based `linearsolve` into the local updater and
-sweep keyword arguments.
-
-The optional `preconditioner_sites` (default `nothing`: precondition every block) goes to the local
-updater, which only applies `M⁻¹` to the blocks whose first site is in `preconditioner_sites`; the other
-blocks are solved unpreconditioned. Every index must lie in `1:length(b)`. An index outside that range
-throws an `ArgumentError`: otherwise no block would match, the solve would run unpreconditioned, and the
-condition-number stores would still fill with `κ(A)`. The remaining `kwargs` are merged with the solver's
-`SweepingArgs` by `linearsolve_sweep_kwargs`.
-
-# Returns
-
-  - `(updater_kwargs, sweep_kwargs)`
+Return `preconditioner_sites` as a `Vector{Int}` (or `nothing`, which preconditions every local problem), after
+checking that every entry is an integer in `1:n`. Throws an `ArgumentError` otherwise: an index outside `1:n` would
+match no local problem, so the solve would silently run unpreconditioned while the condition-number stores still
+filled with ``\\kappa(A)``.
 """
 function _checked_preconditioner_sites(preconditioner_sites::Nothing, n::Int)::Nothing
     return nothing
@@ -287,6 +474,17 @@ function _checked_preconditioner_sites(
     return sites
 end
 
+"""
+    precond_linearsolve_kwargs(solver, A, b, kwargs) -> (updater_kwargs, sweep_kwargs)
+
+Split the call-time `kwargs` of a preconditioned DMRG-type [`linearsolve`](@ref) into the keywords of the local updater
+and those of the sweeps.
+
+The optional `preconditioner_sites` (default `nothing`: precondition every local problem), checked by
+[`_checked_preconditioner_sites`](@ref), goes to the local updater, which applies `M⁻¹` only to the local problems
+whose first site is in it. The remaining `kwargs` are merged with the solver's [`SweepingArgs`](@ref) by
+[`linearsolve_sweep_kwargs`](@ref).
+"""
 function precond_linearsolve_kwargs(
     solver::AbstractDMRGSolver, A::MPO, b::MPS, kwargs::Base.Pairs
 )::Tuple{NamedTuple,NamedTuple}
@@ -300,6 +498,12 @@ function precond_linearsolve_kwargs(
     return updater_kwargs, sweep_kwargs
 end
 
+"""
+    ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...) -> Bool
+
+Return whether the relative residual ``\\|A\\mathbf{x} - \\mathbf{b}\\| / \\|\\mathbf{b}\\|`` of `state` is below `o.rtol`
+(the absolute residual if ``\\mathbf{b} = 0``). Throws an `ArgumentError` if `o` has no operator or right-hand side.
+"""
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     (isnothing(o.A) || isnothing(o.b)) && throw(
         ArgumentError(

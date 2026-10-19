@@ -1,7 +1,59 @@
 """
-    ResidualALS <: AbstractDMRGSolver
+    ResidualALS(; sweep_kwargs=SweepingArgs(), updater_kwargs=LocalUpdaterArgs(), updater=KrylovUpdater(),
+                residual_tol=1e-12, residual_damp=1.1) <: AbstractDMRGSolver
 
-Standard Alternating Linear Scheme (DMRG) for solving linear systems.
+Two-site ALS (MALS) for ``A \\mathbf{x} = \\mathbf{b}`` whose SVD truncation chooses the rank by the local residual,
+as proposed by Oseledets & Dolgov (2012). This is the solver called MALS in Torrente et al., *Factorized approximate
+inverse preconditioners in the tensor train format* (Sec. 5), where it proved more robust than [`ALS`](@ref) in
+meeting the prescribed residual bounds.
+
+A truncation by singular values controls the error in ``\\mathbf{x}``, but not its effect on the residual, which is
+what the solve has to bring below a tolerance. We therefore choose the rank of each new pair of cores as follows.
+After the local solve, we compute the full SVD of the two-site tensor ``\\phi = U S V^\\top`` and the relative local
+residual ``\\varepsilon_{\\text{exact}} = \\|A_{\\text{loc}}\\phi - \\mathbf{b}_{\\text{loc}}\\| / \\|\\mathbf{b}_{\\text{loc}}\\|`` of the untruncated tensor. We then keep the smallest rank ``r`` whose truncation
+``\\phi_r`` satisfies
+
+```math
+\\frac{\\|A_{\\text{loc}}\\phi_r - \\mathbf{b}_{\\text{loc}}\\|}{\\|\\mathbf{b}_{\\text{loc}}\\|}
+\\le \\delta \\max\\left(\\frac{\\varepsilon}{\\sqrt{N}}, \\varepsilon_{\\text{exact}}\\right),
+```
+
+where ``\\varepsilon`` is `residual_tol`, ``\\delta`` is `residual_damp` and ``N`` is the number of sites, found by a
+bisection over ``r`` that assumes the residual decreases with the rank. The scaling by ``1/\\sqrt{N}`` follows
+Dolgov's implementations, so that the ``N`` local errors of a sweep add up to about ``\\varepsilon``. The rank is
+then clamped to `[mindim, maxdim]`, and a Frobenius floor keeps at least the rank whose discarded relative weight
+``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff^2` (`cutoff` from [`SweepingArgs`](@ref)). Note
+that this floor compares the weight with `cutoff^2`, whereas ITensors and [`AMEn`](@ref) compare it with `cutoff`,
+so it keeps every singular value above about `cutoff` times the largest one. For small cutoffs the floor therefore
+dominates the residual criterion: on a ``2^4 \\times 2^4`` QTT Laplacian with `residual_tol = 1e-4`, the residual
+alone selects rank 13 at the central bond, but `cutoff = 1e-10` or `1e-13` raises it back to the full rank 16, while
+`cutoff = 1e-6` leaves it at 13. Set `cutoff = 0` to truncate by the residual alone. In a preconditioned solve, the local residual is
+always that of the unpreconditioned ``A_{\\text{loc}}``.
+
+The residual-based truncation applies only to `nsite = 2`. With `nsite = 1`, the sweep falls back to the truncation
+of [`ALS`](@ref). The cost per bond is that of the local solve plus ``\\mathcal{O}(\\log r_{\\max})`` applications
+of ``A_{\\text{loc}}`` for the bisection.
+
+# Fields
+
+  - `sweep_kwargs::SweepingArgs`: sweeps, maximum rank, Frobenius floor and observers.
+  - `updater_kwargs::LocalUpdaterArgs`: local Krylov solver and diagnostics.
+  - `updater::AbstractUpdater`: local solver.
+  - `residual_tol::Float64=1e-12`: target relative local residual ``\\varepsilon`` of the truncation, before the
+    scaling by ``1/\\sqrt{N}``.
+  - `residual_damp::Float64=1.1`: factor ``\\delta`` by which a truncated tensor may exceed the bound.
+
+# Examples
+
+```julia
+solver = ResidualALS(;
+    sweep_kwargs=SweepingArgs(; nsweeps=30, maxdim=150, cutoff=1e-13, (observer!)=ResidualObserver(; rtol=1e-5)),
+    updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-6),
+)
+x = linearsolve(solver, A, b, M⁻¹, nothing)
+```
+
+See also [`linearsolve`](@ref), [`ALS`](@ref), [`AMEn`](@ref).
 """
 Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
     sweep_kwargs::SweepingArgs = SweepingArgs()
@@ -11,6 +63,12 @@ Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
     residual_damp::Float64 = 1.1
 end
 
+"""
+    linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...) -> MPS
+
+Solve ``A \\mathbf{x} = \\mathbf{b}`` by MALS sweeps with residual-based truncation from `x0`. The keywords override
+the fields of `solver.sweep_kwargs` (see [`linearsolve`](@ref)).
+"""
 function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
@@ -28,6 +86,15 @@ function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS,Nothing}
     )
 end
 
+"""
+    linearsolve(solver::ResidualALS, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing};
+                preconditioner_sites=nothing, kwargs...) -> MPS
+
+Solve ``A \\mathbf{x} = \\mathbf{b}`` by MALS sweeps with residual-based truncation from `x0`, preconditioning each
+local problem with the projection of `M⁻¹` (Sec. 4 of Torrente et al.). The truncation still uses the residual of the
+unpreconditioned local problem. Only the local problems whose first site is in `preconditioner_sites` are
+preconditioned, when it is given; the other keywords override the fields of `solver.sweep_kwargs`.
+"""
 function linearsolve(
     solver::ResidualALS, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...
 )
@@ -47,11 +114,14 @@ function linearsolve(
 end
 
 """
-    residual_replacebond!(state::MPS, b::Int, phi::ITensor, reduced_operator; kwargs...)
+    residual_replacebond!(state::MPS, b::Int, phi::ITensor, reduced_operator; maxdim, mindim, cutoff, normalize,
+                          ortho, resid_tol, resid_damp)
 
-Replace a bond in the state MPS using residual-based truncation.
-Walks down from full rank to find the smallest rank that still keeps the relative residual norm
-below a certain threshold (`resid_tol`), while applying a Frobenius cutoff as a floor.
+Split the two-site tensor `phi` into `state[b]` and `state[b+1]`, with the rank chosen by [`_residual_rank`](@ref)
+(the smallest rank that keeps the local residual below `max(resid_tol, res_exact) * resid_damp`, with `cutoff^2` as
+a Frobenius floor). Falls back to the ITensors truncation if the local right-hand side is zero. Returns
+`(; truncerr, chosen_rank, res_exact, spec)`, or the spectrum alone in that fallback; throws an `ArgumentError` if
+`phi` is not finite.
 """
 function residual_replacebond!(
     state::MPS,
@@ -91,9 +161,10 @@ function residual_replacebond!(
 
     # ── 3–5. Residual-based rank selection, with the Frobenius cutoff as a floor ──
     # NOTE: the floor compares the discarded relative weight Σσ² with `cutoff^2`, whereas ITensors
-    # compares it with `cutoff`. This is kept as is so that ResidualALS results do not change (with
-    # the usual cutoff = 1e-10 the floor is effectively inactive). Decide which convention is
-    # intended; AMEn uses the ITensors one.
+    # compares it with `cutoff`. This is kept as is so that ResidualALS results do not change. The floor
+    # is not inactive for small cutoffs: with cutoff = 1e-10 it keeps every σ above ~1e-10·σ₁ and
+    # overrides the residual-based rank (measured in WP3c, see the ResidualALS docstring).
+    # TODO(release): decide which convention is intended; AMEn uses the ITensors one.
     chosen_rank, truncerr, res_exact = _residual_rank(
         reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp, frob_weight=cutoff^2, mindim, maxdim
     )
@@ -293,11 +364,11 @@ function _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::In
 end
 
 """
-    residual_alternating_update(operator, init; kwargs...)
+    residual_alternating_update(operator, init::MPS; updater, updater_kwargs, resid_tol=1e-8, resid_damp=2.0, kwargs...)
 
-Modified `alternating_update` that passes the projected operator into
-`residual_replacebond!` for residual-aware truncation at each 2-site step.
-Falls back to standard truncation for 1-site sweeps.
+Sweeping loop of [`ResidualALS`](@ref), a copy of `ITensorMPS.alternating_update` whose 2-site steps truncate with
+[`residual_replacebond!`](@ref) at the tolerance `resid_tol / √N`. The other keywords are those of
+`alternating_update`. Returns the final MPS.
 """
 function residual_alternating_update(
     operator,
@@ -388,6 +459,12 @@ function residual_alternating_update(
     return state
 end
 
+"""
+    residual_sweep_update(order, reduced_operator, state::MPS; resid_tol, resid_damp, kwargs...)
+
+One sweep of [`residual_alternating_update`](@ref): one [`residual_sub_sweep_update`](@ref) per half-sweep of `order`.
+Returns `(state, reduced_operator, info)`.
+"""
 function residual_sweep_update(
     order::ITensorMPS.TDVPOrder,
     reduced_operator,
@@ -424,6 +501,14 @@ function residual_sweep_update(
     return state, reduced_operator, info
 end
 
+"""
+    residual_sub_sweep_update(direction, reduced_operator, state::MPS; updater, updater_kwargs, nsite, resid_tol,
+                              resid_damp, kwargs...)
+
+One half-sweep in `direction`: at each bond, solve the local problem with `updater` and split it with
+[`residual_replacebond!`](@ref) (`nsite = 2`), or with `ITensorMPS.region_update!` (`nsite = 1`). Returns
+`(state, reduced_operator, (; maxtruncerr))`.
+"""
 function residual_sub_sweep_update(
     direction::Base.Ordering,
     reduced_operator,
