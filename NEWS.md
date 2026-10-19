@@ -32,9 +32,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   invalid architectures, array sets, `tt_mul` operands, initial pivots, sinc and exact inverse-Laplacian inputs and
   field constructors change from `AssertionError`.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
-  docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner`, the `ResidualObserver` early stop, the
-  `vmax = 1` fallback of `INSVorticityExperiment` and the CFL/Kolmogorov success messages are `@debug`; the warnings
-  stay.
+  docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
+  `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
+  `@info`/`@warn` messages, since they tell how an experiment will behave for its parameters.
 - `fai_dg`, and through it `fai_preconditioner`, compute and log the residual of the projected FAI system only with
   `compute_residual = true` (the default is `false`; it used to be always computed and logged).
 - The global solvers (`GlobalCG`, `GlobalGMRES`) warn when they stop without converging, and throw `ArgumentError`

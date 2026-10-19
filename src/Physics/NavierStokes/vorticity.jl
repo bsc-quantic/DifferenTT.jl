@@ -256,7 +256,7 @@ struct INSVorticityExperiment{N} <: INSExperimentBase
             )]
             vmax = isempty(speeds) ? 0.0 : maximum(speeds)
             if iszero(vmax)
-                @debug "Every face is at rest: using vmax = 1 for the CFL check. Pass an explicit vmax to INSVorticityExperiment."
+                @info "Every face is at rest: using vmax = 1 for the CFL check. Pass an explicit vmax to INSVorticityExperiment."
                 vmax = 1.0
             end
         end

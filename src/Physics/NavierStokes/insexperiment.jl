@@ -89,11 +89,10 @@ function cfl_spectral_radii(experiment::INSExperimentBase; vmax::Real=1.0)
 end
 
 function _report_cfl(dt, dt_max)
-    # The violations are already reported by the @warn of the callers
     if dt > dt_max
-        @debug "CFL condition violated, must set dt<=$dt_max"
+        @info "CFL condition violated, must set dt<=$dt_max"
     else
-        @debug "CFL condition satisfied" dt dt_max
+        @info "CFL condition satisfied" dt dt_max
     end
 end
 
@@ -158,7 +157,7 @@ function check_kolmogorov_scale(grid::Grid{N}, Re::Number) where {N}
             @warn "Spacing in the $(i)-th dimension does not resolve to Kolmogorov scale dx = $(grid.dx[i]) > Re^-(3/4) = $(kolmogorov_scale)"
         end
     end
-    !too_coarse && @debug "Kolmogorov scale is resolved"
+    !too_coarse && @info "Kolmogorov scale is resolved"
 end
 
 function check_kolmogorov_scale(experiment::INSExperimentBase)
