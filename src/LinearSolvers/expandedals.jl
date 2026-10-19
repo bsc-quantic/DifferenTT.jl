@@ -65,7 +65,7 @@ function (expander::RandomSPSDexpansion)(state::MPS)
     helper_sites = siteinds(2, length(sites))
 
     rand = random_mpo(helper_sites)
-    rand_dagger = transpose(conj(rand)) # conj performs the element-wise operation
+    rand_dagger = transpose_mpo(conj(rand)) # conj performs the element-wise operation
     randSPSD = apply(rand, rand_dagger; alg="naive") # A @ A^† is always symmetric positive semi-definite!
 
     N = length(randSPSD)

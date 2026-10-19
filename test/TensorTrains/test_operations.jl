@@ -15,7 +15,7 @@ using ITensorMPS
 
         # The non-mutating version leaves its argument untouched
         copied = DifferenTT.replace_mpo_siteinds(mpo, new_sites)
-        @test all(old_sites[i] ∈ inds(mpo[i]) for i in 1:nsite)
+        @test all(old_sites[i] in inds(mpo[i]) for i in 1:nsite)
         @test contract_mpo(copied) ≈ M_old
 
         @test DifferenTT.replace_mpo_siteinds!(mpo, new_sites) === mpo
@@ -29,21 +29,27 @@ using ITensorMPS
         @test contract_mpo(mpo) ≈ M_old
     end
 
-    @testset "transpose" begin
+    @testset "transpose_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
         mpo = random_mpo(sites)
-        transposed_mpo = transpose(mpo)
+        transposed_mpo = DifferenTT.transpose_mpo(mpo)
         @test transposed_mpo isa MPO
+        @test contract_mpo(transposed_mpo) ≈ transpose(contract_mpo(mpo))
         @test all(transposed_mpo[i] == swapinds(mpo[i], siteind(mpo, i), siteind(mpo, i)') for i in 1:nsite)
     end
 
-    @testset "reverse" begin
+    @testset "reverse_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
         mpo = random_mpo(sites)
-        reversed_mpos = reverse(mpo)
+        reversed_mpos = DifferenTT.reverse_mpo(mpo)
         @test reversed_mpos isa MPO
+        # Reversing the site order permutes the Kronecker factors: compare as tensors with the site axes reversed
+        Mt = reshape(contract_mpo(mpo), fill(2, 2nsite)...)
+        Rt = reshape(contract_mpo(reversed_mpos), fill(2, 2nsite)...)
+        @test Rt ≈ permutedims(Mt, (reverse(1:nsite)..., reverse((nsite+1):(2nsite))...))
+        @test all(hastags(l, "l=$k") for (k, l) in enumerate(linkinds(reversed_mpos)))
         @test length(reversed_mpos) == nsite
         # Check connectivity
         for i in 1:(nsite-1)

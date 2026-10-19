@@ -254,7 +254,7 @@ function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; a
 end
 
 function lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
-    return transpose(upper_triang_mpo(sites, include_diag; array_type=array_type))
+    return transpose_mpo(upper_triang_mpo(sites, include_diag; array_type=array_type))
 end
 
 function triang_projector_mpo(

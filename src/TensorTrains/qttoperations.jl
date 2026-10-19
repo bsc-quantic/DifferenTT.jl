@@ -19,7 +19,7 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
 
     array_type = backend_type(onedim_mpo)
     # Handle reversal if needed (negative arch value), reverse already implements a deepcopy operation
-    working_mpo = arch.var_nsites[axis] < 0 ? reverse(onedim_mpo) : deepcopy(onedim_mpo)
+    working_mpo = arch.var_nsites[axis] < 0 ? reverse_mpo(onedim_mpo) : deepcopy(onedim_mpo)
 
     active_indices = findall(==(axis), arch.site_map)
     total_sites = length(site_inds)
@@ -150,7 +150,7 @@ function ndim_operator_sum_mpo(
     mpo_tensors = Vector{ITensor}(undef, total_sites)
 
     # Handle reversal if needed
-    working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
+    working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse_mpo(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
     array_type = backend_type(working_mpos[1])
     active_indices = [findall(==(i), arch.site_map) for i in 1:N]
 

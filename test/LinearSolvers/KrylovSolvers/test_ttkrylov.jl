@@ -23,7 +23,7 @@ end
 @testset "TTCG and TTGMRES solvers with minimal MPO" begin
     s = siteinds("S=1/2", 4)
     A = random_mpo(s)
-    A = replaceprime(transpose(A)' * A, 2 => 1) # make it positive definite and hermitian
+    A = replaceprime(DifferenTT.transpose_mpo(A)' * A, 2 => 1) # make it positive definite and hermitian
     b = random_mps(s)
     x0 = random_mps(s)
 

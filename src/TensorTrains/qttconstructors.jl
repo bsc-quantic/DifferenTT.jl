@@ -154,7 +154,7 @@ Construct an MPO that projects onto one or more basis vectors (rows) (transpose 
 """
 function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     column_mpo = column_pick_mpo(site_inds, row_index, array_type)
-    row_mpo = transpose(column_mpo)
+    row_mpo = transpose_mpo(column_mpo)
     return row_mpo
 end
 

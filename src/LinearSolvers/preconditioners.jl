@@ -88,7 +88,7 @@ function linsolve_preconditioner(
     helper_sites = sim(sites) # Helper sites to extend the space
 
     if symmetrize
-        op2 = transpose(op1) # To construct XA
+        op2 = transpose_mpo(op1) # To construct XA
         replace_mpo_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
     else
         op2 = nothing
@@ -161,7 +161,7 @@ function fai_dg(
     residual_tol::Union{Float64,Nothing}=nothing,
     kwargs...,
 )
-    A = transpose(operator) # To construct XA
+    A = transpose_mpo(operator) # To construct XA
     array_type = backend_type(operator)
 
     sites = only.(siteinds(operator; plev=0))

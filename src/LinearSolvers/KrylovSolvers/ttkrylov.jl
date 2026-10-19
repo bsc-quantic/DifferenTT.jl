@@ -185,7 +185,7 @@ end
 
 function apply(P::FactorizedPreconditioner, v::MPS; kwargs...)
     v_out = apply(P.operator, v; kwargs...)
-    return apply(transpose(P.operator), v_out; kwargs...)
+    return apply(transpose_mpo(P.operator), v_out; kwargs...)
 end
 
 function ITensors.inner(v::MPS, P::Preconditioner, w::MPS)

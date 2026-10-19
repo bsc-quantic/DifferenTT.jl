@@ -1,9 +1,10 @@
 """
-    Base.transpose(mpo::MPO)
+    transpose_mpo(mpo::MPO) -> MPO
 
-Transpose an MPO by physically swapping the prime levels of site indices at each site.
+Return the transpose of `mpo`, obtained by swapping the prime levels 0 and 1 of the site index at every site. The
+link indices are shared with `mpo`.
 """
-function Base.transpose(mpo::MPO)
+function transpose_mpo(mpo::MPO)
     nsite = length(mpo)
     new_mpo = MPO(nsite)
     for site in 1:nsite
@@ -14,12 +15,12 @@ function Base.transpose(mpo::MPO)
 end
 
 """
-    Base.reverse(mpo::MPO)
+    reverse_mpo(mpo::MPO) -> MPO
 
-Reverse the site order of an MPO. The output site indices are also reversed, so the tags will
-not be in ascending order!
+Return `mpo` with its site order reversed. The site indices move with their tensors, so their tags are no longer in
+ascending order; the link indices are renamed so that bond `k` is tagged `"Link,l=\$k"` again.
 """
-function Base.reverse(mpo::MPO)
+function reverse_mpo(mpo::MPO)
     nsite = length(mpo)
     new_mpo = MPO(nsite)
 
