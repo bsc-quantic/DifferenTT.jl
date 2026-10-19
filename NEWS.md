@@ -73,6 +73,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `error("Not implemented yet")`) and the unused `onedim_neumann_boundary_correction` are removed.
 - `VectorField(components)` needs a non-empty tuple of one concrete `ScalarField{N}` type, with `N` components; a
   tuple of the wrong length throws `DimensionMismatch`.
+- `vec2tensor(v, leg_dims)` and `mat2tensor(m, leg_dims)` take the leg dimensions in site order (most significant
+  first, as `siteinds` and `contract_mps`/`contract_mpo`), and return a `d₁ × … × d_N` array (for `mat2tensor`, the row
+  axes followed by the column axes). They used to take them least significant first and return the axes reversed:
+  `vec2tensor(collect(1:6), [2, 3])` is now `[1 2 3; 4 5 6]` instead of the 3 × 2 `[1 2; 3 4; 5 6]`. Results change
+  only when the dimensions are not a palindrome, so QTT (all sites of dimension 2) is unaffected.
 
 ### Fixed
 
@@ -85,6 +90,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `enable_debug_timings!` and `disable_debug_timings!` are now defined.
 - Since the paper data were produced: the forward-Euler CFL bound no longer carries a dimension factor.
 - `disable_debug_timings!` had no effect when called in the same world as `enable_debug_timings!`.
+- `vec2mps` and `mat2mpo` scrambled the entries of the vector or matrix whenever the site dimensions were not a
+  palindrome (e.g. sites of dimensions `[2, 3]`), with no error. QTT sites all have dimension 2, so their QTT uses were
+  correct.
 
 ### Deprecated
 
