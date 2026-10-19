@@ -209,3 +209,59 @@ using .TestUtils
         @test inv(lap_dn_mat) ≈ inv_dn_mat atol=1e-8
     end
 end
+
+# Value checks of the other preconditioners against dense references (E5)
+@testset "Other preconditioners against dense references" begin
+    A, sites, _, _ = qtt_laplacian((4,))
+    Ad = todense(A)
+
+    @testset "rank1_preconditioner inverts a Kronecker product exactly" begin
+        r = StableRNG(3)
+        local_mats = [
+            (B=randn(r, 2, 2); B' * B + I) for _ in 1:4
+        ]
+        K = mat2mpo(kron(local_mats...), sites; maxdim=1, cutoff=1e-14)
+        @test maxlinkdim(K) == 1
+        # Up to the ε = eps·max(‖·‖, 1) regularization of each local inverse
+        @test todense(rank1_preconditioner(K).operator) ≈ inv(todense(K)) rtol = 1e-12
+    end
+
+    @testset "newtoniter_preconditioner reduces |I - XA|" begin
+        # From X₀ = 0.01 rank1_preconditioner(A), each Newton step X ← X(2I - AX) reduces |I - XA|₂ (measured 0.99980,
+        # 0.99959, 0.99918, 0.99836 for 0 to 3 steps)
+        residual(X) = opnorm(I - todense(X) * Ad)
+        X₀ = 0.01 * rank1_preconditioner(A).operator
+        residuals = [residual(X₀); [residual(newtoniter_preconditioner(A, k).operator) for k in 1:3]]
+        @test all(diff(residuals) .< 0)
+        # The method with an explicit initial guess gives the same result
+        @test todense(newtoniter_preconditioner(A, X₀, 2).operator) ≈ todense(newtoniter_preconditioner(A, 2).operator)
+        @test_throws ArgumentError newtoniter_preconditioner(A, MPO(siteinds("S=1/2", 4), "Id"), 1)
+    end
+
+    @testset "linsolve_preconditioner solves AX + XA = 2I or AX = I" begin
+        solver = ALS(;
+            sweep_kwargs=DifferenTT.SweepingArgs(; nsweeps=6, maxdim=16, cutoff=1e-14),
+            updater_kwargs=DifferenTT.LocalUpdaterArgs(; rtol=1e-12),
+        )
+        # A nonsymmetric operator distinguishes A⁻¹ from A⁻ᵀ. (Both modes returned A⁻ᵀ before the vectorization was
+        # fixed: |XAᵀ - I| = 4e-13 but |AX - I| = 0.16.)
+        Nd = Ad + 0.3 * triu(randn(StableRNG(4), size(Ad)...), 1)
+        N = mat2mpo(Nd, sites; cutoff=1e-14)
+        @testset "$name, symmetrize = $symmetrize" for (name, M, Md) in (("SPD", A, Ad), ("nonsymmetric", N, Nd)),
+            symmetrize in (true, false)
+
+            X = todense(linsolve_preconditioner(M, solver, symmetrize; rng=StableRNG(1)).operator)
+            if symmetrize
+                @test norm(Md * X + X * Md - 2I) <= 1e-9 * norm(Md)
+            end
+            @test norm(Md * X - I) <= 1e-9
+        end
+    end
+
+    @testset "inverse_laplacian_preconditioner rejects other boundary conditions" begin
+        arch = QTTArchitecture((4,))
+        grid = Grid(arch, (1.0,))
+        bc_nn = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0)))
+        @test_throws ArgumentError DifferenTT.inverse_laplacian_preconditioner(siteinds(arch), arch, grid, bc_nn)
+    end
+end

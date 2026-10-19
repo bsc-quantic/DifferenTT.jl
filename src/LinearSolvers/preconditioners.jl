@@ -83,14 +83,17 @@ function linsolve_preconditioner(
     rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
-    op1 = deepcopy(operator) # To construct AX
     sites = only.(siteinds(operator; plev=0))
-
     helper_sites = sim(sites) # Helper sites to extend the space
 
+    # The unknown X is vectorized on (helper_sites, sites): the helper sites carry its row index and become the output
+    # (primed) sites of X at the end, and the original sites carry its column index. AX acts on the row index with A,
+    # and XA, i.e. (XA)_ij = Σ_k X_ik A_kj, acts on the column index with Aᵀ.
+    op1 = deepcopy(operator) # To construct AX
+    replace_mpo_siteinds!(op1, helper_sites) # A, for AX, lives in the helper space
+
     if symmetrize
-        op2 = transpose_mpo(op1) # To construct XA
-        replace_mpo_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
+        op2 = transpose_mpo(operator) # To construct XA, on the original sites
     else
         op2 = nothing
     end
@@ -102,11 +105,11 @@ function linsolve_preconditioner(
     combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:N] # Combiners that join a pair of sites coming from the two spaces into a single index
 
     for i in 1:N
-        op1[i] = op1[i] * delta(helper_sites[i], helper_sites[i]') # Id living on the helper space for op1
+        op1[i] = op1[i] * delta(sites[i], sites[i]') # Identity on the column index for AX
         op1[i] = op1[i] * combiners[i] * combiners[i]' # Join op and identity into a single leg for both operators
 
         if symmetrize
-            op2[i] = op2[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
+            op2[i] = op2[i] * delta(helper_sites[i], helper_sites[i]') # Identity on the row index for XA
             op2[i] = op2[i] * combiners[i] * combiners[i]'
         end
 
@@ -171,14 +174,17 @@ function fai_dg(
     rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
-    A = transpose_mpo(operator) # To construct XA
     array_type = backend_type(operator)
 
     sites = only.(siteinds(operator; plev=0))
     n = length(sites)
 
+    # The unknown X = G̃_L is vectorized on (helper_sites, sites): the helper sites carry its row index and become the
+    # output (primed) sites of G̃_L at the end, and the original sites carry its column index. Eq. (10) needs X A, i.e.
+    # (XA)_ij = Σ_k X_ik A_kj, so the operator acts on the column index (the original sites) as Aᵀ, with the identity
+    # on the row index. (Acting on the helper sites instead would solve AX, which gives the transposed FSAI.)
+    A = transpose_mpo(operator)
     helper_sites = sim(sites) # Helper sites to expand the space and vectorize the linear system
-    replace_mpo_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
 
     combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:n] # Combiners that join a pair of sites coming from the two spaces into a single index
     combiner_inds = [combinedind(combiner) for combiner in combiners]
@@ -190,7 +196,7 @@ function fai_dg(
     linsolve_x0 = 1e-3 * lower_triang_mpo(sites, true; array_type=array_type)
 
     for i in 1:n
-        A[i] = A[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
+        A[i] = A[i] * delta(helper_sites[i], helper_sites[i]') # Identity on the row index of X
         A[i] = A[i] * combiners[i] * combiners[i]'
 
         replaceind!(linsolve_b[i], sites[i]' => helper_sites[i])
@@ -608,7 +614,11 @@ function inverse_laplacian_preconditioner(
     elseif isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)
         mpo = _dn_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
     else
-        error("Currently only Dirichlet-Dirichlet or Dirichlet-Neumann boundary conditions are implemented")
+        throw(
+            ArgumentError(
+                "inverse_laplacian_preconditioner supports only Dirichlet-Dirichlet or Dirichlet-Neumann boundary conditions",
+            ),
+        )
     end
     return Preconditioner(mpo)
 end

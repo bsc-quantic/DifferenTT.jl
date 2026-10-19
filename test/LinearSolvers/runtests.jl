@@ -12,6 +12,9 @@ end
 @safetestset "preconditioners" begin
     include("test_preconditioners.jl")
 end
+@safetestset "fai" begin
+    include("test_fai.jl")
+end
 @safetestset "preconditionedproblem" begin
     include("test_preconditionedproblem.jl")
 end

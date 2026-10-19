@@ -91,6 +91,16 @@ The first public release. Version 0.0.1 is the state of the library that produce
   residual `r` that was not updated after the last restart. Both now return the residual of the unpreconditioned
   system and its norm.
 - `ResidualExpansion` throws `ArgumentError` instead of `ErrorException` when the sites of `A` and `b` do not match.
+- **FAI construction.** `fai_dg`, and through it `fai_preconditioner`, applied `A` to the row index of the vectorized
+  unknown, so it solved `(A G̃_L)_ij = δ_ij` for `i ≥ j` (the transposed FSAI) instead of Eq. (10) of the paper,
+  `(G̃_L A)_ij = δ_ij`. `G_L = D G̃_L` was then not the inverse Cholesky factor `L_A⁻¹`: even for an exactly solved
+  `G̃_L`, `κ(G_LᵀG_L A)` was 3.3 on an 8 × 8 Laplacian (κ(A) = 32) and 79 on a 2⁶-point QTT Laplacian (κ(A) = 1712),
+  instead of 1. The preconditioner was positive definite, but every FAI result differs from v0.0.1 and from the paper
+  data, which were produced with the transposed construction.
+- `linsolve_preconditioner` had the same orientation error and returned `A⁻ᵀ` instead of `A⁻¹` for a nonsymmetric
+  operator (both with and without `symmetrize`). Results for symmetric operators are unchanged.
+- `inverse_laplacian_preconditioner` throws `ArgumentError` instead of `ErrorException` for unsupported boundary
+  conditions.
 - `DifferentialOpsScalar(grid, field, n_eyepad)` threw on a missing grid field. The padded operator is scaled by the
   spacing of the coarse grid of `2^(n - p)` nodes over the same box in QTT, and by the original spacing in TT.
 - The exports `sited_dim` (now `site_dim`) and `enable_debug_timings!` named functions that did not exist;
