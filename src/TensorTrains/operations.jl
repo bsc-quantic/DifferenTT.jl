@@ -123,6 +123,11 @@ function replace_mpo_siteinds!(M::MPO, sites::Vector{<:Index})
     return M
 end
 
+"""
+    replace_mpo_siteinds(mpo::MPO, sites::Vector{<:Index}) -> MPO
+
+Return a copy of `mpo` with its site indices replaced by `sites` and `sites'`; see [`replace_mpo_siteinds!`](@ref).
+"""
 replace_mpo_siteinds(M::MPO, sites::Vector{<:Index}) = replace_mpo_siteinds!(copy(M), sites)
 
 """

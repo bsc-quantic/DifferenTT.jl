@@ -542,6 +542,12 @@ Return a dense ITensor with indices `inds` and independent entries uniform in [0
 uniform_itensor(rng::AbstractRNG, inds::Index...) = _rand_uniform!(rng, ITensor(undef, inds))
 uniform_itensor(inds::Index...) = uniform_itensor(Random.default_rng(), inds...)
 
+"""
+    positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng()) -> ITensor
+
+Return the sketch of the sites `region_verts` of `M` with random vectors uniform in ``[0, 1)``, the positive variant of
+[`sketch`](@ref).
+"""
 function positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
