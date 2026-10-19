@@ -61,4 +61,14 @@ using ITensorMPS
         result2 = DifferenTT._nothing_sum_handler(a, b)
         @test result2 isa MPS
     end
+
+    @testset "_nothing_apply_handler" begin
+        sites = siteinds(2, 3)
+        A = random_mpo(sites)
+        B = random_mpo(sites)
+        @test isnothing(DifferenTT._nothing_apply_handler(nothing, nothing))
+        @test DifferenTT._nothing_apply_handler(nothing, A, nothing) === A
+        AB = DifferenTT._nothing_apply_handler(A, nothing, B)
+        @test contract_mpo(AB) ≈ contract_mpo(A) * contract_mpo(B)
+    end
 end

@@ -12,7 +12,13 @@ end
 
 backend_type(::VectorField{N,A}) where {N,A} = A
 
-function VectorField(components::NTuple{N,S}) where {N,S<:ScalarField{N}}
+function VectorField(components::Tuple{S,Vararg{S}}) where {S<:ScalarField}
+    N = length(components)
+    components[1] isa ScalarField{N} || throw(
+        DimensionMismatch(
+            "a VectorField of $N components needs ScalarField{$N} components, got $(typeof(components[1]))"
+        ),
+    )
     @assert all(length(field) == length(components[1]) for field in components) "All scalar filed must have the same number of steps"
     @assert all(backend_type(field) == backend_type(components[1]) for field in components) "All scalar fields must share array type"
 

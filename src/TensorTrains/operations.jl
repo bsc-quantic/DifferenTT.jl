@@ -85,13 +85,11 @@ end
 
 # TODO Test this function
 """
-    _nothing_apply_handler(elements::Vector{<:Any}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
 
 Helper to apply (multiply) a sequence of operators where some might be `nothing`.
 """
-function _nothing_apply_handler(
-    elements::Vararg{Union{T,Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
-) where {T<:MPO}
+function _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     element_vec = collect(elements)
     filtered_elements = element_vec[.!isnothing.(element_vec)]
 
