@@ -4,6 +4,7 @@ using ITensors
 using ITensorMPS
 using LinearAlgebra
 using Random
+using StableRNGs
 
 @testset "elementwise.jl" begin
     n = 4
@@ -109,6 +110,17 @@ using Random
         end
         @test tt_mul_fallbacks() == 1
         reset_tt_mul_fallbacks!()
+    end
+
+    @testset "uniform_itensor" begin
+        i, j = Index(3, "i"), Index(4, "j")
+        T = DifferenTT.uniform_itensor(StableRNG(1), i, j)
+        @test hassameinds(T, (i, j))
+        A = array(T, i, j)
+        @test all(0 .<= A .< 1)
+        @test A == array(DifferenTT.uniform_itensor(StableRNG(1), i, j), i, j)
+        @test A != array(DifferenTT.uniform_itensor(StableRNG(2), i, j), i, j)
+        @test all(0 .<= array(DifferenTT.uniform_itensor(i, j), i, j) .< 1)
     end
 
     @testset "suffix_sketches" begin

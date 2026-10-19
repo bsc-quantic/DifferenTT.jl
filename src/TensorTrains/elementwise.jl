@@ -421,23 +421,21 @@ Reset the counter reported by [`tt_mul_fallbacks`](@ref).
 """
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
-# 1. Define the core method that unpacks the ITensor into an NDTensors.Tensor
-function Random.rand!(rng::AbstractRNG, T::ITensor)
-    # Mutate the underlying data container directly using Julia's base rand!
+"Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it."
+function _rand_uniform!(rng::AbstractRNG, T::ITensor)
+    # Mutate the underlying NDTensors.Tensor directly with Base's rand!
     rand!(rng, ITensors.tensor(T))
     return T
 end
 
-# 2. Define the convenience wrapper matching the default Julia syntax
-function Random.rand!(T::ITensor)
-    return rand!(Random.default_rng(), T)
-end
+"""
+    uniform_itensor([rng::AbstractRNG,] inds::Index...) -> ITensor
 
-function uniform_itensor(inds::Vararg{Index})
-    tens = ITensor(undef, inds)
-    rand!(tens)
-    return tens
-end
+Return a dense ITensor with indices `inds` and independent entries uniform in [0, 1), drawn from `rng`
+(`Random.default_rng()` by default). Its entries are positive, which is what [`positive_sketch`](@ref) needs.
+"""
+uniform_itensor(rng::AbstractRNG, inds::Index...) = _rand_uniform!(rng, ITensor(undef, inds))
+uniform_itensor(inds::Index...) = uniform_itensor(Random.default_rng(), inds...)
 
 function positive_sketch(M::AbstractMPS, region_verts, k::Index)
     (length(region_verts) == 0) && return ITensor(1.0)
