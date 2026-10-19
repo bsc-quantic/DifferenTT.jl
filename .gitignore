@@ -1,10 +1,23 @@
 */Manifest.toml
 /Manifest*.toml
 .vscode
-*.png
-*.svg
-*.pdf
-*.jld2
+
+# Maintainer notes, logs and coverage output
+/notes/
+*.err
+*.out
+*.cov
+lcov.info
+
+# Documentation build output and the tutorials Literate renders from examples/
+/docs/build/
+/docs/src/tutorials/
+
+# Figures and data produced by experiment runs
+experiments/**/*.png
+experiments/**/*.svg
+experiments/**/*.pdf
+experiments/**/*.jld2
 
 !collected_results.jld2
 !masks.jld2
