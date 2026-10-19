@@ -210,8 +210,13 @@ using LinearAlgebra
         t16 = DifferenTT.vec2tensor(v16, [2, 2, 2, 2])
         @test size(t16) == (2, 2, 2, 2)
 
+        # leg_dims are given in site order, and the first axis is the most significant (row-major order)
         t16_v2 = DifferenTT.vec2tensor(v16, [2, 8])
-        @test size(t16_v2) == (8, 2) # Leg order is reversed in order to account for end minor ordering
+        @test size(t16_v2) == (2, 8)
+        @test t16_v2 == permutedims(reshape(v16, 8, 2))
+        t234 = DifferenTT.vec2tensor(collect(1:24), [2, 3, 4])
+        @test size(t234) == (2, 3, 4)
+        @test all(t234[i, j, k] == 1 + (i - 1) * 12 + (j - 1) * 4 + (k - 1) for i in 1:2, j in 1:3, k in 1:4)
     end
 
     @testset "vec2mps" begin
@@ -240,7 +245,8 @@ using LinearAlgebra
 
         # 16-element vector → 2×2×2×2 tensor, or 2x8 tensor
         t24 = DifferenTT.mat2tensor(m8, [2, 4])
-        @test size(t24) == (4, 2, 4, 2) # Remember the reversed order!
+        @test size(t24) == (2, 4, 2, 4)
+        @test all(t24[i, j, k, l] == m8[(i-1)*4+j, (k-1)*4+l] for i in 1:2, j in 1:4, k in 1:2, l in 1:4)
     end
 
     @testset "mat2mpo" begin
@@ -256,8 +262,8 @@ using LinearAlgebra
         @test DifferenTT.contract_mpo(DifferenTT.mat2mpo(m, sites)) ≈ m
     end
 
-    # Regression test: vec2mps and mat2mpo passed the site dimensions to vec2tensor and mat2tensor in site order, which
-    # take the least significant leg first, so they scrambled the entries whenever the dimensions were not a palindrome
+    # Regression test: vec2tensor and mat2tensor used to take the leg lengths least significant first, while vec2mps and
+    # mat2mpo passed them in site order, which scrambled the entries whenever the dimensions were not a palindrome
     @testset "vec2mps and mat2mpo with different site dimensions" begin
         for dims in ([2, 3], [2, 3, 4], [4, 2, 3])
             sites = DifferenTT.site_indices(dims)

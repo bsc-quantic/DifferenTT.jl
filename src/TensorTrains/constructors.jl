@@ -618,25 +618,24 @@ end
 """
     vec2tensor(v::AbstractVector, leg_dims::Vector{Int}) -> Array
 
-Reshape `v` into an array with one axis per leg, where `leg_dims` lists the leg lengths from the least significant
-(fastest) leg to the most significant one, and the returned array has its axes in the reverse order, the most
-significant first, as site 1 is in [`contract_mps`](@ref). For sites of dimensions ``d_1, \\dots, d_N``, site 1 the
-most significant, pass `leg_dims = [d_N, …, d_1]` to obtain the ``d_1 \\times \\dots \\times d_N`` array of
-[`vec2mps`](@ref); the order only matters when the dimensions differ.
+Reshape `v` into the ``d_1 \\times \\dots \\times d_N`` array with `leg_dims = [d₁, …, d_N]`, given in site order,
+whose first axis is the most significant, as site 1 is in [`contract_mps`](@ref): entry ``(i_1, \\dots, i_N)`` is
+entry ``1 + \\sum_k (i_k - 1) \\prod_{l > k} d_l`` of `v`. For the sites `s` of an MPS, `vec2tensor(v, dim.(s))` is
+the tensor that [`vec2mps`](@ref) factorizes. This is the row-major order, so it differs from `reshape(v, leg_dims...)`
+whenever ``N > 1``.
 
 # Examples
 
 ```jldoctest
 julia> vec2tensor(collect(1:6), [2, 3])
-3×2 Matrix{Int64}:
- 1  2
- 3  4
- 5  6
+2×3 Matrix{Int64}:
+ 1  2  3
+ 4  5  6
 ```
 """
 function vec2tensor(v::AbstractVector, leg_dims::Vector{Int})
     n = length(leg_dims)
-    return permutedims(reshape(v, leg_dims...), n:-1:1)
+    return permutedims(reshape(v, reverse(leg_dims)...), n:-1:1) # Julia's reshape takes the fastest leg first
 end
 
 """
@@ -649,19 +648,21 @@ for small grids and tests.
 """
 function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
-    return MPS(vec2tensor(v, reverse(site_dims)), s; kwargs...) # vec2tensor takes the least significant leg first
+    return MPS(vec2tensor(v, site_dims), s; kwargs...)
 end
 
 """
     mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int}) -> Array
 
 Reshape the square matrix `m` into an array whose first `N = length(leg_dims)` axes split its row index and whose last
-`N` axes split its column index. As in [`vec2tensor`](@ref), `leg_dims` lists the leg lengths from the least
-significant to the most significant, and each group of axes is returned with the most significant axis first.
+`N` axes split its column index, both with the lengths `leg_dims` given in site order and the most significant axis
+first, as in [`vec2tensor`](@ref). For the sites `s` of an MPO, `mat2tensor(m, dim.(s))` has the axes
+`(s'..., s...)` of the tensor that [`mat2mpo`](@ref) factorizes.
 """
 function mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int})
     n = length(leg_dims)
-    return permutedims(reshape(m, leg_dims..., leg_dims...), [n:-1:1; 2n:-1:(n+1)])
+    rdims = reverse(leg_dims) # Julia's reshape takes the fastest leg first
+    return permutedims(reshape(m, rdims..., rdims...), [n:-1:1; 2n:-1:(n+1)])
 end
 
 """
@@ -673,6 +674,6 @@ which the keywords, e.g. `cutoff` and `maxdim`, are passed. As [`vec2mps`](@ref)
 """
 function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
-    itensor_object = itensor(mat2tensor(m, reverse(site_dims)), s'..., s...) # least significant leg first
+    itensor_object = itensor(mat2tensor(m, site_dims), s'..., s...)
     return MPO(itensor_object, s; kwargs...)
 end
