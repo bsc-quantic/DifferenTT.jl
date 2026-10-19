@@ -1,5 +1,3 @@
-using ITensorMPS: operator, constant_term, contract
-
 """
     KrylovSweepStats()
 

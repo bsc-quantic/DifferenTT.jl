@@ -1,5 +1,3 @@
-using KrylovKit: apply_scalartype, linselector
-
 """
     preconditioned_linsolve(f, b, x₀, M⁻¹, a₀::Number=0, a₁::Number=1; kwargs...)
 

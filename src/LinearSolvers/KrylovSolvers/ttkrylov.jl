@@ -1,5 +1,3 @@
-import ITensorMPS: apply
-
 function _assign_ref_store!(store::Any, value, field::Symbol)::Nothing
     if isnothing(store)
         return nothing

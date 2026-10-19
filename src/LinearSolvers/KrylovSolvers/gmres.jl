@@ -1,7 +1,3 @@
-using KrylovKit: scale, scale!!, add!!, zerovector, ConvergenceInfo, normres2string
-using KrylovKit: STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL, SILENT_LEVEL
-using KrylovKit: Givens
-
 # Regular non-preconditioned implentation is taken directly from KrylovKit.jl
 
 """

@@ -1,4 +1,3 @@
-using ITensorMPS: alternating_update, ReducedLinearProblem
 """
     AbstractALSExpansion
 

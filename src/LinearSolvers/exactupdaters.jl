@@ -1,5 +1,3 @@
-using ITensorMPS: operator, constant_term, contract, ReducedLinearProblem
-
 """
     (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
