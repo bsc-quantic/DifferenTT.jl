@@ -1,5 +1,3 @@
-using ITensorMPS: operator, constant_term, contract, ReducedLinearProblem
-
 """
     (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
@@ -19,7 +17,7 @@ function (up::QRUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, c
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
 
-    op = contract(operator(problem))
+    op = dense_projected_operator(operator(problem))
     b = constant_term(problem)
 
     rowinds = commoninds(op, b)

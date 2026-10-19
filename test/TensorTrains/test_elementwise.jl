@@ -4,6 +4,7 @@ using ITensors
 using ITensorMPS
 using LinearAlgebra
 using Random
+using StableRNGs
 
 @testset "elementwise.jl" begin
     n = 4
@@ -111,6 +112,34 @@ using Random
         reset_tt_mul_fallbacks!()
     end
 
+    @testset "pivot indices" begin
+        pivs = [[1 => 2, 2 => 1], [1 => 1, 2 => 2], [1 => 2, 2 => 2]]
+        i = DifferenTT.pivot_index(pivs; tags="Link,l=1")
+        @test i isa Index{<:DifferenTT.PivotSpace}
+        @test dim(i) == 3
+        @test !ITensors.hasqns(i)
+        @test DifferenTT.haspivots(i)
+        @test !DifferenTT.haspivots(Index(3))
+        @test DifferenTT.index_pivots(i) == pivs
+        @test DifferenTT.index_pivots(copy(i)) == pivs
+        @test DifferenTT.index_pivots(i') == pivs
+        @test startswith(sprint(show, i), "(PI|dim=3|")
+        @test occursin("Link,l=1", sprint(show, i))
+        T = random_itensor(StableRNG(1), i, Index(2))
+        @test norm(T) > 0
+    end
+
+    @testset "uniform_itensor" begin
+        i, j = Index(3, "i"), Index(4, "j")
+        T = DifferenTT.uniform_itensor(StableRNG(1), i, j)
+        @test hassameinds(T, (i, j))
+        A = array(T, i, j)
+        @test all(0 .<= A .< 1)
+        @test A == array(DifferenTT.uniform_itensor(StableRNG(1), i, j), i, j)
+        @test A != array(DifferenTT.uniform_itensor(StableRNG(2), i, j), i, j)
+        @test all(0 .<= array(DifferenTT.uniform_itensor(i, j), i, j) .< 1)
+    end
+
     @testset "suffix_sketches" begin
         Random.seed!(1234)
         mps = random_mps(sites; linkdims=3)
@@ -124,6 +153,65 @@ using Random
         for v in 2:n
             @test issetequal(inds(sketches[v]), (k, linkind(mps, v - 1)))
             @test issetequal(inds(sketches[v]), inds(DifferenTT.sketch(mps, v:n, k)))
+        end
+    end
+
+    @testset "suffix_sketches, positive (uniform) variant" begin
+        # An entrywise-positive MPS
+        M = random_mps(StableRNG(5), sites; linkdims=3)
+        for i in 1:n
+            M[i] = ITensor(abs.(array(M[i])) .+ 0.1, inds(M[i]))
+        end
+        k = Index(4, "sketch")
+        S = DifferenTT.suffix_sketches(M, k; positive=true, rng=StableRNG(1))
+        @test length(S) == n + 1
+        for v in 2:n
+            @test issetequal(inds(S[v]), inds(DifferenTT.positive_sketch(M, v:n, k)))
+            # Contracted with the dense prefix of sites 1:v-1, the positive sketch of a positive MPS stays positive
+            prefix = prod(M[u] for u in 1:(v-1))
+            @test all(>(0), array(prefix * S[v], (sites[1:(v-1)]..., k)...))
+        end
+    end
+
+    @testset "elementwise_function against the dense map" begin
+        N = 8
+        qs = siteinds("Qubit", N)
+        # Positive domain: x^(-1/2) on an entrywise-positive MPS, with uniform sketches
+        P = random_mps(StableRNG(7), qs; linkdims=3)
+        for i in 1:N
+            P[i] = ITensor(abs.(array(P[i])) .+ 0.1, inds(P[i]))
+        end
+        A = contract_mps(P)
+        for seed in 1:3
+            F = elementwise_function(x -> inv(sqrt(x)), P, true; cutoff=1e-12, rng=StableRNG(seed))
+            @test norm(contract_mps(F) - inv.(sqrt.(A))) <= 1e-8 * norm(inv.(sqrt.(A)))
+        end
+
+        # Signed domain: exp of a smooth signed function, with Gaussian sketches. The seed is one for which the cross
+        # succeeds; see the @test_broken below.
+        t = (0:(2^N-1)) ./ 2^N
+        v = sin.(2π .* t) .+ 0.2 .* cos.(6π .* t)
+        Q = DifferenTT.vec2mps(v, qs; cutoff=1e-14)
+        E = elementwise_function(exp, Q, false; cutoff=1e-12, rng=StableRNG(3))
+        @test norm(contract_mps(E) - exp.(v)) <= 1e-8 * norm(exp.(v))
+
+        # Known issue (pre-existing, reported in WP2): with positive_domain = false the cross solves with the pivot
+        # columns by LU (use_pinv = false) and throws a SingularException for roughly half of the sketches.
+        succeeds(seed) =
+            try
+                elementwise_function(exp, Q, false; cutoff=1e-12, rng=StableRNG(seed))
+                true
+            catch e
+                e isa LinearAlgebra.SingularException || rethrow()
+                false
+            end
+        @test_broken all(succeeds, 1:10)
+
+        # Known issue (pre-existing, reported in WP2): nsite = 3 fails in the finalizer (`only(sites[v])` on an Index)
+        @test_broken try
+            elementwise_function(x -> inv(sqrt(x)), P, true; nsite=3, cutoff=1e-12, rng=StableRNG(1)) isa MPS
+        catch
+            false
         end
     end
 

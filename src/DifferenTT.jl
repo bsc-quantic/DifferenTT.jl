@@ -1,15 +1,58 @@
 module DifferenTT
 
+# Public APIs of the dependencies
 using Adapt
 using ITensors
+using ITensorMPS
+using JLD2
+using KrylovKit
+using LinearAlgebra
 using Printf
 using Random
-using ITensorMPS
-using KrylovKit
 using TensorCrossInterpolation
-using LinearAlgebra
-using JLD2
 using TimerOutputs
+using ITensors.NDTensors: matrix
+# TensorCrossInterpolation also exports a `contract`; ours is the ITensors one
+using ITensors: contract
+using LinearAlgebra: svd as la_svd
+
+# Non-exported internals of ITensors (and NDTensors), ITensorMPS and KrylovKit. They are not part of the public APIs of
+# these packages and may change in any release, which is why their [compat] entries in Project.toml are pinned to
+# minor versions. The sweep machinery of the local solvers (ALS, ResidualALS, AMEn, ExpandedALS) is built on the
+# ITensorMPS ones, and the preconditioned Krylov solvers on the KrylovKit ones.
+using ITensors: Arrow, OneITensor, TagSets, primestring
+using ITensors.NDTensors.BackendSelection: @Algorithm_str, Algorithm
+using ITensorMPS:
+    AbstractProjMPO,
+    ReducedConstantTerm,
+    ReducedLinearProblem,
+    TDVPOrder,
+    alternating_update,
+    constant_term,
+    makeL!,
+    makeR!,
+    operator,
+    orderings,
+    set_nsite!,
+    site_range,
+    sub_time_steps
+using KrylovKit:
+    ConvergenceInfo,
+    EACHITERATION_LEVEL,
+    Givens,
+    SILENT_LEVEL,
+    STARTSTOP_LEVEL,
+    WARN_LEVEL,
+    add!!,
+    apply_scalartype,
+    linselector,
+    normres2string,
+    scale,
+    scale!!,
+    zerovector
+
+# Functions to which DifferenTT adds methods for its own types without qualifying the name
+import ITensorMPS: apply
 
 # Include Architecture
 include("TensorTrains/architecture.jl")
@@ -116,6 +159,19 @@ export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timi
 
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity
+
+# Documented API that is not exported: reachable as `DifferenTT.name`, and covered by semantic versioning
+# Tensor-train utilities
+public upper_triang_mpo, lower_triang_mpo, triang_projector_mpo, ndim_operator_sum_mpo, toeplitz_mpo
+public row_pick_mpo, column_pick_mpo, entry_mpo, arrays2mps, arrays2mpo, point_sequence, sequence_to_point, iszero_tt
+public site_indices, link_indices, replace_mpo_siteinds!, replace_mpo_siteinds, transpose_mpo, reverse_mpo
+# Operators and physics
+public onedim_differential_operator, derivative_coefficients, wall_vorticity_coefficients
+public poisson_rhs, vorticity_transport, wall_vorticity_source, face_profile_mps, remove_mean
+public regularization_check, mask_correction, cfl_spectral_radii
+# Solvers and statistics
+public TTCG, TTGMRES, KrylovUpdater, QRUpdater, positions_sum, krylov_numiters, krylov_conds
+public dense_projected_operator, preconditioned_linsolve
 
 function __init__()
     _register_plots_error_hint()

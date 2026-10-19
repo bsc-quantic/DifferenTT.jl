@@ -1,8 +1,3 @@
-using KrylovKit: ConvergenceInfo, normres2string, STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL, SILENT_LEVEL
-using KrylovKit: Givens, givens
-using LinearAlgebra: UpperTriangular, ldiv!, lmul!, rmul!
-using ITensors, ITensorMPS
-
 function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
     kwargs_tt = (; maxdim=alg.maxdim, cutoff=alg.cutoff)
     kwargs_orth = (; maxdim=alg.orth_maxdim, cutoff=alg.orth_cutoff)
@@ -80,7 +75,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number=0, a�
             w = wrapped_op(V[k])
             numops += 1
 
-            # Modified Gram-Schmidt
+            # Classical Gram-Schmidt: every projection is an exact sandwich ⟨V[i], A V[k]⟩ against the untruncated
+            # V[k], not against the partially orthogonalized w
             for i in 1:k
                 H_ik_op = ITensorMPS.inner(V[i]', operator, V[k])
                 H[i, k] = iszero(α₀) ? α₁ * H_ik_op : (i == k ? α₀ + α₁ * H_ik_op : α₁ * H_ik_op)
@@ -233,9 +229,11 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
             w, v_out = wrapped_op(V[k])
             numops += 1
 
-            # Modified Gram-Schmidt
+            # Classical Gram-Schmidt: every projection is an exact sandwich ⟨V[i], M⁻¹ v_out⟩ against the untruncated
+            # v_out = A V[k], not against the partially orthogonalized w. inner(v, ::AbstractPreconditioner, w) primes v
+            # itself, so V[i] is passed unprimed
             for i in 1:k
-                H[i, k] = ITensorMPS.inner(V[i]', M⁻¹, v_out)
+                H[i, k] = ITensorMPS.inner(V[i], M⁻¹, v_out)
                 w = +(w, -H[i, k] * V[i]; kwargs_orth...)
             end
 

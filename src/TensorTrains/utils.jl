@@ -46,7 +46,11 @@ representation defined by `arch`. Sites not belonging to `axis` are filled with 
 """
 function ndim_index(onedim_index::Vector{Int}, axis::Int, arch::QTTArchitecture)
     active_vars = count(==(axis), arch.site_map)
-    @assert length(onedim_index) == active_vars "Input index length $(length(onedim_index)) does not match sites for axis $axis ($active_vars)"
+    length(onedim_index) == active_vars || throw(
+        DimensionMismatch(
+            "Input index length $(length(onedim_index)) does not match sites for axis $axis ($active_vars)"
+        ),
+    )
 
     total_sites = length(arch.site_map)
 
@@ -74,7 +78,11 @@ representation defined by `arch`. Sites not belonging to `axis` are filled with 
 """
 function ndim_index(onedim_index::Vector{Int}, axis::Int, arch::TTArchitecture)
     active_vars = count(==(axis), arch.site_map)
-    @assert length(onedim_index) == active_vars "Input index length $(length(onedim_index)) does not match sites for axis $axis ($active_vars)"
+    length(onedim_index) == active_vars || throw(
+        DimensionMismatch(
+            "Input index length $(length(onedim_index)) does not match sites for axis $axis ($active_vars)"
+        ),
+    )
 
     total_sites = length(arch.site_map)
 

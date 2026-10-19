@@ -54,4 +54,17 @@ using TimerOutputs
 
     # Test timeit_to existence
     @test timeit_to isa TimerOutput
+
+    # Regression test for B4: enable_debug_timings! was exported but not defined
+    @testset "debug timings" begin
+        @test isdefined(DifferenTT, :enable_debug_timings!)
+        try
+            enable_debug_timings!()
+            @test Base.invokelatest(DifferenTT.timeit_debug_enabled)
+            disable_debug_timings!()
+            @test !Base.invokelatest(DifferenTT.timeit_debug_enabled)
+        finally
+            disable_debug_timings!()
+        end
+    end
 end

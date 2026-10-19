@@ -1,24 +1,10 @@
 """
-    ITensorMPS.replace_siteinds(mpo::MPO, sites::Vector{I}) where I <: index
+    transpose_mpo(mpo::MPO) -> MPO
 
-Update the siteinds with plev=0, 1 with a new set of siteinds, mathcing the prime levels.
+Return the transpose of `mpo`, obtained by swapping the prime levels 0 and 1 of the site index at every site. The
+link indices are shared with `mpo`.
 """
-function ITensorMPS.replace_siteinds!(mpo::MPO, new_sites::Vector{I}) where {I<:Index}
-    sites = only.(siteinds(mpo; plev=0))
-    nsite = length(mpo)
-    for j in 1:nsite
-        old_s = sites[j]
-        new_s = new_sites[j]
-        replaceinds!(mpo[j], old_s => new_s, old_s' => new_s')
-    end
-end
-
-"""
-    Base.transpose(mpo::MPO)
-
-Transpose an MPO by physically swapping the prime levels of site indices at each site.
-"""
-function Base.transpose(mpo::MPO)
+function transpose_mpo(mpo::MPO)
     nsite = length(mpo)
     new_mpo = MPO(nsite)
     for site in 1:nsite
@@ -29,12 +15,12 @@ function Base.transpose(mpo::MPO)
 end
 
 """
-    Base.reverse(mpo::MPO)
+    reverse_mpo(mpo::MPO) -> MPO
 
-Reverse the site order of an MPO. The output site indices are also reversed, so the tags will
-not be in ascending order!
+Return `mpo` with its site order reversed. The site indices move with their tensors, so their tags are no longer in
+ascending order; the link indices are renamed so that bond `k` is tagged `"Link,l=\$k"` again.
 """
-function Base.reverse(mpo::MPO)
+function reverse_mpo(mpo::MPO)
     nsite = length(mpo)
     new_mpo = MPO(nsite)
 
@@ -85,13 +71,11 @@ end
 
 # TODO Test this function
 """
-    _nothing_apply_handler(elements::Vector{<:Any}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
 
 Helper to apply (multiply) a sequence of operators where some might be `nothing`.
 """
-function _nothing_apply_handler(
-    elements::Vararg{Union{T,Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
-) where {T<:MPO}
+function _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     element_vec = collect(elements)
     filtered_elements = element_vec[.!isnothing.(element_vec)]
 
@@ -108,7 +92,15 @@ function _nothing_apply_handler(
     end
 end
 
-function replace_siteinds!(M::MPO, sites::Vector{<:Index})
+"""
+    replace_mpo_siteinds!(mpo::MPO, sites::Vector{<:Index}) -> MPO
+    replace_mpo_siteinds(mpo::MPO, sites::Vector{<:Index}) -> MPO
+
+Replace the site indices of `mpo`, at prime levels 0 and 1, by `sites` and `sites'`, keeping the prime levels. The
+version with `!` overwrites the tensors of `mpo` and returns it; the other one works on a copy. For an MPS, use
+`ITensorMPS.replace_siteinds!`.
+"""
+function replace_mpo_siteinds!(M::MPO, sites::Vector{<:Index})
     for j in eachindex(M)
         sj = only(siteinds(M, j; plev=0))
         M[j] = replaceinds(M[j], sj => sites[j], sj' => sites[j]')
@@ -116,7 +108,7 @@ function replace_siteinds!(M::MPO, sites::Vector{<:Index})
     return M
 end
 
-replace_siteinds(M::MPO, sites) = replace_siteinds!(copy(M), sites)
+replace_mpo_siteinds(M::MPO, sites::Vector{<:Index}) = replace_mpo_siteinds!(copy(M), sites)
 
 function diagmpo(mpo::MPO)
     n = length(mpo)
@@ -124,7 +116,7 @@ function diagmpo(mpo::MPO)
     placeholder_sites = sim(out_sites)
 
     deltas = [delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
-    out_mpo = replace_siteinds(mpo, placeholder_sites)
+    out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
         out_mpo[i] *= deltas[i]
@@ -138,7 +130,7 @@ function diagmps(mpo::MPO)
     placeholder_sites = sim(out_sites)
 
     deltas = [delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
-    out_mpo = replace_siteinds(mpo, placeholder_sites)
+    out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
         out_mpo[i] *= deltas[i]
@@ -161,7 +153,9 @@ function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     total_len = sum(length, mpos)
     array_type = backend_type(first(mpos))
 
-    @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
+    length(site_inds) == total_len || throw(
+        DimensionMismatch("Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."),
+    )
 
     combined_tensors = ITensor[]
     current_site_offset = 0
@@ -211,7 +205,9 @@ function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     total_len = sum(length, mpss)
     array_type = backend_type(first(mpss))
 
-    @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
+    length(site_inds) == total_len || throw(
+        DimensionMismatch("Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."),
+    )
 
     combined_tensors = ITensor[]
     current_site_offset = 0
@@ -305,7 +301,8 @@ Identities are placed on all other sites.
 function ndim_operator_mpo(
     onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}
 ) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
@@ -374,7 +371,8 @@ function ndim_operator_sum_mpo(
     arch::TTArchitecture{N};
     pair_ops::Union{Nothing,Tuple{NTuple{N,AbstractMatrix},NTuple{N,AbstractMatrix}}}=nothing,
 ) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)

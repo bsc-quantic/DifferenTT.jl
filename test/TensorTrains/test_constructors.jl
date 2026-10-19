@@ -167,9 +167,9 @@ using LinearAlgebra
         @test linkdim(mps, 3) == 4
 
         # Test error conditions
-        @test_throws AssertionError DifferenTT.arrays2mps(siteinds(2, 3), mps_arrays) # Mismatched length
+        @test_throws DimensionMismatch DifferenTT.arrays2mps(siteinds(2, 3), mps_arrays) # Mismatched length
         bad_mps_arrays = [rand(2, 2), rand(2, 3)] # Mismatched bond dim
-        @test_throws AssertionError DifferenTT.arrays2mps(siteinds(2, 2), bad_mps_arrays)
+        @test_throws DimensionMismatch DifferenTT.arrays2mps(siteinds(2, 2), bad_mps_arrays)
     end
 
     @testset "arrays2mpo" begin
@@ -189,9 +189,9 @@ using LinearAlgebra
         @test linkdim(mpo, 2) == 5
 
         # Test error conditions
-        @test_throws AssertionError DifferenTT.arrays2mpo(siteinds(2, 2), mpo_arrays) # Mismatched length
+        @test_throws DimensionMismatch DifferenTT.arrays2mpo(siteinds(2, 2), mpo_arrays) # Mismatched length
         bad_mpo_arrays = [rand(2, 2, 2), rand(2, 2, 3)] # Mismatched bond dim
-        @test_throws AssertionError DifferenTT.arrays2mpo(siteinds(2, 2), bad_mpo_arrays)
+        @test_throws DimensionMismatch DifferenTT.arrays2mpo(siteinds(2, 2), bad_mpo_arrays)
     end
 
     @testset "vec2tensor" begin
@@ -259,7 +259,7 @@ using LinearAlgebra
     @testset "upper_triang_mpo & lower_triang_mpo" begin
         # Test with a mix of small site dimensions
         dims = [2, 3, 2]
-        sites = siteinds(dims)
+        sites = DifferenTT.site_indices(dims)
         D = prod(dims)
 
         # Upper with diag

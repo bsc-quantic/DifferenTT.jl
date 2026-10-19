@@ -1,7 +1,3 @@
-using ITensorMPS: ITensorMPS, AbstractProjMPO, ReducedLinearProblem, ReducedConstantTerm
-using ITensorMPS: ITensorMPS, set_nsite!, makeL!, makeR!, nsite, site_range, apply, lproj, rproj, position!
-using ITensors: OneITensor
-
 # For dispatch purposes
 
 abstract type AbstractPreconditioner end
@@ -28,7 +24,7 @@ function Base.copy(reduced_preconditioner::ReducedPreconditioner)
     ReducedPreconditioner(copy(reduced_preconditioner.reduced_op))
 end
 ITensors.contract(P::ReducedPreconditioner, v::ITensor) = ITensors.contract(P.reduced_op, v)
-ITensors.contract(P::ReducedPreconditioner) = ITensors.contract(P.reduced_op)
+ITensors.contract(P::ReducedPreconditioner) = dense_projected_operator(P.reduced_op)
 ITensorMPS.product(P::ReducedPreconditioner, v::ITensor) = ITensorMPS.product(P.reduced_op, v)
 (P::ReducedPreconditioner)(v::ITensor) = ITensorMPS.product(P, v)
 
@@ -47,7 +43,9 @@ function _itensor_map(P::AbstractProjMPO)
     return itensor_map
 end
 
-ITensors.swapprime(tens::OneITensor, args::Vararg{Any}) = tens
+# swapprime that also accepts the OneITensor placeholders of an empty environment, which have no indices
+_swapprime(tens::ITensor, args...) = swapprime(tens, args...)
+_swapprime(tens::OneITensor, args...) = tens
 
 function ITensors.contract(P::ReducedFactorizedPreconditioner, v::ITensor)::ITensor
     Glv = contract(P.reduced_op, v)
@@ -63,10 +61,10 @@ function ITensors.contract(P::ReducedFactorizedPreconditioner, v::ITensor)::ITen
 end
 
 function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
-    contractedGL = contract(P.reduced_op)
+    contractedGL = dense_projected_operator(P.reduced_op)
     transpose_itensor_map = _itensor_map(P.reduced_op)
 
-    transpose_itensor_map = [swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
+    transpose_itensor_map = [_swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
 
     if dim(first(transpose_itensor_map)) == 1
         reverse!(transpose_itensor_map)
@@ -141,24 +139,6 @@ function initialize_reducedprecondlinearproblem(
     return ReducedFAIPrecondLinearProblem(linear_problem, reducedGl)
 end
 
-function initialize_reducedprecondlinearproblem(operator::MPO, constant_terms::Vector{MPS}, Minv::Preconditioner)
-    error("Not implemented yet")
-    # # The residual in this case would be Σbᵢ which would have an absurd bond dimension, so...
-    # linear_problem = ReducedLinearProblem(ProjMPO(operator), ReducedConstantTerm.(constant_terms))
-    # projMinv = ProjMPO(Minv)
-    # return ReducedPrecondLinearProblem(linear_problem, projMinv)
-end
-
-function initialize_reducedprecondlinearproblem(
-    operator::MPO, constant_terms::Vector{MPS}, Gl::FactorizedPreconditioner
-)
-    error("Not implemented yet")
-    # # The residual in this case would be Σbᵢ which would have an absurd bond dimension, so...
-    # linear_problem = ReducedLinearProblem(ProjMPO(operator), ReducedConstantTerm.(constant_terms))
-    # projGl = ProjMPO(Gl)
-    # return ReducedPrecondLinearProblem(linear_problem, projGl)
-end
-
 function Base.copy(reduced_problem::ReducedPrecondLinearProblem)
     return ReducedPrecondLinearProblem(copy(reduced_problem.linear_problem), copy(reduced_problem.preconditioner))
 end
@@ -223,7 +203,13 @@ function ITensorMPS.position!(reduced_problem::ReducedFAIPrecondLinearProblem, s
     return reduced_problem
 end
 
-function ITensors.contract(P::AbstractProjMPO)::ITensor
+"""
+    dense_projected_operator(P::AbstractProjMPO) -> ITensor
+
+Contract the projected operator `P` (left environment, the MPO tensors of its current sites and right environment)
+into one ITensor, the dense local operator of the sweep at the current position.
+"""
+function dense_projected_operator(P::AbstractProjMPO)::ITensor
     itensor_map = Union{ITensor,OneITensor}[lproj(P)]
     append!(itensor_map, P.H[site_range(P)])
     push!(itensor_map, rproj(P))

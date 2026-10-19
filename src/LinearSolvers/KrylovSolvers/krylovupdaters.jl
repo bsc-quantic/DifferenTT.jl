@@ -1,5 +1,3 @@
-using ITensorMPS: operator, constant_term, contract, ReducedLinearProblem
-
 """
     (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
 
@@ -119,7 +117,7 @@ function _compute_and_record_cond!(
     problem::ReducedLinearProblem, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing
 )
     lpos = _krylov_lpos(problem)
-    A, = _local_dense_matrix(contract(operator(problem)), constant_term(problem))
+    A, = _local_dense_matrix(dense_projected_operator(operator(problem)), constant_term(problem))
     κ_A, λ_A = _eig_condition(A)
 
     use_cg && _check_spd(λ_A, "Operator A", lpos, spd_tol)
@@ -141,7 +139,7 @@ function _compute_and_record_cond!(
     lpos = _krylov_lpos(problem)
     linear_problem = problem.linear_problem
     A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(
-        contract(operator(linear_problem)), constant_term(linear_problem)
+        dense_projected_operator(operator(linear_problem)), constant_term(linear_problem)
     )
     # For the FAI preconditioner, contract returns the dense Glᵀ Gl
     Pinv = reshape(array(contract(problem.preconditioner), rowinds..., colinds...), rowdim, coldim)
@@ -218,7 +216,7 @@ function _record_spectrum!(store::KrylovSpectrumStats, problem::ReducedLinearPro
     b = constant_term(problem)
     spectrum = nothing
     if dim(b) <= store.max_blockdim
-        A, = _local_dense_matrix(contract(operator(problem)), b)
+        A, = _local_dense_matrix(dense_projected_operator(operator(problem)), b)
         spectrum = _local_spectrum(A, nothing)
     end
     record_krylov_spectrum!(store, _krylov_lpos(problem), dim(b), info, spectrum)
@@ -231,7 +229,7 @@ function _record_spectrum!(
     b = constant_term(linear_problem)
     spectrum = nothing
     if dim(b) <= store.max_blockdim
-        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(contract(operator(linear_problem)), b)
+        A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(dense_projected_operator(operator(linear_problem)), b)
         Pinv = reshape(array(contract(problem.preconditioner), rowinds..., colinds...), rowdim, coldim)
         spectrum = _local_spectrum(A, Pinv)
     end
@@ -317,7 +315,7 @@ function (up::KrylovUpdater)(
     end
 
     if use_preconditioner
-        x, info = linsolve(
+        x, info = preconditioned_linsolve(
             operator(problem.linear_problem),
             constant_term(problem.linear_problem),
             init,

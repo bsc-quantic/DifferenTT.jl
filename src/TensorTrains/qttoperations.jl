@@ -12,14 +12,19 @@ Lift a 1D QTT operator in MPO format into an N-dimensional MPO operator acting o
   - `arch::Architecture{N}`: The architecture defining the variable mapping.
 """
 function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
 
     active_vars = count(==(axis), arch.site_map)
-    @assert length(onedim_mpo) == active_vars "One-dim MPO length $(length(onedim_mpo)) does not match number of sites for variable $axis in site_map ($active_vars)"
+    length(onedim_mpo) == active_vars || throw(
+        DimensionMismatch(
+            "One-dim MPO length $(length(onedim_mpo)) does not match number of sites for variable $axis in site_map ($active_vars)",
+        ),
+    )
 
     array_type = backend_type(onedim_mpo)
     # Handle reversal if needed (negative arch value), reverse already implements a deepcopy operation
-    working_mpo = arch.var_nsites[axis] < 0 ? reverse(onedim_mpo) : deepcopy(onedim_mpo)
+    working_mpo = arch.var_nsites[axis] < 0 ? reverse_mpo(onedim_mpo) : deepcopy(onedim_mpo)
 
     active_indices = findall(==(axis), arch.site_map)
     total_sites = length(site_inds)
@@ -145,12 +150,13 @@ This uses a finite-state machine to construct the MPO directly, guaranteeing an 
 function ndim_operator_sum_mpo(
     onedim_ops::NTuple{N,Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}
 ) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
 
     # Handle reversal if needed
-    working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
+    working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse_mpo(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
     array_type = backend_type(working_mpos[1])
     active_indices = [findall(==(i), arch.site_map) for i in 1:N]
 

@@ -94,6 +94,7 @@ Base.@kwdef struct GlobalUpdaterArgs
     orth_maxdim::Int = typemax(Int)
     orth_cutoff::Float64 = 1e-12
     numiter_store::Any = nothing
+    converged_store::Any = nothing
 end
 
 # Bridge beween DifferenTT and ITensorMPS to avoid crashes in the observer pipeline
@@ -169,6 +170,7 @@ function Base.NamedTuple(args::GlobalUpdaterArgs)
         orth_maxdim=args.orth_maxdim,
         orth_cutoff=args.orth_cutoff,
         numiter_store=args.numiter_store,
+        converged_store=args.converged_store,
     )
 end
 
@@ -313,7 +315,7 @@ function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     rel_res = term3 > 0.0 ? res / sqrt(term3) : res
 
     if rel_res < o.rtol
-        @info "Residual early truncation condition met: ||Ax-b||/||b|| = $(rel_res) < $(o.rtol)"
+        @debug "Residual early truncation condition met: ||Ax-b||/||b|| = $(rel_res) < $(o.rtol)"
         return true
     end
     return false

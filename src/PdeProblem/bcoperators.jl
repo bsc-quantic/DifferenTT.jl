@@ -144,61 +144,6 @@ end
 # itself and the rhs acordingly in order to use CG
 # -------------------------------------------------------------------------------------------------
 
-function onedim_neumann_boundary_correction(
-    derivative_order::Int,
-    arch::QTTArchitecture,
-    axis::Int,
-    boundary_conditions::BoundaryCond1d,
-    array_type::Type{<:AbstractArray}=Array;
-    stencil_order::Int=8,
-    cutoff::Float64=1e-15,
-    maxdim::Int=typemax(Int64),
-)
-    nsites = abs(arch.var_nsites[axis])
-    sites = siteinds(2, nsites)
-    left_neumann_corr = if (boundary_conditions.left isa NeumannBC)
-        left_neumann_boundary_correction(
-            derivative_order, arch, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim
-        )
-    else
-        nothing
-    end
-    right_neumann_corr = if (boundary_conditions.right isa NeumannBC)
-        right_neumann_boundary_correction(
-            derivative_order, arch, sites, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim
-        )
-    else
-        nothing
-    end
-
-    return _nothing_sum_handler(left_neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
-end
-
-function onedim_neumann_boundary_correction(
-    derivative_order::Int,
-    arch::TTArchitecture,
-    axis::Int,
-    boundary_conditions::BoundaryCond1d,
-    array_type::Type{<:AbstractArray}=Array;
-    stencil_order::Int=8,
-    cutoff::Float64=1e-15,
-    maxdim::Int=typemax(Int64),
-)
-    dim = arch.var_dims[axis]
-    left_neumann_corr = if (boundary_conditions.left isa NeumannBC)
-        left_neumann_boundary_correction(derivative_order, arch, dim, array_type; stencil_order=stencil_order)
-    else
-        nothing
-    end
-    right_neumann_corr = if (boundary_conditions.right isa NeumannBC)
-        right_neumann_boundary_correction(derivative_order, arch, dim, array_type; stencil_order=stencil_order)
-    else
-        nothing
-    end
-
-    return _nothing_sum_handler(left_neumann_corr, right_neumann_corr)
-end
-
 function neumann_correction_matrix(derivative_order::Int, side::Symbol; stencil_order::Int=8)
     coef_dict = derivative_coefficients(derivative_order; stencil_order=stencil_order)
 

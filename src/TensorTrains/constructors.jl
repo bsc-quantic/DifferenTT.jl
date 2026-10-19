@@ -29,7 +29,7 @@ function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArr
 
     nsite == 1 && return MPO([adapt(array_type, delta(Float64, site_inds[1], site_inds[1]'))])
 
-    link_inds = linkinds(fill(1, nsite-1))
+    link_inds = link_indices(fill(1, nsite-1))
     tensor_list = ITensor[]
 
     push!(tensor_list, make_identity_site(site_inds[1], link_inds[1], array_type))
@@ -41,7 +41,7 @@ function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArr
 end
 
 function identity_mpo(site_dims::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return identity_mpo(site_inds, array_type)
 end
 
@@ -65,7 +65,7 @@ function zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}
 end
 
 function zeros_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return zeros_mpo(site_inds, array_type)
 end
 
@@ -89,7 +89,7 @@ function zeros_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}
 end
 
 function zeros_mps(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return zeros_mps(site_inds, array_type; linkdims=linkdims)
 end
 
@@ -104,7 +104,11 @@ end
 Construct an MPS whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
 """
 function ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
-    @assert length(site_inds) == length(bond_inds) + 1 "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds)))."
+    length(site_inds) == length(bond_inds) + 1 || throw(
+        DimensionMismatch(
+            "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds))).",
+        ),
+    )
     N = length(site_inds)
     M = MPS(N)
     N == 1 && return MPS([ITensor(1.0, site_inds[1])])
@@ -129,7 +133,7 @@ end
 Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
 """
 function ones_mps(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
@@ -137,8 +141,8 @@ ones_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = 
 
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mps(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    site_inds = site_indices(site_dims)
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
@@ -158,7 +162,11 @@ end
 Construct an MPO whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
 """
 function ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
-    @assert length(site_inds) == length(bond_inds) + 1 "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds)))."
+    length(site_inds) == length(bond_inds) + 1 || throw(
+        DimensionMismatch(
+            "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds))).",
+        ),
+    )
     N = length(site_inds)
     M = MPO(N)
     N == 1 && return MPO([ITensor(1.0, site_inds[1], site_inds[1]')])
@@ -183,7 +191,7 @@ end
 Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
 """
 function ones_mpo(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
@@ -191,8 +199,8 @@ ones_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = 
 
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mpo(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    site_inds = site_indices(site_dims)
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
@@ -254,7 +262,7 @@ function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; a
 end
 
 function lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
-    return transpose(upper_triang_mpo(sites, include_diag; array_type=array_type))
+    return transpose_mpo(upper_triang_mpo(sites, include_diag; array_type=array_type))
 end
 
 function triang_projector_mpo(
@@ -311,8 +319,10 @@ Construct an MPS from a list of arrays, using provided site and bond indices.
 function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
     nsite = length(mps_arrays)
 
-    @assert length(site_indices) == length(mps_arrays) && length(bond_indices) == length(mps_arrays) - 1 "Index set length do not match with array set length"
-    @assert dim(bond_indices[1]) == size(mps_arrays[1], 2) == size(mps_arrays[2], 2) "bond dimension mismatch at site 1"
+    (length(site_indices) == length(mps_arrays) && length(bond_indices) == length(mps_arrays) - 1) ||
+        throw(DimensionMismatch("Index set length do not match with array set length"))
+    dim(bond_indices[1]) == size(mps_arrays[1], 2) == size(mps_arrays[2], 2) ||
+        throw(DimensionMismatch("bond dimension mismatch at site 1"))
 
     output = MPS(nsite)
 
@@ -322,7 +332,8 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     output[1] = ITensor(mps_arrays[1], s, l_right)
 
     for n in 2:(nsite-1)
-        @assert dim(bond_indices[n]) == size(mps_arrays[n], 3) == size(mps_arrays[n+1], 2) "bond dimension mismatch at site $n"
+        dim(bond_indices[n]) == size(mps_arrays[n], 3) == size(mps_arrays[n+1], 2) ||
+            throw(DimensionMismatch("bond dimension mismatch at site $n"))
 
         s = site_indices[n]
         l_left = bond_indices[n-1]
@@ -376,11 +387,13 @@ Construct an MPO from a list of arrays, using provided site and bond indices.
 function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
 
-    @assert length(site_indices) == length(mpo_arrays) && length(bond_indices) == length(mpo_arrays) - 1 "Index set length do not match with array set length"
+    (length(site_indices) == length(mpo_arrays) && length(bond_indices) == length(mpo_arrays) - 1) ||
+        throw(DimensionMismatch("Index set length do not match with array set length"))
 
     output = MPO(nsite)
 
-    @assert dim(bond_indices[1]) == size(mpo_arrays[1], 3) == size(mpo_arrays[2], 3) "bond dimension mismatch at site 1"
+    dim(bond_indices[1]) == size(mpo_arrays[1], 3) == size(mpo_arrays[2], 3) ||
+        throw(DimensionMismatch("bond dimension mismatch at site 1"))
 
     s_out = site_indices[1]'
     s_in = site_indices[1]
@@ -389,7 +402,8 @@ function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     output[1] = ITensor(mpo_arrays[1], s_out, s_in, l_right)
 
     for n in 2:(nsite-1)
-        @assert dim(bond_indices[n]) == size(mpo_arrays[n], 4) == size(mpo_arrays[n+1], 3) "bond dimension mismatch at site $n"
+        dim(bond_indices[n]) == size(mpo_arrays[n], 4) == size(mpo_arrays[n+1], 3) ||
+            throw(DimensionMismatch("bond dimension mismatch at site $n"))
         s_out = site_indices[n]'
         s_in = site_indices[n]
         l_left = bond_indices[n-1]

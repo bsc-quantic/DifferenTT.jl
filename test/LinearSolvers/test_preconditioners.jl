@@ -1,5 +1,7 @@
 using DifferenTT
 using Test
+using Logging
+using StableRNGs
 using ITensors
 using ITensorMPS
 using LinearAlgebra
@@ -100,10 +102,22 @@ using .TestUtils
         solver = ALS(sweep_kwargs=DifferenTT.SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-8))
         D_kwargs = (; maxdim=2, cutoff=1e-8)
 
-        M⁻¹ = fai_preconditioner(A, 0.5, solver, D_kwargs)
+        M⁻¹ = fai_preconditioner(A; μ=0.5, solver, D_cutoff=1e-8, D_maxdim=2)
         @test M⁻¹ isa FactorizedPreconditioner
         @test M⁻¹.operator isa MPO
         @test length(M⁻¹.operator) == n
+
+        # The residual of the projected system is computed and logged only on request
+        @test_logs min_level=Logging.Info fai_preconditioner(A; μ=0.5, solver)
+        @test_logs (:info, r"rel residual") min_level=Logging.Info fai_preconditioner(
+            A; μ=0.5, solver, compute_residual=true
+        )
+
+        # The positional form is deprecated and forwards to the keyword form, with D_kwargs mapped to D_cutoff,
+        # D_maxdim and D_oversample
+        M_old = @test_deprecated fai_preconditioner(A, 0.5, solver, D_kwargs; rng=StableRNG(1))
+        M_new = fai_preconditioner(A; μ=0.5, solver, D_cutoff=1e-8, D_maxdim=2, rng=StableRNG(1))
+        @test contract_mpo(M_old.operator) == contract_mpo(M_new.operator)
     end
 
     @testset "SincQuadraturePreconditioner construction" begin
@@ -125,8 +139,8 @@ using .TestUtils
 
         wrong_arch1 = DifferenTT.TTArchitecture((4, 4, 4))
         wrong_arch2 = DifferenTT.TTArchitecture((5, 4))
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch1, sites, A_list, M)
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch2, sites, A_list, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(wrong_arch1, sites, A_list, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(wrong_arch2, sites, A_list, M)
 
         A3 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0]
         A4 = [2.0 -1.0 0.0; -1.0 2.0 -1.0; 0.0 -1.0 2.0]
@@ -134,8 +148,8 @@ using .TestUtils
         wrong_A_list1 = [A1, A3]
         wrong_A_list2 = [A1, A4]
 
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
         @test_throws ArgumentError DifferenTT.sincquadrature_preconditioner(arch, sites, [-A1, -A2], M)
     end
 
@@ -169,8 +183,8 @@ using .TestUtils
         test_sites = [Index(2, "Site,n=$i") for i in 1:4]
         grid = Grid(arch, (1.0,))
 
-        bc_dd = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))))
-        bc_dn = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)))
+        bc_dd = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+        bc_dn = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)))
 
         # Dirichlet-Dirichlet case
         inv_dd_prec = DifferenTT.inverse_laplacian_preconditioner(test_sites, arch, grid, bc_dd)

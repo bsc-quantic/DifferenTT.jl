@@ -1,7 +1,3 @@
-using KrylovKit: ConvergenceInfo, normres2string, STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL
-using ITensors, ITensorMPS
-using ITensorMPS: apply, norm
-
 function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     kwargs_tt = (; maxdim=alg.maxdim, cutoff=alg.cutoff)
     kwargs_orth = (; maxdim=alg.orth_maxdim, cutoff=alg.orth_cutoff)
@@ -52,7 +48,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     denom = if iszero(α₀)
         α₁ * ITensorMPS.inner(p', operator, p)
     else
-        α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+        α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     end
     α = ρ / denom
 
@@ -92,7 +88,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         denom = if iszero(α₀)
             α₁ * ITensorMPS.inner(p', operator, p)
         else
-            α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+            α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         end
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)
@@ -112,7 +108,6 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
             ρ = ITensorMPS.inner(r, r)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr <= tol
@@ -189,7 +184,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     denom = if iszero(α₀)
         α₁ * ITensorMPS.inner(p', operator, p)
     else
-        α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+        α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     end
     α = ρ / denom
 
@@ -228,7 +223,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         denom = if iszero(α₀)
             α₁ * ITensorMPS.inner(p', operator, p)
         else
-            α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+            α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         end
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)
@@ -250,7 +245,6 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
             ρ = ITensorMPS.inner(r, M⁻¹, r)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr <= tol

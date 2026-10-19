@@ -130,7 +130,7 @@ using .TestUtils
         exp_periodic = INSExperiment(grid, u_fields, p_field_periodic, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_periodic) == true
 
-        dirichlet_bc1d = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+        dirichlet_bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
         dirichlet_bc2d = BoundaryConditions(dirichlet_bc1d, dirichlet_bc1d)
         p_field_dirichlet = ScalarField(TTArchitecture(arch_2d), dirichlet_bc2d)
 
@@ -302,5 +302,41 @@ using .TestUtils
 
         # Interior has 0 boundaries, so 1.0
         @test isapprox(dense_sym_rhs_2d[2, 2], 1.0; atol=1e-14)
+    end
+end
+
+# Known limitations of the Chorin projection, kept as documented in v0.1 (decision D8 of the release plan): both are
+# recorded as @test_broken until they are fixed in v0.2.
+@testset "Chorin known limitations (D8)" begin
+    arch = TTArchitecture((6, 6))
+    sites = siteinds(arch)
+    grid = Grid(arch, (1.0, 1.0))
+    n1, n2 = variable_dims(arch)
+    dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    neumann = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+    u_bcs = BoundaryConditions(dirichlet, dirichlet)
+    p_bcs = BoundaryConditions(neumann, neumann)
+    u = (random_mps(rng(1), sites; linkdims=3), random_mps(rng(2), sites; linkdims=3))
+    u_fields = VectorField(u, arch, (u_bcs, u_bcs))
+    p_field = ScalarField(sites, arch, p_bcs)
+    experiment = quietly(() -> INSExperiment(grid, u_fields, p_field, 100.0, nothing; stencil_order=2, cutoff=1e-14))
+    cache = quietly(() -> ChorinCache(experiment))
+    @test cache.regularize
+    dt = 1e-2
+
+    # The mean removal of poisson_rhs subtracts Σrhs / Π(nᵢ - 1) instead of Σrhs / Π nᵢ, because it divides
+    # Σrhs · Π hᵢ by the box volume Π (nᵢ - 1) hᵢ. The regularized right-hand side therefore keeps a
+    # fraction 1 - Π nᵢ / (nᵢ - 1) of its mean.
+    rhs = DifferenTT.poisson_rhs(experiment, cache, u, dt)
+    @test_broken abs(DifferenTT.integrate(rhs)) < 1e-10 * sqrt(n1 * n2) * norm(rhs)
+
+    # The projection u = u* - dt ∇p also changes the Dirichlet wall rows, so the tangential pressure gradient drags
+    # the wall velocity a little at every step. The wall rows of the correction should be zero.
+    p = random_mps(rng(3), sites; linkdims=3)
+    u_corr = DifferenTT.∇p_correction(u, experiment, cache, p, dt)
+    wall = [i in (1, n1) || j in (1, n2) for j in 1:n2, i in 1:n1] # [y, x], site 1 (x) is the most significant
+    for c in 1:2
+        δu = reshape(todense(u_corr[c]) - todense(u[c]), n2, n1)
+        @test_broken maximum(abs, δu[wall]) < 1e-12
     end
 end

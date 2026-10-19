@@ -59,7 +59,7 @@ using LinearAlgebra
 
     @testset "ReducedFactorizedPreconditioner operations" begin
         solver = ALS(sweep_kwargs=DifferenTT.SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-8))
-        M_fai = fai_preconditioner(A, 0.5, solver, (; maxdim=2, cutoff=1e-8))
+        M_fai = fai_preconditioner(A; μ=0.5, solver, D_maxdim=2, D_cutoff=1e-8)
 
         reduced_prob2 = DifferenTT.initialize_reducedprecondlinearproblem(A, b, M_fai)
 

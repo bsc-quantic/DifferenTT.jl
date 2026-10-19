@@ -1,5 +1,3 @@
-using ITensorMPS: ReducedLinearProblem, alternating_update
-
 """
     ALS <: AbstractDMRGSolver
 

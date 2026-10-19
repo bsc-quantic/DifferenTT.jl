@@ -56,7 +56,7 @@ end
             for order in [1, 2]
                 for (name, bc1d) in [
                     ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
-                    ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))),
+                    ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
                     ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
                 ]
                     @testset "Derivative $order, Stencil $stencil_order, BC $name" begin
@@ -119,7 +119,7 @@ end
         qtt_arch = QTTArchitecture((nsite_x, nsite_y))
         grid = Grid(qtt_arch, (1.0, 1.0))
         bc1d_x = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-        bc1d_y = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0))
+        bc1d_y = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
         bcs = BoundaryConditions(bc1d_x, bc1d_y)
 
         # We need a ScalarField to create the ops
@@ -147,5 +147,40 @@ end
         bn_vec = DifferenTT.BoundaryNull(vfield)
         @test bn_vec isa DifferenTT.BoundaryNull{2}
         @test bn_vec[1] isa DifferenTT.BoundaryNullScalar{2}
+    end
+
+    # Regression test for B3: the eye-padded DifferentialOpsScalar read the non-existent field grid.lengths. The padded
+    # operator must equal the operator of the reduced grid, padded with the identity: in QTT the coarse grid of
+    # 2^(n - p) nodes over the same box, in TT the first n - p nodes at the original spacing.
+    @testset "DifferentialOpsScalar with eye padding (B3)" begin
+        bcs_list = (
+            ("periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+        )
+        @testset "QTT, $name" for (name, bc) in bcs_list
+            bcs = BoundaryConditions(bc)
+            arch = QTTArchitecture((5,)) # toeplitz_mpo needs at least 4 non-padded sites
+            ops = DifferenTT.DifferentialOpsScalar(Grid(arch, (1.0,)), ScalarField(arch, bcs), (1,); stencil_order=2)
+            coarse = QTTArchitecture((4,))
+            ref = DifferenTT.DifferentialOpsScalar(Grid(coarse, (1.0,)), ScalarField(coarse, bcs); stencil_order=2)
+            @test todense(ops.d_ops[1]) ≈ kron(todense(ref.d_ops[1]), I(2))
+            @test todense(ops.d2_ops[1]) ≈ kron(todense(ref.d2_ops[1]), I(2))
+        end
+        @testset "TT, $name" for (name, bc) in bcs_list
+            bcs = BoundaryConditions(bc)
+            arch = TTArchitecture((8,))
+            grid = Grid(arch, (1.0,))
+            h = grid.dx[1]
+            ops = DifferenTT.DifferentialOpsScalar(grid, ScalarField(arch, bcs), (2,); stencil_order=2)
+            reduced = TTArchitecture((6,))
+            ref = DifferenTT.DifferentialOpsScalar(Grid(reduced, (5h,)), ScalarField(reduced, bcs); stencil_order=2)
+            for (order, D, Dref) in ((1, ops.d_ops[1], ref.d_ops[1]), (2, ops.d2_ops[1], ref.d2_ops[1]))
+                M = todense(D)
+                @test M[1:6, 1:6] ≈ todense(Dref)
+                @test iszero(M[1:6, 7:8]) && iszero(M[7:8, 1:6])
+                # The 1/h^order scaling applies to the whole padded operator, the identity block included
+                @test M[7:8, 7:8] ≈ I(2) / h^order
+            end
+        end
     end
 end

@@ -1,9 +1,38 @@
-using KrylovKit: scale, scale!!, add!!, zerovector, ConvergenceInfo, normres2string
-using KrylovKit: STARTSTOP_LEVEL, EACHITERATION_LEVEL, WARN_LEVEL
+# Adapted from KrylovKit.jl (https://github.com/Jutho/KrylovKit.jl): the unpreconditioned iteration below is that of
+# KrylovKit's CG linsolve, and the preconditioner is added on top of it. KrylovKit.jl carries the following notice:
+#
+# The KrylovKit.jl package is licensed under the MIT "Expat" License:
+#
+# > Copyright (c) 2017: Jutho.
+# >
+# > Permission is hereby granted, free of charge, to any person obtaining a copy
+# > of this software and associated documentation files (the "Software"), to deal
+# > in the Software without restriction, including without limitation the rights
+# > to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# > copies of the Software, and to permit persons to whom the Software is
+# > furnished to do so, subject to the following conditions:
+# >
+# > The above copyright notice and this permission notice shall be included in all
+# > copies or substantial portions of the Software.
+# >
+# > THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# > IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# > FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# > AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# > LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# > SOFTWARE.
+#
+# See also THIRD_PARTY_NOTICES.md.
 
-# Regular non-preconditioned implentation is taken directly from KrylovKit.jl
+"""
+    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
 
-function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
+Solve ``(a_0 + a_1 A) x = b`` by preconditioned CG, with the preconditioner applied as `KrylovKit.apply(M⁻¹, r)`.
+The unpreconditioned iteration is that of KrylovKit.jl; see the header of this file. Returns `(x, info)` as
+`KrylovKit.linsolve` does.
+"""
+function preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     # Initial function operation and division defines number type
     y₀ = KrylovKit.apply(operator, x₀)
     T = typeof(KrylovKit.inner(b, y₀) / norm(b) * one(a₀) * one(a₁))
@@ -86,7 +115,6 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a�
             ρ = KrylovKit.inner(r, z)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr < tol

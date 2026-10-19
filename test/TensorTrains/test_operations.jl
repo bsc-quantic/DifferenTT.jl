@@ -6,36 +6,50 @@ using ITensorMPS
 
 # TODO Expand these test to ensure the adapt pipelines work as intended inside the rest of the methods
 @testset "utils.jl" begin
-    @testset "replace_siteinds!" begin
+    @testset "replace_mpo_siteinds!" begin
         nsite = 4
         old_sites = siteinds(2, nsite)
         new_sites = siteinds(2, nsite)
         mpo = random_mpo(old_sites)
+        M_old = contract_mpo(mpo)
 
-        DifferenTT.replace_siteinds!(mpo, new_sites)
+        # The non-mutating version leaves its argument untouched
+        copied = DifferenTT.replace_mpo_siteinds(mpo, new_sites)
+        @test all(old_sites[i] in inds(mpo[i]) for i in 1:nsite)
+        @test contract_mpo(copied) ≈ M_old
 
-        # After replacement, old site indices should be gone
+        @test DifferenTT.replace_mpo_siteinds!(mpo, new_sites) === mpo
+
+        # After replacement, old site indices should be gone and the dense operator unchanged
         for i in 1:nsite
             @test new_sites[i] ∈ inds(mpo[i])
             @test new_sites[i]' ∈ inds(mpo[i])
+            @test old_sites[i] ∉ inds(mpo[i])
         end
+        @test contract_mpo(mpo) ≈ M_old
     end
 
-    @testset "transpose" begin
+    @testset "transpose_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
         mpo = random_mpo(sites)
-        transposed_mpo = transpose(mpo)
+        transposed_mpo = DifferenTT.transpose_mpo(mpo)
         @test transposed_mpo isa MPO
+        @test contract_mpo(transposed_mpo) ≈ transpose(contract_mpo(mpo))
         @test all(transposed_mpo[i] == swapinds(mpo[i], siteind(mpo, i), siteind(mpo, i)') for i in 1:nsite)
     end
 
-    @testset "reverse" begin
+    @testset "reverse_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
         mpo = random_mpo(sites)
-        reversed_mpos = reverse(mpo)
+        reversed_mpos = DifferenTT.reverse_mpo(mpo)
         @test reversed_mpos isa MPO
+        # Reversing the site order permutes the Kronecker factors: compare as tensors with the site axes reversed
+        Mt = reshape(contract_mpo(mpo), fill(2, 2nsite)...)
+        Rt = reshape(contract_mpo(reversed_mpos), fill(2, 2nsite)...)
+        @test Rt ≈ permutedims(Mt, (reverse(1:nsite)..., reverse((nsite+1):(2nsite))...))
+        @test all(hastags(l, "l=$k") for (k, l) in enumerate(linkinds(reversed_mpos)))
         @test length(reversed_mpos) == nsite
         # Check connectivity
         for i in 1:(nsite-1)
@@ -60,5 +74,15 @@ using ITensorMPS
         # Two elements → sum
         result2 = DifferenTT._nothing_sum_handler(a, b)
         @test result2 isa MPS
+    end
+
+    @testset "_nothing_apply_handler" begin
+        sites = siteinds(2, 3)
+        A = random_mpo(sites)
+        B = random_mpo(sites)
+        @test isnothing(DifferenTT._nothing_apply_handler(nothing, nothing))
+        @test DifferenTT._nothing_apply_handler(nothing, A, nothing) === A
+        AB = DifferenTT._nothing_apply_handler(A, nothing, B)
+        @test contract_mpo(AB) ≈ contract_mpo(A) * contract_mpo(B)
     end
 end

@@ -59,3 +59,6 @@ end
 @safetestset "KrylovSolvers/ttkrylov" begin
     include("KrylovSolvers/test_ttkrylov.jl")
 end
+@safetestset "rng" begin
+    include("test_rng.jl")
+end

@@ -7,7 +7,7 @@ TT truncation leaves a nearly singular local tensor.
 """
 function _regularized_inv(mat::AbstractMatrix; rtol::Float64=eps(Float64))
     n = size(mat, 1)
-    @assert size(mat, 1) == size(mat, 2) "Local rank-1 tensor must be square"
+    size(mat, 1) == size(mat, 2) || throw(DimensionMismatch("Local rank-1 tensor must be square"))
     ε = rtol * max(opnorm(mat), 1.0)
     return inv(mat + ε * I(n))
 end
@@ -80,6 +80,7 @@ function linsolve_preconditioner(
     linsolve_x0=nothing,
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     op1 = deepcopy(operator) # To construct AX
@@ -88,8 +89,8 @@ function linsolve_preconditioner(
     helper_sites = sim(sites) # Helper sites to extend the space
 
     if symmetrize
-        op2 = transpose(op1) # To construct XA
-        replace_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
+        op2 = transpose_mpo(op1) # To construct XA
+        replace_mpo_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
     else
         op2 = nothing
     end
@@ -117,7 +118,7 @@ function linsolve_preconditioner(
     linsolve_b = MPS([linsolve_b...]) # Convert the still MPO object into an MPS
 
     if isnothing(linsolve_x0)
-        _linsolve_x0 = MPS([1e-12 * adapt(backend_type(operator), random_mpo(sites, 1))...])
+        _linsolve_x0 = MPS([1e-12 * adapt(backend_type(operator), random_mpo(rng, sites, 1))...])
         for i in 1:N
             replaceind!(_linsolve_x0[i], sites[i]' => helper_sites[i])
             _linsolve_x0[i] = _linsolve_x0[i] * combiners[i]
@@ -131,7 +132,7 @@ function linsolve_preconditioner(
         end
     end
 
-    @info "Linsolve preconditioner with preconditioning set to $preconditioning"
+    @debug "Linsolve preconditioner with preconditioning set to $preconditioning"
 
     ls_kwargs = Dict{Symbol,Any}(kwargs)
     if !isnothing(residual_tol)
@@ -152,6 +153,13 @@ function linsolve_preconditioner(
 end
 
 # TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
+"""
+    fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning=false, residual_tol=nothing, compute_residual=false, rng=Random.default_rng(), kwargs...) -> (G̃_L::MPO, D::MPO)
+
+Internal. Return the lower-triangular approximate inverse ``\\tilde{G}_L`` (the solution of Eq. (22)) and the diagonal
+rescaling ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` that [`fai_preconditioner`](@ref) combines into ``G_L``.
+`D_kwargs` may hold the `cutoff`, `maxdim` and `oversample` of the element-wise map that computes ``D``.
+"""
 function fai_dg(
     operator::MPO,
     μ::Real,
@@ -159,16 +167,18 @@ function fai_dg(
     D_kwargs;
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    compute_residual::Bool=false,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
-    A = transpose(operator) # To construct XA
+    A = transpose_mpo(operator) # To construct XA
     array_type = backend_type(operator)
 
     sites = only.(siteinds(operator; plev=0))
     n = length(sites)
 
     helper_sites = sim(sites) # Helper sites to expand the space and vectorize the linear system
-    replace_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
+    replace_mpo_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
 
     combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:n] # Combiners that join a pair of sites coming from the two spaces into a single index
     combiner_inds = [combinedind(combiner) for combiner in combiners]
@@ -217,12 +227,14 @@ function fai_dg(
         unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0; ls_kwargs...)
     end
 
-    term1 = ITensorMPS.inner(projected_A, unscaledG, projected_A, unscaledG)
-    term2 = 2 * real(ITensorMPS.inner(projected_b', projected_A, unscaledG))
-    term3 = ITensorMPS.inner(projected_b, projected_b)
-    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(projected_b)
-
-    @info "Preconditioner found with rel residual = $rel_error"
+    # The residual of the projected system costs two more sandwiches with projected_A, so it is opt-in
+    if compute_residual
+        term1 = ITensorMPS.inner(projected_A, unscaledG, projected_A, unscaledG)
+        term2 = 2 * real(ITensorMPS.inner(projected_b', projected_A, unscaledG))
+        term3 = ITensorMPS.inner(projected_b, projected_b)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(projected_b)
+        @info "Preconditioner found with rel residual = $rel_error"
+    end
 
     # We need to go back to MPO form from the vectorized solution by reverting the combiners!
     for i in 1:n
@@ -239,7 +251,7 @@ function fai_dg(
     oversample = get(D_kwargs, :oversample, 10)
 
     D_mps = elementwise_function(
-        f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0
+        f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0, rng=rng
     )
 
     placeholder_sites = sim.(sites)
@@ -250,21 +262,94 @@ function fai_dg(
     return unscaledG, MPO([D_mps...])
 end
 
+"""
+    fai_preconditioner(A::MPO; μ::Real, solver::AbstractLinearSolver, totalmaxdim::Int=5, D_cutoff::Real=1e-15, D_maxdim::Int=typemax(Int), D_oversample::Int=10, preconditioning::Bool=false, residual_tol=nothing, compute_residual::Bool=false, rng::AbstractRNG=Random.default_rng(), kwargs...) -> FactorizedPreconditioner
+
+Build a factorized approximate inverse (FAI) preconditioner ``M^{-1} = G_L^\\top G_L \\approx A^{-1}`` of the SPD
+operator `A` in the TT format.
+
+Truncated TT approximate inverses control the norm error but not the sign of their eigenvalues, so they can become
+indefinite and break CG (Sec. 3 and Fig. 3 of Torrente et al., *Factorized approximate inverse preconditioners in the
+tensor train format*). We therefore build the inverse in factorized form, which is positive semidefinite by
+construction, and definite whenever ``G_L`` is non-singular. To do this, we first compute the lower-triangular
+approximate inverse ``\\tilde{G}_L`` by solving the projected system of Eq. (22) with `solver`, and then set
+``G_L = D \\tilde{G}_L``, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is evaluated element-wise by
+the randomized sketch of [`elementwise_function`](@ref) (Sec. 3.2). Note that this shortcut for ``D`` holds only if
+``\\tilde{G}_L`` solves its system exactly, which an approximate solver does not guarantee (Lemma 1). The cost is
+dominated by the solve for ``\\tilde{G}_L``, whose sites have dimension ``d^2``.
+
+# Arguments
+
+  - `A::MPO`: SPD operator, with site indices at prime levels 0 (input) and 1 (output).
+
+# Keywords
+
+  - `μ::Real`: weight of the complement of the lower-triangular mask in the projected operator of Eq. (22), e.g.
+    `1e7`.
+  - `solver::AbstractLinearSolver`: solver of the projected system for ``\\tilde{G}_L`` (e.g. `ALS` or
+    `ResidualALS`).
+  - `totalmaxdim::Int=5`: maximum bond dimension of ``G_L = D \\tilde{G}_L``.
+  - `D_cutoff::Real=1e-15`, `D_maxdim::Int=typemax(Int)`, `D_oversample::Int=10`: truncation cutoff, maximum bond
+    dimension and sketch oversampling of the element-wise map that computes ``D``.
+  - `preconditioning::Bool=false`: precondition the solve for ``\\tilde{G}_L`` with [`rank1_preconditioner`](@ref).
+  - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps of `solver` once the relative residual of
+    the projected system is below it (through a [`ResidualObserver`](@ref)).
+  - `compute_residual::Bool=false`: compute and log the relative residual of the projected system after the solve.
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the sketches of ``D``.
+  - `kwargs...`: passed to [`linearsolve`](@ref) for the projected system.
+
+# Returns
+
+  - `FactorizedPreconditioner`: wraps ``G_L``; pass it to [`linearsolve`](@ref).
+
+# Examples
+
+```julia
+A, sites = …
+M⁻¹ = fai_preconditioner(A; μ=1e7, solver=ALS(), totalmaxdim=8)
+x = linearsolve(ResidualALS(), A, b, M⁻¹, nothing)
+```
+
+See also [`FactorizedPreconditioner`](@ref), [`Preconditioner`](@ref).
+"""
 function fai_preconditioner(
-    operator::MPO,
+    operator::MPO;
     μ::Real,
-    g_solver::AbstractLinearSolver,
-    D_kwargs;
+    solver::AbstractLinearSolver,
     totalmaxdim::Int=5,
+    D_cutoff::Real=1e-15,
+    D_maxdim::Int=typemax(Int),
+    D_oversample::Int=10,
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    compute_residual::Bool=false,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
+    D_kwargs = (; cutoff=D_cutoff, maxdim=D_maxdim, oversample=D_oversample)
     unscaledG, D = fai_dg(
-        operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, kwargs...
+        operator, μ, solver, D_kwargs; preconditioning, residual_tol, compute_residual, rng, kwargs...
     )
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
+end
+
+# Deprecated positional form, kept so that existing scripts keep running
+function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; kwargs...)
+    Base.depwarn(
+        "`fai_preconditioner(A, μ, solver, D_kwargs; kwargs...)` is deprecated, use " *
+        "`fai_preconditioner(A; μ, solver, D_cutoff, D_maxdim, D_oversample, kwargs...)` instead.",
+        :fai_preconditioner,
+    )
+    return fai_preconditioner(
+        operator;
+        μ=μ,
+        solver=g_solver,
+        D_cutoff=get(D_kwargs, :cutoff, 1e-15),
+        D_maxdim=get(D_kwargs, :maxdim, typemax(Int)),
+        D_oversample=get(D_kwargs, :oversample, 10),
+        kwargs...,
+    )
 end
 
 """
@@ -299,9 +384,11 @@ function sincquadrature_preconditioner(
     normalize_spectrum::Bool=true,
 ) where {N}
     d = length(A_list)
-    @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
-    @assert N == d "Number of local operators does not match architecture dimensions"
-    @assert all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) "Arch var dims fo not match matrix dimensions"
+    all(size(mat, 1) == size(mat, 2) for mat in A_list) ||
+        throw(DimensionMismatch("Only square matrices/operators are currently supported"))
+    N == d || throw(DimensionMismatch("Number of local operators does not match architecture dimensions"))
+    all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) ||
+        throw(DimensionMismatch("Arch var dims do not match matrix dimensions"))
     h = pi / sqrt(M)
 
     # Eigenvalues of a Kronecker sum are sums of the eigenvalues of its terms
@@ -346,7 +433,10 @@ function sincquadrature_preconditioner(
     return Preconditioner(precond_mpo)
 end
 
-# Implementation following the tt_toolbox, not the paper
+# Implementation following the QTT inverse Laplacian of TT-Toolbox (https://github.com/oseledets/TT-Toolbox, MIT
+# license, Copyright (C) 2009-2012 Ivan Oseledets, Sergey Dolgov, Vladimir Kazeev, Thomas Mach, Olga Lebedeva, Dmitry
+# Savostyanov, Pavel Zhlobich, Le Song) rather than the formulas of Kazeev & Khoromskij (2012); see
+# THIRD_PARTY_NOTICES.md.
 function _dd_exact_inverse_laplacian(
     sites::Vector{<:Index},
     arch::QTTArchitecture{1},
@@ -354,7 +444,8 @@ function _dd_exact_inverse_laplacian(
     bc::BoundaryConditions,
     array_type::Type{<:AbstractArray}=Array,
 )
-    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC) "Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."
+    (isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)) ||
+        throw(ArgumentError("Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."))
 
     L = abs(arch.var_nsites[1])
 
@@ -439,7 +530,9 @@ function _dn_exact_inverse_laplacian(
     bc::BoundaryConditions,
     array_type::Type{<:AbstractArray}=Array,
 )
-    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC) "Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."
+    (isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)) || throw(
+        ArgumentError("Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."),
+    )
 
     L = abs(arch.var_nsites[1])
 

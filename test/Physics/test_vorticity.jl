@@ -187,8 +187,8 @@ function poiseuille_faces(arch; U=1.0, H=1.0)
 end
 
 @testset "Vorticity-streamfunction" begin
-    # DirichletBC logs at every construction: build the wall conditions once
-    wall = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+    # The wall conditions shared by the cavity experiments
+    wall = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
     walls = BoundaryConditions(wall, wall)
     periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 

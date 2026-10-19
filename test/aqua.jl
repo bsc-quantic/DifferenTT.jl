@@ -5,9 +5,9 @@ using Test
 @testset "Aqua" begin
     Aqua.test_all(
         DifferenTT;
-        piracies=(broken=true,),      # WP2 removes the type piracy and makes this strict
-        unbound_args=(broken=true,),  # WP2 removes the unbound type parameters and makes this strict
         persistent_tasks=false,       # slow (spawns a precompilation); candidate for an optional nightly job
     )
+    # Aqua checks the exported names only; names(DifferenTT) also lists the `public` ones
+    @test all(n -> isdefined(DifferenTT, n), names(DifferenTT))
     # WP6: Aqua.test_undocumented_names(DifferenTT)
 end

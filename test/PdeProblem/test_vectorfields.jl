@@ -89,4 +89,18 @@ using .TestUtils
         @test length(field_from_sites) == 0
         @test field_from_sites.usites == sites
     end
+
+    @testset "VectorField from ScalarField components" begin
+        arch = QTTArchitecture((2, 2))
+        sites = siteinds(arch)
+        sx = ScalarField(random_mps(sites), arch, bcu2d)
+        sy = ScalarField(random_mps(sites), arch, bcu2d)
+        field = VectorField((sx, sy))
+        @test field isa VectorField{2}
+        @test field.components === (sx, sy)
+        @test field.usites == sites
+        # The number of components must match the dimension, and the tuple must not be empty
+        @test_throws DimensionMismatch VectorField((sx,))
+        @test_throws MethodError VectorField(())
+    end
 end

@@ -100,8 +100,12 @@ function TensorCrossInterpolation.crossinterpolate2(
     verbosity::Int=0,
     kwargs...,
 ) where {N}
-    @assert !isempty(initialpivots) "At least one initial pivot is required."
-    @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+    !isempty(initialpivots) || throw(ArgumentError("At least one initial pivot is required."))
+    all(length(pivot) == length(arch.site_map) for pivot in initialpivots) || throw(
+        DimensionMismatch(
+            "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+        ),
+    )
 
     local_dims = collect(Int, site_dims(arch))
 
@@ -143,8 +147,12 @@ function TensorCrossInterpolation.crossinterpolate1(
     verbosity::Int=0,
     kwargs...,
 ) where {N}
-    @assert !isempty(initialpivots) "At least one initial pivot is required."
-    @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+    !isempty(initialpivots) || throw(ArgumentError("At least one initial pivot is required."))
+    all(length(pivot) == length(arch.site_map) for pivot in initialpivots) || throw(
+        DimensionMismatch(
+            "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+        ),
+    )
 
     first_pivot = initialpivots[1]
     additionalpivots = initialpivots[2:end]
@@ -191,9 +199,9 @@ Random 1-based multi-index. When `d ≥ 3`, samples only the interior indices
 discoverable (uniform sampling over the full grid has success probability that
 decays as `((d-2)/d)^N`).
 """
-function _tci_random_pivot(local_dims::AbstractVector{Int})::Vector{Int}
+function _tci_random_pivot(local_dims::AbstractVector{Int}; rng::AbstractRNG=Random.default_rng())::Vector{Int}
     return map(local_dims) do d
-        d >= 3 ? rand(2:(d-1)) : rand(1:d)
+        d >= 3 ? rand(rng, 2:(d-1)) : rand(rng, 1:d)
     end
 end
 
@@ -208,7 +216,12 @@ refines by random search over interior sites. This avoids the
 vanish on the domain boundary.
 """
 function TensorCrossInterpolation.optfirstpivot(
-    func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture; iters::Int=1000
+    func_type::Type{<:Number},
+    func::Function,
+    grid::Grid{N},
+    arch::Architecture;
+    iters::Int=1000,
+    rng::AbstractRNG=Random.default_rng(),
 ) where {N}
     local_dims = collect(Int, site_dims(arch))
 
@@ -222,7 +235,7 @@ function TensorCrossInterpolation.optfirstpivot(
     valf = abs(eval_func(pivot))
 
     for _ in 1:iters
-        random_pivot = _tci_random_pivot(local_dims)
+        random_pivot = _tci_random_pivot(local_dims; rng)
         newval = abs(eval_func(random_pivot))
         if newval > valf
             valf = newval
@@ -280,7 +293,11 @@ Evaluate an MPS at a specific physical point by converting the point to a sequen
   - `Number`: The scalar value of the MPS at the given point.
 """
 function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture) where {N}
-    @assert length(mps) == length(arch.site_map) "MPS and architecture must have the same number of sites, got $(length(mps)) and $(length(arch.site_map))."
+    length(mps) == length(arch.site_map) || throw(
+        DimensionMismatch(
+            "MPS and architecture must have the same number of sites, got $(length(mps)) and $(length(arch.site_map)).",
+        ),
+    )
 
     sequence = point_sequence(point, grid, arch)
     state_vals = sequence .+ 1

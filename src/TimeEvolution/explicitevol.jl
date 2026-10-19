@@ -1,33 +1,34 @@
 abstract type AbstractExplicitStepper <: AbstractTimeStepper end
+"""
+    AbstractRHS
+
+Supertype of the right-hand sides `f(u, t, stage)` of the explicit time steppers. A subtype is a callable struct that
+holds what it needs to evaluate the right-hand side, takes the state `u` (a tuple of MPS, one per field component),
+the time `t` and the stage `stage` of the stepper (used by RK4, and free to ignore otherwise), and returns a tuple of
+MPS of the same shape as `u`.
+
+# Examples
+
+```julia
+struct SampleRHS{E,D,B} <: AbstractRHS
+    experiment::E
+    u_diff_ops::D
+    u_boundary_null::B
+end
+
+function (rhs::SampleRHS)(u, t, stage)
+    cutoff = rhs.experiment.cutoff
+    maxdim = rhs.experiment.maxdim
+    rhs_terms = rhs_custom_func(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
+    # Keep the boundary rows fixed
+    return ntuple(length(u)) do i
+        deleter = rhs.u_boundary_null[i].u_row_deleter
+        isnothing(deleter) ? rhs_terms[i] : apply(deleter, rhs_terms[i]; cutoff=cutoff, maxdim=maxdim)
+    end
+end
+```
+"""
 abstract type AbstractRHS end
-
-#################################################################
-
-# For illustrative purposes
-# struct SampleRHS{E, D, B} <: AbstractRHS
-#     experiment::E
-#     u_diff_ops::D
-#     u_boundary_null::B
-# end
-
-# # Make the struct "callable" by defining its behavior:
-
-# function (rhs::SampleRHS)(u, t, stage)
-#     # stage is used for rk4 internal stage tracking, ut there is no need to use it internally in RHS
-#     cutoff = rhs.experiment.cutoff
-#     maxdim = rhs.experiment.maxdim
-
-#     rhs_terms = rhs_custom_func(u, rhs.u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-
-#     rhs_corrected = ntuple(i -> begin
-#         deleter = rhs.u_boundary_null[i].u_row_deleter
-#         return isnothing(deleter) ? rhs_terms[i] : apply(deleter, rhs_terms[i]; cutoff=cutoff, maxdim=maxdim)
-#     end, length(u))
-
-#     return rhs_corrected
-# end
-
-#################################################################
 
 """
     ExplicitEuler{K} <: AbstractExplicitStepper

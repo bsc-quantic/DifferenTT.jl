@@ -1,3 +1,8 @@
+# =================================================================================================
+# WORK IN PROGRESS: implicit time steppers. This file is not exported, not tested and not used anywhere in the
+# package, and it calls functions that do not exist yet. Do not rely on anything defined here (release plan, D13).
+# =================================================================================================
+
 #################
 
 # WARNING THIS IS WIP. Things to work on:

@@ -18,7 +18,7 @@ using Logging
 using Random
 using StableRNGs
 
-export rng, dense, relres, mps_equal, quietly, tt_laplacian, qtt_laplacian
+export rng, todense, relres, mps_equal, quietly, tt_laplacian, qtt_laplacian
 
 """
 Return a stable, seeded random number generator for reproducible tests.
@@ -27,14 +27,16 @@ rng(seed::Integer=1234) = StableRNG(seed)
 
 """
 Return the dense array of an MPS or MPO, with site 1 as the most significant index.
+
+(Not called `dense`, which ITensors exports.)
 """
-dense(x::MPS) = DifferenTT.contract_mps(x)
-dense(A::MPO) = DifferenTT.contract_mpo(A)
+todense(x::MPS) = DifferenTT.contract_mps(x)
+todense(A::MPO) = DifferenTT.contract_mpo(A)
 
 """
 Return the relative residual ``\\|A x - b\\| / \\|b\\|``, computed with dense arrays.
 """
-relres(A::MPO, x::MPS, b::MPS) = norm(dense(A) * dense(x) - dense(b)) / norm(dense(b))
+relres(A::MPO, x::MPS, b::MPS) = norm(todense(A) * todense(x) - todense(b)) / norm(todense(b))
 
 """
     mps_equal(a, b)
@@ -54,7 +56,7 @@ quietly(f) = with_logger(f, NullLogger())
 
 function _dirichlet_laplacian(arch, N, stencil_order)
     sites = siteinds(arch)
-    bc = quietly(() -> BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)...))
+    bc = BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)...)
     grid = Grid(arch, ntuple(_ -> 1.0, N))
     A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), grid; stencil_order=stencil_order)
     return A, sites, arch, grid

@@ -12,9 +12,17 @@ end
 
 backend_type(::VectorField{N,A}) where {N,A} = A
 
-function VectorField(components::NTuple{N,S}) where {N,S<:ScalarField{N}}
-    @assert all(length(field) == length(components[1]) for field in components) "All scalar filed must have the same number of steps"
-    @assert all(backend_type(field) == backend_type(components[1]) for field in components) "All scalar fields must share array type"
+function VectorField(components::Tuple{S,Vararg{S}}) where {S<:ScalarField}
+    N = length(components)
+    components[1] isa ScalarField{N} || throw(
+        DimensionMismatch(
+            "a VectorField of $N components needs ScalarField{$N} components, got $(typeof(components[1]))"
+        ),
+    )
+    all(length(field) == length(components[1]) for field in components) ||
+        throw(ArgumentError("All scalar fields must have the same number of steps"))
+    all(backend_type(field) == backend_type(components[1]) for field in components) ||
+        throw(ArgumentError("All scalar fields must share array type"))
 
     return VectorField(components, components[1].usites, components[1].arch, backend_type(components[1]))
 end
@@ -34,10 +42,13 @@ Construct a VectorField from a tuple of initial MPSs.
 function VectorField(init_u::NTuple{N,MPS}, arch::Architecture, bcs::NTuple{N,BoundaryConditions{N}}) where {N}
     total_site_count = total_sites(arch)
     for i in 1:N
-        @assert length(init_u[i]) == total_site_count "Mismatch between init MPS length and arch for component $i"
+        length(init_u[i]) == total_site_count ||
+            throw(DimensionMismatch("Mismatch between init MPS length and arch for component $i"))
     end
-    @assert all(siteinds(init_u[1]) == siteinds(u) for u in init_u) "MPS site indices do not match across components."
-    @assert all(backend_type(init_u[1]) == backend_type(u) for u in init_u) "MPS backend types do not match across components."
+    all(siteinds(init_u[1]) == siteinds(u) for u in init_u) ||
+        throw(ArgumentError("MPS site indices do not match across components."))
+    all(backend_type(init_u[1]) == backend_type(u) for u in init_u) ||
+        throw(ArgumentError("MPS backend types do not match across components."))
 
     array_type = backend_type(init_u[1])
     usites = siteinds(init_u[1])
@@ -72,7 +83,8 @@ function VectorField(
     bcs::NTuple{N,BoundaryConditions{N}},
     array_type::Type{<:AbstractArray}=Array,
 ) where {N}
-    @assert all(site_dims(arch) .== dim.(usites)) "Site dimensions do not match with architecture properties"
+    all(site_dims(arch) .== dim.(usites)) ||
+        throw(DimensionMismatch("Site dimensions do not match with architecture properties"))
     components = ntuple(i -> ScalarField(usites, arch, bcs[i], array_type), N)
     return VectorField(components, usites, arch, array_type)
 end

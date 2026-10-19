@@ -24,3 +24,6 @@ end
 @safetestset "utils" begin
     include("test_utils.jl")
 end
+@safetestset "rng" begin
+    include("test_rng.jl")
+end

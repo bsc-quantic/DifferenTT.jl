@@ -1,21 +1,41 @@
-using ITensors
-using ITensors: ITensors, Arrow, Index, TagSets, id, plev, primestring, space
-using ITensors.NDTensors: matrix, dim
-using LinearAlgebra
-using ITensors.NDTensors.BackendSelection: @Algorithm_str, Algorithm
-using Printf
+"""
+    PivotSpace{P<:Pair}
 
-# TODO Test all of this
-function ITensors.Index(pivs::Vector{Vector{P}}; dir::Arrow=ITensors.Out, tags="", plev=0) where {P<:Pair}
-    return Index(rand(ITensors.index_id_rng(), ITensors.IDType), pivs, dir, tags, plev)
+Space of an index whose values are labelled by pivots, as built by the cross interpolation of `interpolative`: entry
+`r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping the pivots in an owned type
+lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
+"""
+struct PivotSpace{P<:Pair}
+    pivots::Vector{Vector{P}}
 end
 
-const PivotIndex = Index{Vector{Vector{P}}} where {P<:Pair}
+Base.:(==)(a::PivotSpace, b::PivotSpace) = a.pivots == b.pivots
+Base.length(s::PivotSpace) = length(s.pivots)
+Base.copy(s::PivotSpace) = PivotSpace(copy(s.pivots))
+
+const PivotIndex = Index{<:PivotSpace}
+
+"""
+    pivot_index(pivs::Vector{Vector{<:Pair}}; dir=ITensors.Out, tags="", plev=0) -> Index{PivotSpace}
+
+Return a new index of dimension `length(pivs)` that carries the pivots `pivs` in its space.
+"""
+function pivot_index(pivs::Vector{Vector{P}}; dir::Arrow=ITensors.Out, tags="", plev=0) where {P<:Pair}
+    return Index(rand(ITensors.index_id_rng(), ITensors.IDType), PivotSpace(pivs), dir, tags, plev)
+end
+
+"""
+Return the pivots stored in the space of the pivot index `i`.
+"""
+index_pivots(i::PivotIndex) = space(i).pivots
 
 ITensors.NDTensors.dim(i::PivotIndex) = length(space(i))
 
 ITensors.hasqns(i::PivotIndex) = false
 
+"""
+Return whether the index `i` carries pivots, i.e. whether it is an `Index{PivotSpace}`.
+"""
 haspivots(i::PivotIndex) = true
 haspivots(i::Index) = false
 
@@ -80,10 +100,14 @@ norm(L[pr,:]*Diagonal(d)*U[:,pc]-M,Inf) <= abs(d[k])
 where k=length(d). (Note that this inequality uses the infinity norm.)
 The value of k is determined dynamically such that `k <= maxdim`
 and `abs(d[k]) < cutoff`.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function prrldu(M_::Matrix; cutoff::Real=0.0, maxdim::Int=typemax(Int), mindim::Int=1)
-    @assert maxdim > 0
-    @assert mindim > 0
+    maxdim > 0 || throw(ArgumentError("`maxdim` must be positive"))
+    mindim > 0 || throw(ArgumentError("`mindim` must be positive"))
     mindim = min(maxdim, mindim)
     Elt = eltype(M_)
     M = copy(M_)
@@ -154,6 +178,10 @@ the array `piv_cols`. The number of columns of
 C is controlled by the approximate (SVD) rank of M,
 which is controlled by the parameters `cutoff`
 and `maxdim`.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(::Algorithm"prrldu", M::Matrix; cols=nothing, kws...)
     if !isnothing(cols)
@@ -182,18 +210,13 @@ function interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0
         m = size(K, 1)
         Kt = K
         error = 0.0
-        #num_below_cutoff = 0
         for t in 1:maxdim
             Kt2 = Kt * Kt
             l = argmax(p -> (p ∈ cols ? -Inf : Kt2[p, p] / Kt[p, p]), 1:m)
             max_err2 = Kt2[l, l] / Kt[l, l]
-            #@show max_err2 
-            #@show sqrt(max_err2)
-            #(max_err2 < eps(eltype(M)) || num_below_cutoff >= 2) && break
             error = sqrt(abs(max_err2))
             if (error < cutoff)
                 break
-                #num_below_cutoff += 1
             end
             push!(cols, l)
             Kt = K - K[:, cols] * (K[cols, cols] \ K[cols, :]) #Schur complement
@@ -220,6 +243,10 @@ Optional keyword arguments:
   - mindim::Int - minimum number of columns to keep in factorization
   - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
   - tags="Link" - tags to use for the Index connecting `C` to `Z`
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(M::Matrix; algorithm="prrldu", kws...)
     return interpolative(Algorithm(algorithm), M; kws...)
@@ -246,11 +273,15 @@ Optional keyword arguments:
   - mindim::Int - minimum number of columns to keep in factorization
   - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
   - tags="Link" - tags to use for the Index connecting `C` to `Z`
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Nothing,Index}=nothing, tags="Link", kws...)
     cols = nothing
     if !isnothing(pivot_index)
-        pivots = space(pivot_index)
+        pivots = index_pivots(pivot_index)
         # Remove pivot data involving the current vertex (local_vert)
         local_pivots = [only(filter(p->(p.first == local_vert), piv_set)).second for piv_set in pivots]
         other_pivots = [filter(p->(p.first != local_vert), piv_set) for piv_set in pivots]
@@ -263,10 +294,10 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
             for j in 1:length(local_pivots)
                 l = local_pivots[j]
                 if haspivots(col_inds[1])
-                    o = findfirst(==(other_pivots[j]), space(col_inds[1]))
+                    o = findfirst(==(other_pivots[j]), index_pivots(col_inds[1]))
                     cols[j] = o + dim(col_inds[1])*(l-1)
                 else
-                    o = findfirst(==(other_pivots[j]), space(col_inds[2]))
+                    o = findfirst(==(other_pivots[j]), index_pivots(col_inds[2]))
                     cols[j] = l + dim(col_inds[1])*(o-1)
                 end
             end
@@ -305,23 +336,25 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     pivs = Vector{Vector{pivot_eltype}}(undef, rank)
     function get_pivs(r, c)
         i, ip = col_inds[c], col_pivs[r][c]
-        return haspivots(i) ? space(i)[ip] : [local_vert => ip]
+        return haspivots(i) ? index_pivots(i)[ip] : [local_vert => ip]
     end
     pivs = [vcat([get_pivs(r, c) for c in 1:length(col_inds)]...) for r in 1:rank]
 
-    # TODO: debugging code to check if reconstructed pivot index matches
-    check_pivot_index = Index(pivs; tags)
+    # Check that the reconstructed pivot index matches the one passed by the caller, if any
+    check_pivot_index = DifferenTT.pivot_index(pivs; tags) # qualified: the keyword `pivot_index` shadows it here
     @assert dim(check_pivot_index) == rank
     if isnothing(pivot_index)
         pivot_index = check_pivot_index
     else
-        if space(pivot_index) != space(check_pivot_index)
-            @show space(pivot_index)
-            @show space(check_pivot_index)
-            error("reconstructed pivot index space does not matched user provided pivot index space")
+        if index_pivots(pivot_index) != index_pivots(check_pivot_index)
+            throw(
+                ArgumentError(
+                    "reconstructed pivot index space does not match the user-provided pivot index space: " *
+                    "got $(index_pivots(check_pivot_index)), expected $(index_pivots(pivot_index))",
+                ),
+            )
         end
     end
-    #end
 
     # Make ITensors from C and Z matrices
     C = ITensor(C_matrix, cr, pivot_index) * dag(Cmb_row)
@@ -330,29 +363,30 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     return C, Z, error
 end
 
-function sketch(M::AbstractMPS, region_verts, k::Index)
+function sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([random_itensor(sites[v])*M[v] for v in reverse(region_verts)])
+        P = prod([random_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
         S += P*onehot(k=>p)
     end
     return S
 end
 
 """
-    suffix_sketches(M::AbstractMPS, k::Index)
+    suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng=Random.default_rng())
 
 Random sketches of every suffix of `M`, accumulated in a single right-to-left pass.
 
-`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds,
-and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
-`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same (Gaussian) sketch
-distribution. The cross in `_rsi_tt_mul` only ever rewrites tensors at or to the left of its
-current region, so the suffixes it needs are always the ones of the untouched input MPS.
+`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds (or
+`positive_sketch(M, v:length(M), k)` with `positive = true`, which draws uniform, positive sketch vectors instead of
+Gaussian ones), and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
+`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same sketch distribution for every suffix.
+The crosses of `_rsi_tt_mul` and `elementwise_function` only ever rewrite tensors at or to the left of their current
+region, so the suffixes they need are always the ones of the untouched input MPS.
 """
-function suffix_sketches(M::AbstractMPS, k::Index)
+function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::AbstractRNG=Random.default_rng())
     N = length(M)
     sites = siteinds(M)
     S = Vector{ITensor}(undef, N + 1)
@@ -362,7 +396,8 @@ function suffix_sketches(M::AbstractMPS, k::Index)
     for v in N:-1:1
         Sv = ITensor()
         for p in 1:dim(k)
-            cols[p] = random_itensor(sites[v]) * M[v] * cols[p]
+            r = positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v])
+            cols[p] = r * M[v] * cols[p]
             Sv += cols[p] * onehot(k => p)
         end
         S[v] = Sv
@@ -403,7 +438,7 @@ sufficient for the zero fields the pipeline builds explicitly, unlike a full `no
 iszero_tt(M::AbstractMPS) = any(t -> iszero(norm(t)), M)
 
 # Number of times `tt_mul` had to fall back from the randomized cross to the direct product.
-const TT_MUL_FALLBACKS = Ref(0)
+const TT_MUL_FALLBACKS = Threads.Atomic{Int}(0)
 
 """
     tt_mul_fallbacks()
@@ -421,30 +456,30 @@ Reset the counter reported by [`tt_mul_fallbacks`](@ref).
 """
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
-# 1. Define the core method that unpacks the ITensor into an NDTensors.Tensor
-function Random.rand!(rng::AbstractRNG, T::ITensor)
-    # Mutate the underlying data container directly using Julia's base rand!
+"""
+Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it.
+"""
+function _rand_uniform!(rng::AbstractRNG, T::ITensor)
+    # Mutate the underlying NDTensors.Tensor directly with Base's rand!
     rand!(rng, ITensors.tensor(T))
     return T
 end
 
-# 2. Define the convenience wrapper matching the default Julia syntax
-function Random.rand!(T::ITensor)
-    return rand!(Random.default_rng(), T)
-end
+"""
+    uniform_itensor([rng::AbstractRNG,] inds::Index...) -> ITensor
 
-function uniform_itensor(inds::Vararg{Index})
-    tens = ITensor(undef, inds)
-    rand!(tens)
-    return tens
-end
+Return a dense ITensor with indices `inds` and independent entries uniform in [0, 1), drawn from `rng`
+(`Random.default_rng()` by default). Its entries are positive, which is what [`positive_sketch`](@ref) needs.
+"""
+uniform_itensor(rng::AbstractRNG, inds::Index...) = _rand_uniform!(rng, ITensor(undef, inds))
+uniform_itensor(inds::Index...) = uniform_itensor(Random.default_rng(), inds...)
 
-function positive_sketch(M::AbstractMPS, region_verts, k::Index)
+function positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([uniform_itensor(sites[v])*M[v] for v in reverse(region_verts)])
+        P = prod([uniform_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
         S += P*onehot(k=>p)
     end
     return S
@@ -460,8 +495,8 @@ Exact up to that compression, but `O(χ1^3 χ2^3)`, so roughly 10x slower than t
 of [`_rsi_tt_mul`](@ref). It is the fallback of [`tt_mul`](@ref).
 """
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert siteinds(mps1) == siteinds(mps2) "Site indices between the two MPS must match"
-    @assert backend_type(mps1) == backend_type(mps2) "Array backend mismatch between multiplied MPSs"
+    siteinds(mps1) == siteinds(mps2) || throw(ArgumentError("Site indices between the two MPS must match"))
+    backend_type(mps1) == backend_type(mps2) || throw(ArgumentError("Array backend mismatch between multiplied MPSs"))
 
     array_type = backend_type(mps1)
 
@@ -513,9 +548,22 @@ raw rank stays bounded by the sketch size anyway.
   - `pivot_rtol::Real=1e-10`: pivot threshold of the cross, relative to the block being
     decomposed (see [`pivot_cutoff`](@ref)).
   - `nsite::Int=2`: number of sites decomposed at a time.
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the Gaussian sketches.
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
 """
 function _rsi_tt_mul(
-    mps1::MPS, mps2::MPS; nsite=2, oversample=25, target_rank::Int=0, pivot_rtol::Real=1e-10, outputlevel=0, kws...
+    mps1::MPS,
+    mps2::MPS;
+    nsite=2,
+    oversample=25,
+    target_rank::Int=0,
+    pivot_rtol::Real=1e-10,
+    outputlevel=0,
+    rng::AbstractRNG=Random.default_rng(),
+    kws...,
 )
     nsite ≥ 2 || error("nsite must be ≥ 2 in multiply")
     mps1, mps2 = copy(mps1), copy(mps2)
@@ -531,8 +579,8 @@ function _rsi_tt_mul(
     # One sketch index for the whole sweep, and one right-to-left pass to build every suffix
     # sketch of both inputs, instead of rebuilding each suffix from scratch at every bond.
     k = Index(nsketch, "sketch")
-    sketches1 = suffix_sketches(mps1, k)
-    sketches2 = suffix_sketches(mps2, k)
+    sketches1 = suffix_sketches(mps1, k; rng)
+    sketches2 = suffix_sketches(mps2, k; rng)
 
     G = copy(mps1)
     # `copy` carries over the orthogonality limits of mps1, but none of its tensors survive.
@@ -603,7 +651,7 @@ function _rsi_tt_mul(
 end
 
 """
-    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rsi_kwargs...)
+    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rng=Random.default_rng(), rsi_kwargs...)
     tt_mul(mpo1::MPO, mpo2::MPO; cutoff=1e-15, maxdim=typemax(Int))
     tt_mul(mps::MPS, mpo::MPO; cutoff=1e-15, maxdim=typemax(Int))
     tt_mul(mpo::MPO, mps::MPS; cutoff=1e-15, maxdim=typemax(Int))
@@ -626,20 +674,32 @@ non-finite result; such fallbacks are counted by [`tt_mul_fallbacks`](@ref).
   - `maxdim::Int=typemax(Int64)`: maximum allowed bond dimension of the result.
   - `rsi_kwargs...` (MPS-MPS only): forwarded to [`_rsi_tt_mul`](@ref), e.g. `oversample`,
     `target_rank` and `pivot_rtol`.
+  - `rng::AbstractRNG=Random.default_rng()` (MPS-MPS only): random number generator of the sketches.
 
 # Returns
 
   - `MPS` for MPS-MPS products.
   - `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
 """
-function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64), rsi_kwargs...)
+function tt_mul(
+    mps1::MPS,
+    mps2::MPS;
+    cutoff::Float64=1e-15,
+    maxdim::Int=typemax(Int64),
+    rng::AbstractRNG=Random.default_rng(),
+    rsi_kwargs...,
+)
     # A zero operand makes the product zero, and the relative pivot cutoff of the cross carries
     # no information on it, so short-circuit instead of sketching noise.
     (iszero_tt(mps1) || iszero_tt(mps2)) && return zeros_mps(siteinds(mps1), backend_type(mps1))
 
     G = nothing
     try
-        G = _rsi_tt_mul(mps1, mps2; rsi_kwargs...)
+        G = _rsi_tt_mul(mps1, mps2; rng, rsi_kwargs...)
     catch e # In case ID fails, when masking for example
         @debug "RSI tt_mul threw; using slow tt_mul" exception=e
     end
@@ -648,7 +708,7 @@ function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax
     # otherwise a NaN from an inverted tiny pivot propagates into the fields silently.
     if isnothing(G) || !allfinite(G)
         isnothing(G) || @debug "RSI tt_mul returned a non-finite result; using slow tt_mul"
-        TT_MUL_FALLBACKS[] += 1
+        Threads.atomic_add!(TT_MUL_FALLBACKS, 1)
         return _direct_tt_mul(mps1, mps2; cutoff=cutoff, maxdim=maxdim)
     end
 
@@ -656,8 +716,10 @@ function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax
 end
 
 function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert siteinds(mpo1; plev=0) == siteinds(mpo2; plev=0) && siteinds(mpo1; plev=1) == siteinds(mpo2; plev=1) "Site indices between the two MPO must match"
-    @assert backend_type(mpo1) == backend_type(mpo2) "Array backend mismatch between multiplied MPSs"
+    (siteinds(mpo1; plev=0) == siteinds(mpo2; plev=0) && siteinds(mpo1; plev=1) == siteinds(mpo2; plev=1)) ||
+        throw(ArgumentError("Site indices between the two MPO must match"))
+    backend_type(mpo1) == backend_type(mpo2) ||
+        throw(ArgumentError("Array backend mismatch between the multiplied MPOs"))
 
     array_type = backend_type(mpo1)
 
@@ -694,8 +756,9 @@ function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax
 end
 
 function tt_mul(mps::MPS, mpo::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert all(siteinds(mps) .== first.(siteinds(mpo; plev=0))) "Site indices between the MPS and the MPO must match"
-    @assert backend_type(mps) == backend_type(mpo) "Array backend mismatch between multiplied MPSs"
+    all(siteinds(mps) .== first.(siteinds(mpo; plev=0))) ||
+        throw(ArgumentError("Site indices between the MPS and the MPO must match"))
+    backend_type(mps) == backend_type(mpo) || throw(ArgumentError("Array backend mismatch between the MPS and the MPO"))
 
     array_type = backend_type(mps)
 
@@ -726,6 +789,19 @@ function tt_mul(mpo::MPO, mps::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(I
     return tt_mul(mps, mpo; cutoff=cutoff, maxdim=maxdim)
 end
 
+"""
+    elementwise_function(func::Function, mps::MPS, positive_domain::Bool=true; cutoff=0.0, nsite=2, maxdim=typemax(Int), oversample=15, outputlevel=0, rng=Random.default_rng()) -> MPS
+
+Return an MPS approximation of the element-wise map `func.(mps)`, built by a randomized sketch of `mps` followed by a
+cross (interpolative decomposition) of the mapped sketch. With `positive_domain = true` the sketches have uniform,
+positive entries, so that a sketch of an entrywise-positive MPS stays in the domain of `func` (e.g. `x -> x^(-1/2)`).
+The sketches of every suffix of `mps` are built once, in one right-to-left pass, as in [`_rsi_tt_mul`](@ref), so
+sketching costs ``\\mathcal{O}(N k \\chi^2)`` for a sketch of `k = oversample + χ` columns.
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
+"""
 function elementwise_function(
     func::Function,
     mps::MPS,
@@ -735,6 +811,7 @@ function elementwise_function(
     maxdim=typemax(Int),
     oversample=15,
     outputlevel=0,
+    rng::AbstractRNG=Random.default_rng(),
     kws...,
 )
     nsite ≥ 2 || error("nsite must be ≥ 2 in order to apply elementwise functions")
@@ -752,6 +829,12 @@ function elementwise_function(
     # TODO Check if the QR inverse fails due to using Uniformly sampled sketches instead of Gaussian sketches
     use_pinv = positive_domain
 
+    # One sketch index for the whole sweep, and one right-to-left pass to build every suffix sketch of the input, as
+    # in `_rsi_tt_mul`: the sweep only rewrites sites at or to the left of `last(region)`, so the suffix
+    # `last(region)+1:N` it sketches at every bond is always a suffix of the untouched input.
+    k = Index(nsketch, "sketch")
+    sketches = suffix_sketches(mps1, k; positive=positive_domain, rng)
+
     ranks = Int[]
     for j in 1:(N-nsite+1)
         region = j:(j+nsite-1)
@@ -759,9 +842,7 @@ function elementwise_function(
         v_second = region[2]
         s_first = sites[v_first]
 
-        k = Index(nsketch, "sketch,j=$j")
-
-        S1 = positive_domain ? positive_sketch(mps1, (last(region)+1):N, k) : sketch(mps1, (last(region)+1):N, k)
+        S1 = sketches[last(region)+1]
         T1 = prod([mps1[v] for v in region])
 
         #

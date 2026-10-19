@@ -45,9 +45,9 @@ end
         for stencil_order in [2, 8]
             for (name, bc1d, expect_nothing) in [
                 ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC()), true),
-                ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))), false),
-                ("Dirichlet-Neumann", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)), false),
-                ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), quietly(() -> DirichletBC(0.0))), false),
+                ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), false),
+                ("Dirichlet-Neumann", BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), false),
+                ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0)), false),
             ]
                 @testset "Nullifier Stencil $stencil_order, BC $name" begin
                     expected_mat = expected_nullifier_matrix(dim, bc1d; stencil_order=stencil_order)
@@ -128,8 +128,8 @@ end
         tt_arch = TTArchitecture((N,))
         ones_vec = ones(N)
 
-        bc_right = BoundaryCond1d(NeumannBC(0.0), quietly(() -> DirichletBC(1.0)))
-        bc_left = BoundaryCond1d(quietly(() -> DirichletBC(1.0)), NeumannBC(0.0))
+        bc_right = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
+        bc_left = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
 
         for stencil_order in (2, 8), derivative_order in (1, 2)
             coeffs = DifferenTT.derivative_coefficients(derivative_order; stencil_order=stencil_order)
@@ -223,9 +223,9 @@ end
         end
 
         bc_cases = [
-            ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))),
-            ("Dirichlet-Neumann", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0))),
-            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), quietly(() -> DirichletBC(0.0)))),
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+            ("Dirichlet-Neumann", BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))),
+            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))),
             ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
             ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
         ]
@@ -291,7 +291,7 @@ end
             expected = zeros(16, 16)
             expected[1, 1:2] .= (c1, c2)
             expected[16, 15:16] .= (c2, c1)
-            bc1d = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+            bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
             qtt = DifferenTT.onedim_wall_vorticity_correction(QTTArchitecture((3, -4)), 2, bc1d)
             @test DifferenTT.contract_mpo(qtt) ≈ expected atol=1e-12
         end

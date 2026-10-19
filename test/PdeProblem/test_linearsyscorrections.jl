@@ -32,7 +32,7 @@ using .TestUtils
     end
 
     # 2. Dirichlet BCs
-    bc_dirichlet = BoundaryCond1d(quietly(() -> DirichletBC(1.0)), quietly(() -> DirichletBC(1.0)))
+    bc_dirichlet = BoundaryCond1d(DirichletBC(1.0), DirichletBC(1.0))
     bcs_dirichlet = BoundaryConditions(bc_dirichlet, bc_dirichlet)
     sfield_dir = ScalarField(u_mps, qtt_arch, bcs_dirichlet)
     vfield_dir = VectorField((sfield_dir, sfield_dir))
@@ -63,8 +63,7 @@ using .TestUtils
         w_sites = siteinds(arch)
         # Dirichlet-Neumann along x, Neumann on both sides along y
         bcs = BoundaryConditions(
-            BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)),
-            BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0)),
+            BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
         )
         field = ScalarField(w_sites, arch, bcs)
 
@@ -108,8 +107,7 @@ using .TestUtils
         ("TT", TTArchitecture((16, 16))),
     )
     dirichlet_walls = BoundaryConditions(
-        BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))),
-        BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))),
+        BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
     )
 
     @testset "face_profile_mps ($label)" for (label, arch) in face_archs
