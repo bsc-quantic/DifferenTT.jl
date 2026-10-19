@@ -327,10 +327,11 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
     for k in 1:mpo_len
         old_node = mpo[k]
 
-        s_old = siteinds(mpo, k) # This returns the non-primmed / primmed tuple of site indicies at site k
-        s_new = [site_inds[pad_len+k]', site_inds[pad_len+k]]
+        # Match the site indices by prime level: their order in the tensor is not fixed
+        s_old = only(siteinds(mpo, k; plev=0))
+        s_new = site_inds[pad_len+k]
 
-        T_shifted = adapt(array_type, replaceinds(old_node, s_old => s_new))
+        T_shifted = adapt(array_type, replaceinds(old_node, s_old => s_new, s_old' => s_new'))
 
         if k == 1
             T_shifted *= adapt(array_type, onehot(join_link => 1))

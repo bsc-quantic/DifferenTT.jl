@@ -33,4 +33,19 @@ using ITensorMPS
         mps_test_int = random_mps(full_sites_int)
         @test norm(apply(lifted_mpo_int, mps_test_int)) > 0
     end
+
+    # Regression test: zeros_padding matched the site indices by their position in the tensor, which transposed the
+    # block of an MPO whose tensors store (s, s') instead of (s', s)
+    @testset "zeros_padding" begin
+        s = siteinds(2, 1)
+        block = [1.0 2.0; 3.0 4.0]
+        for m in (MPO([ITensor(block, s[1]', s[1])]), MPO([ITensor(permutedims(block), s[1], s[1]')]))
+            for (corner, row, col) in ((:upleft, 1, 1), (:upright, 1, 2), (:bottomleft, 2, 1), (:bottomright, 2, 2))
+                E = zeros(2, 2)
+                E[row, col] = 1.0
+                @test DifferenTT.contract_mpo(DifferenTT.zeros_padding(m, siteinds(2, 2), corner)) ≈ kron(E, block)
+            end
+        end
+        @test_throws ArgumentError DifferenTT.zeros_padding(MPO([ITensor(block, s[1]', s[1])]), siteinds(2, 2), :middle)
+    end
 end
