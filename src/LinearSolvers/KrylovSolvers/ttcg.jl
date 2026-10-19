@@ -52,7 +52,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     denom = if iszero(α₀)
         α₁ * ITensorMPS.inner(p', operator, p)
     else
-        α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+        α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     end
     α = ρ / denom
 
@@ -92,7 +92,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
         denom = if iszero(α₀)
             α₁ * ITensorMPS.inner(p', operator, p)
         else
-            α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+            α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         end
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)
@@ -189,7 +189,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
     denom = if iszero(α₀)
         α₁ * ITensorMPS.inner(p', operator, p)
     else
-        α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+        α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
     end
     α = ρ / denom
 
@@ -228,7 +228,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
         denom = if iszero(α₀)
             α₁ * ITensorMPS.inner(p', operator, p)
         else
-            α₁ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
+            α₀ * ITensorMPS.inner(p, p) + α₁ * ITensorMPS.inner(p', operator, p)
         end
         α = ρ / denom
         x = +(x, α * p; kwargs_tt...)

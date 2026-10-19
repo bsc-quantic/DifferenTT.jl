@@ -18,7 +18,7 @@ using Logging
 using Random
 using StableRNGs
 
-export rng, dense, relres, mps_equal, quietly, tt_laplacian, qtt_laplacian
+export rng, todense, relres, mps_equal, quietly, tt_laplacian, qtt_laplacian
 
 """
 Return a stable, seeded random number generator for reproducible tests.
@@ -27,14 +27,16 @@ rng(seed::Integer=1234) = StableRNG(seed)
 
 """
 Return the dense array of an MPS or MPO, with site 1 as the most significant index.
+
+(Not called `dense`, which ITensors exports.)
 """
-dense(x::MPS) = DifferenTT.contract_mps(x)
-dense(A::MPO) = DifferenTT.contract_mpo(A)
+todense(x::MPS) = DifferenTT.contract_mps(x)
+todense(A::MPO) = DifferenTT.contract_mpo(A)
 
 """
 Return the relative residual ``\\|A x - b\\| / \\|b\\|``, computed with dense arrays.
 """
-relres(A::MPO, x::MPS, b::MPS) = norm(dense(A) * dense(x) - dense(b)) / norm(dense(b))
+relres(A::MPO, x::MPS, b::MPS) = norm(todense(A) * todense(x) - todense(b)) / norm(todense(b))
 
 """
     mps_equal(a, b)
