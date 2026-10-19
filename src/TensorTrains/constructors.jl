@@ -1,3 +1,10 @@
+"""
+    make_identity_site(site::Index, link::Index, array_type)
+    make_identity_site(site::Index, left_link::Index, right_link::Index, array_type)
+
+Return the identity on `site` (indices `site` and `site'`) as an MPO tensor with one or two link indices, whose
+entries are nonzero only at link value 1; used to pad an operator with identities on the sites it does not act on.
+"""
 function make_identity_site(site::Index, link::Index, array_type)
     T = ITensor(Float64, site, site', link)
     for i in 1:dim(site)
@@ -14,6 +21,13 @@ function make_identity_site(site::Index, left_link::Index, right_link::Index, ar
     return adapt(array_type, T)
 end
 
+"""
+    make_pass_identity_site(site::Index, left_link::Index, right_link::Index, pass_dim::Int, array_type)
+
+Return the MPO tensor ``\\mathbb{I}_{\\text{site}} \\otimes \\mathbb{I}_{\\text{bond}}`` that applies the identity on
+`site` and passes the first `pass_dim` values of `left_link` on to `right_link`; it threads the bond of an operator
+through the sites of the other variables of an interleaved [`QTTArchitecture`](@ref).
+"""
 function make_pass_identity_site(site::Index, left_link::Index, right_link::Index, pass_dim::Int, array_type)
     T = ITensor(Float64, site, site', left_link, right_link)
     for s in 1:dim(site)
@@ -24,6 +38,33 @@ function make_pass_identity_site(site::Index, left_link::Index, right_link::Inde
     return adapt(array_type, T)
 end
 
+"""
+    identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    identity_mpo(site_dims::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    identity_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array) -> MPO
+
+Return the identity operator as an MPO of bond dimension 1. It acts on `site_inds`, on new site indices of dimensions
+`site_dims` ([`site_indices`](@ref)), or on new site indices for `arch` (`siteinds(arch)`); in the last two cases the
+caller gets the sites back through `siteinds(mpo; plev=0)`. On a single site it is a delta tensor.
+
+# Arguments
+
+  - `site_inds`, `site_dims` or `arch`: the sites, their dimensions, or the architecture that gives them.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Returns
+
+  - `MPO`: the identity, with site indices at prime levels 0 (input) and 1 (output).
+
+# Examples
+
+```jldoctest
+julia> contract_mpo(identity_mpo([2, 3])) == [i == j for i in 1:6, j in 1:6]
+true
+```
+
+See also [`zeros_mpo`](@ref), [`ones_mpo`](@ref).
+"""
 function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
 
@@ -49,12 +90,21 @@ function identity_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Arra
     return identity_mpo(collect(Int, site_dims(arch)), array_type)
 end
 
-# TODO Test this function
-# TODO Should we bring to zero all the tensors, as done now, or only do 0.0 * mpo (sets to zero the ortho center)
 """
-    zeros_mpo(sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
+    zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    zeros_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    zeros_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array) -> MPO
 
-Construct an all-zeros MPO  of bond dimension 1 with the given site indices and bond dimension.
+Return the zero operator as an MPO of bond dimension 1, on `site_inds`, on new sites of dimensions `site_dims`, or on
+new sites for `arch`. We set every tensor to zero, and not only one of them, so that the MPO stays exactly zero
+after any change of gauge.
+
+# Arguments
+
+  - `site_inds`, `site_dims` or `arch`: the sites, their dimensions, or the architecture that gives them.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+See also [`zeros_mps`](@ref), [`identity_mpo`](@ref).
 """
 function zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     mpo = adapt(array_type, random_mpo(site_inds))
@@ -73,12 +123,24 @@ function zeros_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
     return zeros_mpo(collect(Int, site_dims(arch)), array_type)
 end
 
-# TODO Test this function
-# TODO Should we bring to zero all the tensors, as done now, or only do 0.0 * mps (sets to zero the ortho center)
 """
-    zeros_mps(sites::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
+    zeros_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1) -> MPS
+    zeros_mps(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1) -> MPS
+    zeros_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1) -> MPS
 
-Construct an all-zeros MPS with the given site indices and bond dimension.
+Return the zero vector as an MPS on `site_inds`, on new sites of dimensions `site_dims`, or on new sites for `arch`.
+As in [`zeros_mpo`](@ref), every tensor is zero. The bond dimensions are those of `ITensorMPS.random_mps` with
+`linkdims`, i.e. `linkdims` capped by the largest rank that each bond can have (e.g. `[3, 2]` on three sites of
+dimension 2 for `linkdims = 3`); a larger bond dimension leaves room for the sweeps of a solver that starts from it.
+
+# Arguments
+
+  - `site_inds`, `site_dims` or `arch`: the sites, their dimensions, or the architecture that gives them.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Keywords
+
+  - `linkdims::Int=1`: requested bond dimension.
 """
 function zeros_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
     mps = adapt(array_type, random_mps(site_inds; linkdims=linkdims))
@@ -97,11 +159,23 @@ function zeros_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array; 
     return zeros_mps(collect(Int, site_dims(arch)), array_type; linkdims=linkdims)
 end
 
-# TODO Test these functions
 """
-    ones_mps(site_indices::Vector{<:Index}, bond_dims::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
+    ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPS
+    ones_mps(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) -> MPS
+    ones_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPS
+    ones_mps(site_dims::Vector{Int}, [bond_dim::Int,] array_type::Type{<:AbstractArray}=Array) -> MPS
+    ones_mps(arch::Architecture, [bond_dim::Int,] array_type::Type{<:AbstractArray}=Array) -> MPS
 
-Construct an MPS whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
+Return the MPS whose tensors have all their entries equal to 1, on the given sites (or on new sites of dimensions
+`site_dims`, or for `arch`) and with the link indices `bond_inds` (or new links of dimension `bond_dim`, 1 by
+default). Every entry of the vector it represents is then ``\\prod_k \\chi_k``, the product of its bond dimensions,
+so with bond dimension 1 it is the vector of ones.
+
+# Throws
+
+  - `DimensionMismatch`: if `bond_inds` does not have one index fewer than `site_inds`.
+
+See also [`ones_mpo`](@ref), [`zeros_mps`](@ref).
 """
 function ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     length(site_inds) == length(bond_inds) + 1 || throw(
@@ -127,11 +201,6 @@ function ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_
     return M
 end
 
-"""
-    ones_mps(site_indices::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-
-Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
-"""
 function ones_mps(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mps(site_inds, bond_inds, array_type)
@@ -139,7 +208,6 @@ end
 
 ones_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = ones_mps(site_inds, 1, array_type)
 
-# TODO This assumes physical legs to always have dimension 2!
 function ones_mps(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     site_inds = site_indices(site_dims)
     bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
@@ -155,11 +223,22 @@ function ones_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
     ones_mps(collect(Int, site_dims(arch)), 1, array_type)
 end
 
-# TODO Test these functions
 """
-    ones_mpo(site_indices::Vector{<:Index}, bond_dims::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
+    ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    ones_mpo(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) -> MPO
+    ones_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) -> MPO
+    ones_mpo(site_dims::Vector{Int}, [bond_dim::Int,] array_type::Type{<:AbstractArray}=Array) -> MPO
+    ones_mpo(arch::Architecture, [bond_dim::Int,] array_type::Type{<:AbstractArray}=Array) -> MPO
 
-Construct an MPO whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
+Return the MPO whose tensors have all their entries equal to 1, as [`ones_mps`](@ref) does for an MPS. With bond
+dimension 1 it is the matrix of ones, written ``\\mathbb{O}`` in Sec. 3.1 of Torrente et al., *Factorized
+approximate inverse preconditioners in the tensor train format*.
+
+# Throws
+
+  - `DimensionMismatch`: if `bond_inds` does not have one index fewer than `site_inds`.
+
+See also [`ones_mps`](@ref), [`identity_mpo`](@ref).
 """
 function ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
     length(site_inds) == length(bond_inds) + 1 || throw(
@@ -185,11 +264,6 @@ function ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_
     return M
 end
 
-"""
-    ones_mpo(site_indices::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-
-Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
-"""
 function ones_mpo(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mpo(site_inds, bond_inds, array_type)
@@ -197,7 +271,6 @@ end
 
 ones_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = ones_mpo(site_inds, 1, array_type)
 
-# TODO This assumes physical legs to always have dimension 2!
 function ones_mpo(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
     site_inds = site_indices(site_dims)
     bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
@@ -213,6 +286,50 @@ function ones_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
     ones_mpo(collect(Int, site_dims(arch)), 1, array_type)
 end
 
+"""
+    upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type=Array) -> MPO
+    lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type=Array) -> MPO
+
+Return the upper (lower) triangular matrix of ones, with or without its diagonal, as an MPO of bond dimension 2.
+
+The lower triangular matrix of ones is the mask ``P_L^{(1:N)}`` of the FAI construction, whose entry ``(i, j)`` is 1
+if ``i \\ge j`` and 0 otherwise, in the order of [`contract_mpo`](@ref) (site 1 most significant). In order to build
+it without forming the dense matrix, we use its exact TT representation, Eq. (14) of Torrente et al., *Factorized
+approximate inverse preconditioners in the tensor train format*:
+
+```math
+P_L^{(1:N)} = \\begin{bmatrix} \\mathbb{I}^{(d_1)} & \\mathbb{J}^{(d_1)} \\end{bmatrix}
+\\bowtie_{k=2}^{N-1}
+\\begin{bmatrix} \\mathbb{I}^{(d_k)} & \\mathbb{J}^{(d_k)} \\\\ & \\mathbb{O}^{(d_k)} \\end{bmatrix}
+\\bowtie \\begin{bmatrix} \\mathbb{L}^{(d_N)} \\\\ \\mathbb{O}^{(d_N)} \\end{bmatrix},
+```
+
+where ``\\bowtie`` is the strong Kronecker product, ``\\mathbb{I}`` the identity, ``\\mathbb{O}`` the matrix of ones,
+and ``\\mathbb{L}`` and ``\\mathbb{J}`` the lower triangular matrices of ones with and without the diagonal; without
+the diagonal, ``\\mathbb{J}`` replaces ``\\mathbb{L}`` in the last core. The decomposition holds for any site
+dimensions ``d_k``, so it serves the TT and the QTT formats alike. `upper_triang_mpo` builds the transposed cores, and
+`lower_triang_mpo` is [`transpose_mpo`](@ref) of it.
+
+# Arguments
+
+  - `site_inds::Vector{<:Index}`: sites of the operator, at least one.
+  - `include_diag::Bool=true`: keep the diagonal.
+
+# Keywords
+
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Examples
+
+```jldoctest
+julia> sites = DifferenTT.site_indices([2, 3]);
+
+julia> contract_mpo(DifferenTT.lower_triang_mpo(sites)) == [Float64(i >= j) for i in 1:6, j in 1:6]
+true
+```
+
+See also [`triang_projector_mpo`](@ref), which turns the mask into a projector in the vectorized space.
+"""
 function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
     n = length(site_inds)
     if n == 1
@@ -266,10 +383,64 @@ function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; a
     return MPO(mpo_itensors)
 end
 
+"""
+    lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type=Array) -> MPO
+
+Return the lower triangular matrix of ones as an MPO of bond dimension 2, the mask ``P_L`` of Eq. (14) of the FAI
+paper; see [`upper_triang_mpo`](@ref).
+"""
 function lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
     return transpose_mpo(upper_triang_mpo(sites, include_diag; array_type=array_type))
 end
 
+"""
+    triang_projector_mpo(sites::Vector{<:Index}, combiners::Vector{ITensor}, which_triang::Symbol=:upper,
+                         include_diag::Bool=true; array_type=Array) -> MPO
+    triang_projector_mpo(sites::Vector{<:Index}, which_triang::Symbol=:upper, include_diag::Bool=true;
+                         array_type=Array) -> MPO
+
+Return the projector ``\\mathbb{P}_L`` that keeps the lower (or upper) triangular entries of a vectorized matrix and
+sets the others to zero, as an MPO of bond dimension 2.
+
+In the FAI construction the unknown is a lower triangular matrix ``\\tilde{G}_L``, which we vectorize in order to
+solve for it with the linear solvers of the package. Its triangularity then becomes a constraint on the vector, which
+we impose by projection (Sec. 3.1 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor
+train format*). To this end, we take the mask of [`lower_triang_mpo`](@ref), vectorize it, and place it on the diagonal
+of an operator in the vectorized space, by contracting each site with a delta tensor (Eq. (20) and Fig. 4). The
+projector therefore keeps the bond dimension 2 of the mask, and its diagonal entries are 1 on the kept entries and 0
+on the others.
+
+The matrix ``X`` on `sites` (rows on `sites'`, columns on `sites`) is vectorized site by site: site ``k`` of the vector
+carries the pair (column, row) of site ``k`` of ``X``, merged by `combiners[k]`. Every combiner must merge two indices
+of dimension `dim(sites[k])`, the first standing for the column and the second for the row; only their dimensions and
+their order matter. For example, `fai_dg` vectorizes ``\\tilde{G}_L`` with `combiner(sites[k], helper_sites[k])`, where
+the helper sites carry the row index and become the output sites `sites'` of ``\\tilde{G}_L``, so that the projector
+with `which_triang = :lower` keeps the entries with row ``\\ge`` column, in the order of [`contract_mpo`](@ref) (site 1
+most significant). On a single site of dimension 2, its diagonal is ``(1, 0, 1, 1)``, as in Eq. (20). The second method
+builds the combiners `combiner(sites[k], sites[k]')` itself.
+
+# Arguments
+
+  - `sites::Vector{<:Index}`: sites of the matrix being vectorized.
+  - `combiners::Vector{ITensor}`: one combiner per site, merging (column, row).
+  - `which_triang::Symbol=:upper`: `:lower` or `:upper`.
+  - `include_diag::Bool=true`: keep the diagonal entries.
+
+# Keywords
+
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Returns
+
+  - `MPO`: the projector, on the combined indices `combinedind.(combiners)` and their primes.
+
+# Throws
+
+  - `DimensionMismatch`: if `sites` and `combiners` have different lengths.
+  - `ArgumentError`: if `which_triang` is neither `:lower` nor `:upper`.
+
+See also [`lower_triang_mpo`](@ref), [`fai_preconditioner`](@ref).
+"""
 function triang_projector_mpo(
     sites::Vector{<:Index},
     combiners::Vector{ITensor},
@@ -313,15 +484,20 @@ function triang_projector_mpo(
 end
 
 """
-    arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
+    arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray}) -> MPS
+    arrays2mps(site_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray}) -> MPS
 
-Construct an MPS from a list of arrays, using provided site and bond indices.
+Build an MPS from the arrays of its cores, given with the site index first and the link indices after it: the first
+array is ``d_1 \\times \\chi_1``, the middle ones ``d_k \\times \\chi_{k-1} \\times \\chi_k``, and the last one
+``d_N \\times \\chi_{N-1}``; a single site takes a vector of length ``d_1``. The second method creates link indices
+tagged `"Link,l=\$n"`, with the dimensions read from the last axis of each array. The arrays are wrapped, not copied,
+so they also fix the array backend.
 
-# Arguments
+# Throws
 
-  - `site_indices`: Vector of site indices for the MPS.
-  - `bond_indices`: Vector of bond indices (links) between MPS tensors.
-  - `mps_arrays`: Vector of arrays containing the tensor data.
+  - `DimensionMismatch`: if the numbers of indices and arrays, or the bond dimensions, do not match.
+
+See also [`arrays2mpo`](@ref), [`vec2mps`](@ref).
 """
 function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
     nsite = length(mps_arrays)
@@ -358,16 +534,6 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     return output
 end
 
-"""
-    arrays2mps(site_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
-
-Construct an MPS from a list of arrays and site indices, automatically creating link indices.
-
-# Arguments
-
-  - `site_indices`: Vector of site indices.
-  - `mps_arrays`: Vector of arrays containing tensor data.
-"""
 function arrays2mps(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
 
@@ -382,15 +548,21 @@ function arrays2mps(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:Abstract
 end
 
 """
-    arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
+    arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray}) -> MPO
+    arrays2mpo(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray}) -> MPO
 
-Construct an MPO from a list of arrays, using provided site and bond indices.
+Build an MPO from the arrays of its cores, given with the output (row) index first, the input (column) index second,
+and the link indices after them: the first array is ``d_1 \\times d_1 \\times \\chi_1``, the middle ones
+``d_k \\times d_k \\times \\chi_{k-1} \\times \\chi_k``, and the last one ``d_N \\times d_N \\times \\chi_{N-1}``; a
+single site takes a ``d_1 \\times d_1`` matrix. The output index is `site_indices[k]'` and the input index
+`site_indices[k]`. The second method creates link indices tagged `"Link,l=\$n"`, with the dimensions read from the
+last axis of each array.
 
-# Arguments
+# Throws
 
-  - `site_indices`: Vector of site indices (will be primed for output, unprimed for input).
-  - `bond_indices`: Vector of bond indices (links).
-  - `mpo_arrays`: Vector of arrays containing the tensor data.
+  - `DimensionMismatch`: if the numbers of indices and arrays, or the bond dimensions, do not match.
+
+See also [`arrays2mps`](@ref), [`mat2mpo`](@ref).
 """
 function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
@@ -430,16 +602,6 @@ function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     return output
 end
 
-"""
-    arrays2mpo(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
-
-Construct an MPO from a list of arrays and site indices, automatically creating link indices.
-
-# Arguments
-
-  - `site_indices`: Vector of site indices.
-  - `mpo_arrays`: Vector of arrays containing tensor data.
-"""
 function arrays2mpo(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
 
@@ -454,13 +616,23 @@ function arrays2mpo(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:Abstract
 end
 
 """
-    vec2tensor(v::AbstractVector)
+    vec2tensor(v::AbstractVector, leg_dims::Vector{Int}) -> Array
 
-Reshape a vector `v` into a high-dimensional tensor with dimensions given by leg_dims, suitable for TT/MPS operations.
+Reshape `v` into an array with one axis per leg, where `leg_dims` lists the leg lengths from the least significant
+(fastest) leg to the most significant one, and the returned array has its axes in the reverse order, the most
+significant first, as site 1 is in [`contract_mps`](@ref). For sites of dimensions ``d_1, \\dots, d_N``, site 1 the
+most significant, pass `leg_dims = [d_N, …, d_1]` to obtain the ``d_1 \\times \\dots \\times d_N`` array of
+[`vec2mps`](@ref); the order only matters when the dimensions differ.
 
-# Arguments
+# Examples
 
-  - `v::AbstractVector`: Input vector to be reshaped.
+```jldoctest
+julia> vec2tensor(collect(1:6), [2, 3])
+3×2 Matrix{Int64}:
+ 1  2
+ 3  4
+ 5  6
+```
 """
 function vec2tensor(v::AbstractVector, leg_dims::Vector{Int})
     n = length(leg_dims)
@@ -468,14 +640,12 @@ function vec2tensor(v::AbstractVector, leg_dims::Vector{Int})
 end
 
 """
-    vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
+    vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...) -> MPS
 
-Convert a vector `v` directly into an MPS using site indices `s`.
-
-# Arguments
-
-  - `v::AbstractVector`: Input vector to be converted.
-  - `s::Vector{<:Index}`: Site indices for the MPS.
+Return the MPS on the sites `s` of the dense vector `v`, the inverse of [`contract_mps`](@ref) (site 1 most
+significant). The tensor of [`vec2tensor`](@ref) is factorized by successive SVDs (`ITensorMPS.MPS`), to which the
+keywords, e.g. `cutoff` and `maxdim`, are passed. It needs the dense vector, of length ``\\prod_k d_k``, so it is meant
+for small grids and tests.
 """
 function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
@@ -483,14 +653,11 @@ function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
 end
 
 """
-    mat2tensor(m::AbstractMatrix)
+    mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int}) -> Array
 
-Reshape a matrix `m` into a high-dimensional tensor with dimensions given by leg_dims. It is assumed that the matrix
-is square, in the sense that the the input-output leg pairs will be set to have leg_dims.
-
-# Arguments
-
-  - `m::AbstractMatrix`: Input matrix to be reshaped.
+Reshape the square matrix `m` into an array whose first `N = length(leg_dims)` axes split its row index and whose last
+`N` axes split its column index. As in [`vec2tensor`](@ref), `leg_dims` lists the leg lengths from the least
+significant to the most significant, and each group of axes is returned with the most significant axis first.
 """
 function mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int})
     n = length(leg_dims)
@@ -498,14 +665,11 @@ function mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int})
 end
 
 """
-    mat2mpo(v::AbstractMatrix, s::Vector{<:Index}; kwargs...)
+    mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...) -> MPO
 
-Convert a matrix `m` directly into an MPO using site indices `s` and `s'`.
-
-# Arguments
-
-  - `v::AbstractVector`: Input vector to be converted.
-  - `s::Vector{<:Index}`: Input site indices for the MPO.
+Return the MPO on the sites `s` (input) and `s'` (output) of the dense matrix `m`, the inverse of
+[`contract_mpo`](@ref). The tensor of [`mat2tensor`](@ref) is factorized by successive SVDs (`ITensorMPS.MPO`), to
+which the keywords, e.g. `cutoff` and `maxdim`, are passed. As [`vec2mps`](@ref), it is meant for small operators.
 """
 function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
