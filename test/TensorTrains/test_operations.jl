@@ -6,19 +6,27 @@ using ITensorMPS
 
 # TODO Expand these test to ensure the adapt pipelines work as intended inside the rest of the methods
 @testset "utils.jl" begin
-    @testset "replace_siteinds!" begin
+    @testset "replace_mpo_siteinds!" begin
         nsite = 4
         old_sites = siteinds(2, nsite)
         new_sites = siteinds(2, nsite)
         mpo = random_mpo(old_sites)
+        M_old = contract_mpo(mpo)
 
-        DifferenTT.replace_siteinds!(mpo, new_sites)
+        # The non-mutating version leaves its argument untouched
+        copied = DifferenTT.replace_mpo_siteinds(mpo, new_sites)
+        @test all(old_sites[i] ∈ inds(mpo[i]) for i in 1:nsite)
+        @test contract_mpo(copied) ≈ M_old
 
-        # After replacement, old site indices should be gone
+        @test DifferenTT.replace_mpo_siteinds!(mpo, new_sites) === mpo
+
+        # After replacement, old site indices should be gone and the dense operator unchanged
         for i in 1:nsite
             @test new_sites[i] ∈ inds(mpo[i])
             @test new_sites[i]' ∈ inds(mpo[i])
+            @test old_sites[i] ∉ inds(mpo[i])
         end
+        @test contract_mpo(mpo) ≈ M_old
     end
 
     @testset "transpose" begin

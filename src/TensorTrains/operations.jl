@@ -1,19 +1,4 @@
 """
-    ITensorMPS.replace_siteinds(mpo::MPO, sites::Vector{I}) where I <: index
-
-Update the siteinds with plev=0, 1 with a new set of siteinds, mathcing the prime levels.
-"""
-function ITensorMPS.replace_siteinds!(mpo::MPO, new_sites::Vector{I}) where {I<:Index}
-    sites = only.(siteinds(mpo; plev=0))
-    nsite = length(mpo)
-    for j in 1:nsite
-        old_s = sites[j]
-        new_s = new_sites[j]
-        replaceinds!(mpo[j], old_s => new_s, old_s' => new_s')
-    end
-end
-
-"""
     Base.transpose(mpo::MPO)
 
 Transpose an MPO by physically swapping the prime levels of site indices at each site.
@@ -106,7 +91,15 @@ function _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64
     end
 end
 
-function replace_siteinds!(M::MPO, sites::Vector{<:Index})
+"""
+    replace_mpo_siteinds!(mpo::MPO, sites::Vector{<:Index}) -> MPO
+    replace_mpo_siteinds(mpo::MPO, sites::Vector{<:Index}) -> MPO
+
+Replace the site indices of `mpo`, at prime levels 0 and 1, by `sites` and `sites'`, keeping the prime levels. The
+version with `!` overwrites the tensors of `mpo` and returns it; the other one works on a copy. For an MPS, use
+`ITensorMPS.replace_siteinds!`.
+"""
+function replace_mpo_siteinds!(M::MPO, sites::Vector{<:Index})
     for j in eachindex(M)
         sj = only(siteinds(M, j; plev=0))
         M[j] = replaceinds(M[j], sj => sites[j], sj' => sites[j]')
@@ -114,7 +107,7 @@ function replace_siteinds!(M::MPO, sites::Vector{<:Index})
     return M
 end
 
-replace_siteinds(M::MPO, sites) = replace_siteinds!(copy(M), sites)
+replace_mpo_siteinds(M::MPO, sites::Vector{<:Index}) = replace_mpo_siteinds!(copy(M), sites)
 
 function diagmpo(mpo::MPO)
     n = length(mpo)
@@ -122,7 +115,7 @@ function diagmpo(mpo::MPO)
     placeholder_sites = sim(out_sites)
 
     deltas = [delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
-    out_mpo = replace_siteinds(mpo, placeholder_sites)
+    out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
         out_mpo[i] *= deltas[i]
@@ -136,7 +129,7 @@ function diagmps(mpo::MPO)
     placeholder_sites = sim(out_sites)
 
     deltas = [delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
-    out_mpo = replace_siteinds(mpo, placeholder_sites)
+    out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
         out_mpo[i] *= deltas[i]

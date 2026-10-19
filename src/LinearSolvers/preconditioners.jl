@@ -89,7 +89,7 @@ function linsolve_preconditioner(
 
     if symmetrize
         op2 = transpose(op1) # To construct XA
-        replace_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
+        replace_mpo_siteinds!(op2, helper_sites) # In this case A, for XA, lives in the helper space
     else
         op2 = nothing
     end
@@ -168,7 +168,7 @@ function fai_dg(
     n = length(sites)
 
     helper_sites = sim(sites) # Helper sites to expand the space and vectorize the linear system
-    replace_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
+    replace_mpo_siteinds!(A, helper_sites) # In this case A, for XA, lives in the helper space
 
     combiners = [combiner(sites[i], helper_sites[i]; tags="csite=$i") for i in 1:n] # Combiners that join a pair of sites coming from the two spaces into a single index
     combiner_inds = [combinedind(combiner) for combiner in combiners]
