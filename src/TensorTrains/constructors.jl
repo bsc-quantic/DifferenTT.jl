@@ -277,7 +277,9 @@ function triang_projector_mpo(
     include_diag::Bool=true;
     array_type::Type{<:AbstractArray}=Array,
 )
-    length(sites) != length(combiners) && error("Number of sites and combiners do not match")
+    length(sites) == length(combiners) || throw(
+        DimensionMismatch("Number of sites and combiners do not match, got $(length(sites)) and $(length(combiners))"),
+    )
     n = length(sites)
 
     if which_triang == :upper
@@ -326,6 +328,7 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
 
     (length(site_indices) == length(mps_arrays) && length(bond_indices) == length(mps_arrays) - 1) ||
         throw(DimensionMismatch("Index set length do not match with array set length"))
+    nsite == 1 && return MPS([ITensor(only(mps_arrays), only(site_indices))])
     dim(bond_indices[1]) == size(mps_arrays[1], 2) == size(mps_arrays[2], 2) ||
         throw(DimensionMismatch("bond dimension mismatch at site 1"))
 
@@ -395,6 +398,7 @@ function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     (length(site_indices) == length(mpo_arrays) && length(bond_indices) == length(mpo_arrays) - 1) ||
         throw(DimensionMismatch("Index set length do not match with array set length"))
 
+    nsite == 1 && return MPO([ITensor(only(mpo_arrays), only(site_indices)', only(site_indices))])
     output = MPO(nsite)
 
     dim(bond_indices[1]) == size(mpo_arrays[1], 3) == size(mpo_arrays[2], 3) ||
@@ -475,7 +479,7 @@ Convert a vector `v` directly into an MPS using site indices `s`.
 """
 function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
-    return MPS(vec2tensor(v, site_dims), s; kwargs...)
+    return MPS(vec2tensor(v, reverse(site_dims)), s; kwargs...) # vec2tensor takes the least significant leg first
 end
 
 """
@@ -505,6 +509,6 @@ Convert a matrix `m` directly into an MPO using site indices `s` and `s'`.
 """
 function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
-    itensor_object = itensor(mat2tensor(m, site_dims), s'..., s...)
+    itensor_object = itensor(mat2tensor(m, reverse(site_dims)), s'..., s...) # least significant leg first
     return MPO(itensor_object, s; kwargs...)
 end

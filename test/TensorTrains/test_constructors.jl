@@ -256,6 +256,25 @@ using LinearAlgebra
         @test DifferenTT.contract_mpo(DifferenTT.mat2mpo(m, sites)) ≈ m
     end
 
+    # Regression test: vec2mps and mat2mpo passed the site dimensions to vec2tensor and mat2tensor in site order, which
+    # take the least significant leg first, so they scrambled the entries whenever the dimensions were not a palindrome
+    @testset "vec2mps and mat2mpo with different site dimensions" begin
+        for dims in ([2, 3], [2, 3, 4], [4, 2, 3])
+            sites = DifferenTT.site_indices(dims)
+            v = collect(1.0:prod(dims))
+            m = reshape(collect(1.0:(prod(dims)^2)), prod(dims), prod(dims))
+            @test DifferenTT.contract_mps(DifferenTT.vec2mps(v, sites)) ≈ v
+            @test DifferenTT.contract_mpo(DifferenTT.mat2mpo(m, sites)) ≈ m
+        end
+    end
+
+    @testset "arrays2mps and arrays2mpo on a single site" begin
+        s1 = DifferenTT.site_indices([3])
+        @test DifferenTT.contract_mps(DifferenTT.arrays2mps(s1, [[1.0, 2.0, 3.0]])) == [1.0, 2.0, 3.0]
+        M = [1.0 2.0 0.0; 3.0 4.0 0.0; 0.0 0.0 5.0]
+        @test DifferenTT.contract_mpo(DifferenTT.arrays2mpo(s1, [M])) == M
+    end
+
     @testset "upper_triang_mpo & lower_triang_mpo" begin
         # Test with a mix of small site dimensions
         dims = [2, 3, 2]
@@ -281,6 +300,9 @@ using LinearAlgebra
         l_strict = DifferenTT.lower_triang_mpo(sites, false)
         l_strict_mat = contract_mpo(l_strict)
         @test l_strict_mat ≈ tril(ones(D, D), -1)
+
+        @test_throws DimensionMismatch DifferenTT.triang_projector_mpo(sites, [combiner(sites[1], sites[1]')], :lower)
+        @test_throws ArgumentError DifferenTT.triang_projector_mpo(sites, :diagonal)
 
         # Regression test: a single site threw a BoundsError
         s1 = DifferenTT.site_indices([3])
