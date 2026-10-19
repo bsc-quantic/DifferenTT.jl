@@ -131,18 +131,29 @@ site_dims(arch::TTArchitecture) = arch.var_dims
 variable_dims(arch::QTTArchitecture) = map(x -> 2^abs(x), arch.var_nsites)
 variable_dims(arch::TTArchitecture) = arch.var_dims
 
-# TODO Test this function
-function ITensorMPS.siteinds(dims::Vector{Int}; kwargs...)
+"""
+    site_indices(dims::AbstractVector{<:Integer}; kwargs...) -> Vector{Index{Int}}
+
+Return one site index of dimension `dims[n]` per site, tagged `"Site,n=\$n"`. The keywords are passed to `Index`.
+"""
+function site_indices(dims::AbstractVector{<:Integer}; kwargs...)
     return [Index(d, "Site,n=$n"; kwargs...) for (n, d) in enumerate(dims)]
 end
 
-# TODO Test this function
+"""
+    siteinds(arch::Architecture; kwargs...) -> Vector{Index{Int}}
+
+Return the site indices of `arch`, with the dimensions [`site_dims`](@ref)`(arch)`.
+"""
 function ITensorMPS.siteinds(arch::Architecture; kwargs...)
-    return ITensorMPS.siteinds(collect(Int, site_dims(arch)); kwargs...)
+    return site_indices(collect(Int, site_dims(arch)); kwargs...)
 end
 
-# Is this the best place for this function??
-# TODO Test this function
-function ITensorMPS.linkinds(dims::Vector{Int}; kwargs...)
+"""
+    link_indices(dims::AbstractVector{<:Integer}; kwargs...) -> Vector{Index{Int}}
+
+Return one link index of dimension `dims[l]` per bond, tagged `"Link,l=\$l"`. The keywords are passed to `Index`.
+"""
+function link_indices(dims::AbstractVector{<:Integer}; kwargs...)
     return [Index(d, "Link,l=$(n)"; kwargs...) for (n, d) in enumerate(dims)]
 end

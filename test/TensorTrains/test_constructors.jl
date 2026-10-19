@@ -259,7 +259,7 @@ using LinearAlgebra
     @testset "upper_triang_mpo & lower_triang_mpo" begin
         # Test with a mix of small site dimensions
         dims = [2, 3, 2]
-        sites = siteinds(dims)
+        sites = DifferenTT.site_indices(dims)
         D = prod(dims)
 
         # Upper with diag

@@ -112,7 +112,7 @@ Construct an MPO that projects onto one or more basis vectors (columns).
 """
 function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
-    bond_inds = linkinds(fill(1, nsite-1))
+    bond_inds = link_indices(fill(1, nsite-1))
     tensors = AbstractArray[]
 
     # Move to backend once

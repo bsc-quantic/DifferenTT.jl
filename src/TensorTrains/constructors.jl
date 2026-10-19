@@ -29,7 +29,7 @@ function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArr
 
     nsite == 1 && return MPO([adapt(array_type, delta(Float64, site_inds[1], site_inds[1]'))])
 
-    link_inds = linkinds(fill(1, nsite-1))
+    link_inds = link_indices(fill(1, nsite-1))
     tensor_list = ITensor[]
 
     push!(tensor_list, make_identity_site(site_inds[1], link_inds[1], array_type))
@@ -41,7 +41,7 @@ function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArr
 end
 
 function identity_mpo(site_dims::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return identity_mpo(site_inds, array_type)
 end
 
@@ -65,7 +65,7 @@ function zeros_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}
 end
 
 function zeros_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return zeros_mpo(site_inds, array_type)
 end
 
@@ -89,7 +89,7 @@ function zeros_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}
 end
 
 function zeros_mps(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array; linkdims::Int=1)
-    site_inds = siteinds(site_dims)
+    site_inds = site_indices(site_dims)
     return zeros_mps(site_inds, array_type; linkdims=linkdims)
 end
 
@@ -129,7 +129,7 @@ end
 Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
 """
 function ones_mps(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
@@ -137,8 +137,8 @@ ones_mps(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = 
 
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mps(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    site_inds = site_indices(site_dims)
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mps(site_inds, bond_inds, array_type)
 end
 
@@ -183,7 +183,7 @@ end
 Construct an MPS whose every tensor entry is 1.0, with uniform bond dimension `bond_dim`.
 """
 function ones_mpo(site_inds::Vector{<:Index}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
@@ -191,8 +191,8 @@ ones_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array) = 
 
 # TODO This assumes physical legs to always have dimension 2!
 function ones_mpo(site_dims::Vector{Int}, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
-    site_inds = siteinds(site_dims)
-    bond_inds = linkinds(fill(bond_dim, length(site_inds) - 1))
+    site_inds = site_indices(site_dims)
+    bond_inds = link_indices(fill(bond_dim, length(site_inds) - 1))
     return ones_mpo(site_inds, bond_inds, array_type)
 end
 
