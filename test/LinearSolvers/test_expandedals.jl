@@ -79,7 +79,7 @@ using .TestUtils
         # Build a 1D Laplacian MPO on 5 QTT sites with Dirichlet BCs
         arch = QTTArchitecture((5,))
         grid = Grid(arch, (1.0,))
-        bc = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))))
+        bc = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
         s = siteinds(arch)
         dummy_mps = zeros_mps(s)
         field = ScalarField(dummy_mps, arch, bc)

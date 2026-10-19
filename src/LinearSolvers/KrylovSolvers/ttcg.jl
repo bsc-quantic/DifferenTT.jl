@@ -108,7 +108,6 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
             ρ = ITensorMPS.inner(r, r)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr <= tol
@@ -246,7 +245,6 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTCG, a₀::Real=0, 
             ρ = ITensorMPS.inner(r, M⁻¹, r)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr <= tol

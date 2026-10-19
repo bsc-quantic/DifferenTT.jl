@@ -207,8 +207,6 @@ function interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0
             Kt2 = Kt * Kt
             l = argmax(p -> (p ∈ cols ? -Inf : Kt2[p, p] / Kt[p, p]), 1:m)
             max_err2 = Kt2[l, l] / Kt[l, l]
-            #@show max_err2 
-            #@show sqrt(max_err2)
             #(max_err2 < eps(eltype(M)) || num_below_cutoff >= 2) && break
             error = sqrt(abs(max_err2))
             if (error < cutoff)
@@ -336,9 +334,12 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
         pivot_index = check_pivot_index
     else
         if index_pivots(pivot_index) != index_pivots(check_pivot_index)
-            @show index_pivots(pivot_index)
-            @show index_pivots(check_pivot_index)
-            error("reconstructed pivot index space does not matched user provided pivot index space")
+            throw(
+                ArgumentError(
+                    "reconstructed pivot index space does not match the user-provided pivot index space: " *
+                    "got $(index_pivots(check_pivot_index)), expected $(index_pivots(pivot_index))",
+                ),
+            )
         end
     end
     #end

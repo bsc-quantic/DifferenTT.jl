@@ -130,7 +130,7 @@ using .TestUtils
         exp_periodic = INSExperiment(grid, u_fields, p_field_periodic, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_periodic) == true
 
-        dirichlet_bc1d = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+        dirichlet_bc1d = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
         dirichlet_bc2d = BoundaryConditions(dirichlet_bc1d, dirichlet_bc1d)
         p_field_dirichlet = ScalarField(TTArchitecture(arch_2d), dirichlet_bc2d)
 
@@ -312,7 +312,7 @@ end
     sites = siteinds(arch)
     grid = Grid(arch, (1.0, 1.0))
     n1, n2 = variable_dims(arch)
-    dirichlet = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+    dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
     neumann = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
     u_bcs = BoundaryConditions(dirichlet, dirichlet)
     p_bcs = BoundaryConditions(neumann, neumann)

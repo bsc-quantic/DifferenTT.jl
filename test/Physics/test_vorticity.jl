@@ -187,8 +187,8 @@ function poiseuille_faces(arch; U=1.0, H=1.0)
 end
 
 @testset "Vorticity-streamfunction" begin
-    # DirichletBC logs at every construction: build the wall conditions once
-    wall = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+    # The wall conditions shared by the cavity experiments
+    wall = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
     walls = BoundaryConditions(wall, wall)
     periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
@@ -315,12 +315,14 @@ end
             arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(), NoSlipWall(velocity=ones(K2)[1:3])))
         )
 
-        # vmax: the largest wall or inflow speed, 1 (with an @info) if every face is at rest, or the given value
+        # vmax: the largest wall or inflow speed, 1 (with a debug message) if every face is at rest, or the given value
         @test face_experiment(
             arch, ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-2), NoSlipWall(velocity=1)))
         ).vmax === 2.0
         @test face_experiment(arch, faces).vmax ≈ maximum(faces[1][1].normal_velocity)
-        @test_logs (:info, r"vmax") match_mode=:any face_experiment(arch, periodic_faces)
+        @test_logs (:debug, r"vmax") match_mode=:any min_level=Base.CoreLogging.Debug face_experiment(
+            arch, periodic_faces
+        )
         @test face_experiment(arch, periodic_faces).vmax === 1.0
         @test face_experiment(arch, periodic_faces; vmax=0.5).vmax === 0.5
     end
@@ -695,7 +697,9 @@ end
         # h = 1/17 does not resolve Re^(-3/4) at Re = 100, but does at Re = 10
         @test_logs (:warn,) match_mode=:any check_kolmogorov_scale(experiment)
         resolved_experiment = cavity_experiment(TTArchitecture((16, 16)); Re=10.0)
-        @test_logs (:info, "Kolmogorov scale is resolved") check_kolmogorov_scale(resolved_experiment)
+        @test_logs (:debug, "Kolmogorov scale is resolved") min_level=Base.CoreLogging.Debug check_kolmogorov_scale(
+            resolved_experiment
+        )
     end
 
     # ---------------------------------------------------------------------------------------------

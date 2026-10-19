@@ -36,7 +36,7 @@ using .TestUtils
         @test_throws ArgumentError DifferenTT.toeplitz_mpo(sites, Dict(0 => 2.0, 1 => -1.0), bc_periodic)
 
         # Dirichlet
-        bc_dirichlet = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+        bc_dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
         mpo_d = DifferenTT.toeplitz_mpo(sites, coeffs, bc_dirichlet)
         @test mpo_d isa MPO
         @test length(mpo_d) == n

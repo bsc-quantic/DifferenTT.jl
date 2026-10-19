@@ -131,7 +131,7 @@ function linsolve_preconditioner(
         end
     end
 
-    @info "Linsolve preconditioner with preconditioning set to $preconditioning"
+    @debug "Linsolve preconditioner with preconditioning set to $preconditioning"
 
     ls_kwargs = Dict{Symbol,Any}(kwargs)
     if !isnothing(residual_tol)
@@ -159,6 +159,7 @@ function fai_dg(
     D_kwargs;
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    compute_residual::Bool=false,
     kwargs...,
 )
     A = transpose_mpo(operator) # To construct XA
@@ -217,12 +218,14 @@ function fai_dg(
         unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0; ls_kwargs...)
     end
 
-    term1 = ITensorMPS.inner(projected_A, unscaledG, projected_A, unscaledG)
-    term2 = 2 * real(ITensorMPS.inner(projected_b', projected_A, unscaledG))
-    term3 = ITensorMPS.inner(projected_b, projected_b)
-    rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(projected_b)
-
-    @info "Preconditioner found with rel residual = $rel_error"
+    # The residual of the projected system costs two more sandwiches with projected_A, so it is opt-in
+    if compute_residual
+        term1 = ITensorMPS.inner(projected_A, unscaledG, projected_A, unscaledG)
+        term2 = 2 * real(ITensorMPS.inner(projected_b', projected_A, unscaledG))
+        term3 = ITensorMPS.inner(projected_b, projected_b)
+        rel_error = sqrt(max(0.0, term1 - term2 + term3)) / norm(projected_b)
+        @info "Preconditioner found with rel residual = $rel_error"
+    end
 
     # We need to go back to MPO form from the vectorized solution by reverting the combiners!
     for i in 1:n

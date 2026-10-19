@@ -1,5 +1,6 @@
 using DifferenTT
 using Test
+using Logging
 using ITensors
 using ITensorMPS
 using LinearAlgebra
@@ -104,6 +105,12 @@ using .TestUtils
         @test M⁻¹ isa FactorizedPreconditioner
         @test M⁻¹.operator isa MPO
         @test length(M⁻¹.operator) == n
+
+        # The residual of the projected system is computed and logged only on request
+        @test_logs min_level=Logging.Info fai_preconditioner(A, 0.5, solver, D_kwargs)
+        @test_logs (:info, r"rel residual") min_level=Logging.Info fai_preconditioner(
+            A, 0.5, solver, D_kwargs; compute_residual=true
+        )
     end
 
     @testset "SincQuadraturePreconditioner construction" begin
@@ -169,8 +176,8 @@ using .TestUtils
         test_sites = [Index(2, "Site,n=$i") for i in 1:4]
         grid = Grid(arch, (1.0,))
 
-        bc_dd = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))))
-        bc_dn = BoundaryConditions(BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)))
+        bc_dd = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)))
+        bc_dn = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)))
 
         # Dirichlet-Dirichlet case
         inv_dd_prec = DifferenTT.inverse_laplacian_preconditioner(test_sites, arch, grid, bc_dd)

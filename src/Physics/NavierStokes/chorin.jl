@@ -52,7 +52,7 @@ function ChorinCache(experiment::INSExperiment{N}) where {N}
     end
 
     regularize = regularization_check(experiment)
-    @info "regularization = $regularize"
+    @debug "regularization = $regularize"
 
     if regularize
         # Exact Pressure Pinning (Rank-1 Deflation)

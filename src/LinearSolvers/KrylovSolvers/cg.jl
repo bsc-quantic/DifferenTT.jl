@@ -90,7 +90,6 @@ function preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=
             ρ = KrylovKit.inner(r, z)
             β = ρ / ρold
         end
-        @debug @show ρ
         numops += 1
         numiter += 1
         if normr < tol

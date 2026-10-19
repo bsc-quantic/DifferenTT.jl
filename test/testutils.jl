@@ -56,7 +56,7 @@ quietly(f) = with_logger(f, NullLogger())
 
 function _dirichlet_laplacian(arch, N, stencil_order)
     sites = siteinds(arch)
-    bc = quietly(() -> BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)...))
+    bc = BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), N)...)
     grid = Grid(arch, ntuple(_ -> 1.0, N))
     A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), grid; stencil_order=stencil_order)
     return A, sites, arch, grid

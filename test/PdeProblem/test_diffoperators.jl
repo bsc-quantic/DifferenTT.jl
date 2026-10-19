@@ -56,7 +56,7 @@ end
             for order in [1, 2]
                 for (name, bc1d) in [
                     ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
-                    ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))),
+                    ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
                     ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
                 ]
                     @testset "Derivative $order, Stencil $stencil_order, BC $name" begin
@@ -119,7 +119,7 @@ end
         qtt_arch = QTTArchitecture((nsite_x, nsite_y))
         grid = Grid(qtt_arch, (1.0, 1.0))
         bc1d_x = BoundaryCond1d(PeriodicBC(), PeriodicBC())
-        bc1d_y = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0))
+        bc1d_y = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0))
         bcs = BoundaryConditions(bc1d_x, bc1d_y)
 
         # We need a ScalarField to create the ops
@@ -155,7 +155,7 @@ end
     @testset "DifferentialOpsScalar with eye padding (B3)" begin
         bcs_list = (
             ("periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
-            ("Dirichlet", BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))),
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
         )
         @testset "QTT, $name" for (name, bc) in bcs_list
             bcs = BoundaryConditions(bc)

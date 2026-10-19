@@ -96,7 +96,7 @@ is_ghost_face(face::VorticityFace) = face isa Union{NoSlipWall,SlipWall,InflowFa
 `PeriodicFace`. The `DirichletBC` values are not read: the faces hold the boundary data.
 """
 function vorticity_boundary_conditions(faces)
-    dirichlet, neumann, periodic = DirichletBC(0.0), NeumannBC(0.0), PeriodicBC() # DirichletBC logs at every construction
+    dirichlet, neumann, periodic = DirichletBC(0.0), NeumannBC(0.0), PeriodicBC()
     face_bc(face) = is_ghost_face(face) ? dirichlet : (face isa OutflowFace ? neumann : periodic)
     return BoundaryConditions(ntuple(i -> BoundaryCond1d(face_bc(faces[i][1]), face_bc(faces[i][2])), length(faces))...)
 end
@@ -256,7 +256,7 @@ struct INSVorticityExperiment{N} <: INSExperimentBase
             )]
             vmax = isempty(speeds) ? 0.0 : maximum(speeds)
             if iszero(vmax)
-                @info "Every face is at rest: using vmax = 1 for the CFL check. Pass an explicit vmax to INSVorticityExperiment."
+                @debug "Every face is at rest: using vmax = 1 for the CFL check. Pass an explicit vmax to INSVorticityExperiment."
                 vmax = 1.0
             end
         end

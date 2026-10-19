@@ -36,16 +36,15 @@ Dirichlet boundary condition with a specific value.
 
 Currently only homogeneous Dirichlet conditions are supported.
 
+Note that the explicit time steppers do not impose `value`: they keep the boundary rows of the field at the values of
+the initial field, so the boundary values are set by the initial condition, not by this object.
+
 # Fields
 
   - `value::T`: The value of the field at the boundary.
 """
 struct DirichletBC{T<:Number} <: BoundaryCond
     value::T
-    function DirichletBC(value::T) where {T<:Number}
-        @info "Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object"
-        return new{T}(value)
-    end
 end
 
 """

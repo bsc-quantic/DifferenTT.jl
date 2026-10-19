@@ -155,8 +155,7 @@ try
 
         # Dirichlet-Neumann along x, Neumann on both sides along y
         neumann_bcs = BoundaryConditions(
-            BoundaryCond1d(quietly(() -> DirichletBC(0.0)), NeumannBC(0.0)),
-            BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0)),
+            BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
         )
 
         # toeplitz_mpo needs at least 4 qubits per axis
@@ -203,8 +202,7 @@ try
 
             # Without Neumann faces: the same operator as symmetrized_laplacian
             dirichlet_periodic = BoundaryConditions(
-                BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0))),
-                BoundaryCond1d(PeriodicBC(), PeriodicBC()),
+                BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())
             )
             plain_field = ScalarField(siteinds(arch), arch, dirichlet_periodic)
             @test DifferenTT.contract_mpo(kronecker_laplacian(plain_field, grid; stencil_order=2)) ==
@@ -278,7 +276,7 @@ try
         arch = TTArchitecture((6, 6, 6))
         grid = Grid(arch, (1.0, 1.0, 1.0))
         sites = siteinds(arch)
-        dirichlet = BoundaryCond1d(quietly(() -> DirichletBC(0.0)), quietly(() -> DirichletBC(0.0)))
+        dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
         field = ScalarField(sites, arch, BoundaryConditions(dirichlet, dirichlet, dirichlet))
 
         laplacian = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=2))
