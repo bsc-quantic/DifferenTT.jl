@@ -265,3 +265,17 @@ end
         @test_throws ArgumentError DifferenTT.inverse_laplacian_preconditioner(siteinds(arch), arch, grid, bc_nn)
     end
 end
+
+# B_M of Eq. (26) on three sites against the dense quadrature λ⁻¹ Σ_k h t_k ⊗_ℓ exp(-t_k A_ℓ / λ)
+@testset "sincquadrature_preconditioner on three sites against the dense quadrature" begin
+    arch = TTArchitecture((3, 4, 3))
+    sites = siteinds(arch)
+    A_list = [Matrix(SymTridiagonal(fill(2.0, n), fill(-1.0, n - 1))) for n in (3, 4, 3)]
+    M = 3
+    B = DifferenTT.sincquadrature_preconditioner(arch, sites, A_list, M).operator
+    @test maxlinkdim(B) <= 2M + 1
+    h = π / sqrt(M)
+    λ = sum(eigmin(Symmetric(Aℓ)) for Aℓ in A_list)
+    B_ref = sum(h * exp(k * h) / λ * kron([exp(-exp(k * h) / λ * Aℓ) for Aℓ in A_list]...) for k in (-M):M)
+    @test todense(B) ≈ B_ref rtol = 1e-10
+end

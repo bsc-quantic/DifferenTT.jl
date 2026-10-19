@@ -64,3 +64,24 @@ end
     # Measured: 403 iterations without preconditioner, 22 with Jacobi
     @test info.numiter < info_none.numiter / 5
 end
+
+@testset "PCG: early return, non-convergence and verbosity" begin
+    S, _, b, x0 = spd_fixtures()
+    Minv = Diagonal(1 ./ diag(S))
+    x_exact = S \ b
+    # From the solution, it returns without iterating
+    _, info = DifferenTT.preconditioned_linsolve(S, b, x_exact, Minv, CG(; tol=1e-8))
+    @test info.converged == 1 && info.numiter == 0
+    # Without convergence it warns only with verbosity ≥ 1 (KrylovKit's default)
+    _, info = @test_logs DifferenTT.preconditioned_linsolve(S, b, x0, Minv, CG(; tol=1e-14, maxiter=2, verbosity=0))
+    @test info.converged == 0 && info.numiter == 2
+    @test_logs (:warn, r"stopped without converging") DifferenTT.preconditioned_linsolve(
+        S, b, x0, Minv, CG(; tol=1e-14, maxiter=2, verbosity=1)
+    )
+    @test_logs (:info, r"starts") (:info, r"in iteration") (:info, r"converged") match_mode = :any DifferenTT.preconditioned_linsolve(
+        S, b, x0, Minv, CG(; tol=1e-8, verbosity=3)
+    )
+    @test_logs (:info, r"without any iterations") DifferenTT.preconditioned_linsolve(
+        S, b, x_exact, Minv, CG(; tol=1e-8, verbosity=2)
+    )
+end

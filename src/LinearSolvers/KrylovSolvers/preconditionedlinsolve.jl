@@ -1,5 +1,5 @@
 """
-    preconditioned_linsolve(f, b, x₀, M⁻¹, a₀::Number=0, a₁::Number=1; kwargs...) -> (x, info)
+    preconditioned_linsolve(f, b, x₀, M⁻¹, a₀::Number=0, a₁::Number=1; alg_rrule=nothing, kwargs...) -> (x, info)
 
 Solve ``(a_0 + a_1 f)\\mathbf{x} = \\mathbf{b}`` from `x₀` with the preconditioner `M⁻¹`, the preconditioned counterpart
 of `KrylovKit.linsolve(f, b, x₀, a₀, a₁; kwargs...)`.
@@ -16,14 +16,10 @@ argument types and such a method would be type piracy.
 
 Returns the solution and a `KrylovKit.ConvergenceInfo`.
 """
-function preconditioned_linsolve(f, b, x₀, M⁻¹, a₀::Number=0, a₁::Number=1; kwargs...)
+function preconditioned_linsolve(f, b, x₀, M⁻¹, a₀::Number=0, a₁::Number=1; alg_rrule=nothing, kwargs...)
     T = apply_scalartype(f, x₀, a₀, a₁)
     alg = linselector(f, b, T; kwargs...)
-    if haskey(kwargs, :alg_rrule)
-        alg_rrule = kwargs[:alg_rrule]
-    else
-        alg_rrule = alg
-    end
+    alg_rrule = isnothing(alg_rrule) ? alg : alg_rrule
     if alg isa CG || alg isa GMRES
         return preconditioned_linsolve(f, b, x₀, M⁻¹, alg, a₀, a₁; alg_rrule=alg_rrule)
     end

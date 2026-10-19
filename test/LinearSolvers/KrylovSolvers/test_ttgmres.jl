@@ -117,3 +117,31 @@ end
         A, b, zeros_mps(sites), M⁻¹, DifferenTT.TTGMRES(; krylovdim=2, maxiter=1, tol=1e-12, verbosity=1)
     )
 end
+
+@testset "Preconditioned TTGMRES: shifted system, early return and verbosity" begin
+    A, sites, _, _ = tt_laplacian((4, 4))
+    Ad = todense(A)
+    b = random_mps(rng(1), sites; linkdims=2)
+    M⁻¹ = Preconditioner(identity_mpo(sites))
+    alg(; kwargs...) = DifferenTT.TTGMRES(;
+        krylovdim=20, maxiter=10, tol=1e-8, cutoff=1e-15, orth_cutoff=1e-15, kwargs...
+    )
+    # The shifted system (a₀ + a₁A)x = b, from a non-zero initial guess
+    a₀, a₁ = 2.0, 0.5
+    x_ref = (a₀ * I + a₁ * Ad) \ todense(b)
+    x, info = KrylovKit.linsolve(A, b, random_mps(rng(2), sites), M⁻¹, alg(), a₀, a₁)
+    @test info.converged == 1
+    @test norm(todense(x) - x_ref) <= 1e-6 * norm(x_ref)
+
+    x_exact = vec2mps(Ad \ todense(b), sites)
+    _, info = KrylovKit.linsolve(A, b, x_exact, M⁻¹, alg())
+    @test info.converged == 1 && info.numiter == 0
+    for args in ((A, b, x_exact), (A, b, x_exact, M⁻¹))
+        @test_logs (:info, r"without any iterations") KrylovKit.linsolve(args..., alg(; verbosity=2))
+    end
+    for args in ((A, b, zeros_mps(sites)), (A, b, zeros_mps(sites), M⁻¹))
+        @test_logs (:info, r"starts") (:info, r"in iteration") (:info, r"converged") match_mode = :any KrylovKit.linsolve(
+            args..., alg(; krylovdim=3, verbosity=3)
+        )
+    end
+end

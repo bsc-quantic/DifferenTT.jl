@@ -104,3 +104,24 @@ end
         A, b, x0, DifferenTT.TTCG(; maxiter=200, tol=1e-6, verbosity=2)
     )
 end
+
+@testset "Preconditioned TTCG: early return and verbosity" begin
+    A, sites, _, _ = tt_laplacian((4, 4))
+    b = random_mps(rng(1), sites; linkdims=2)
+    M⁻¹ = Preconditioner(identity_mpo(sites))
+    x_exact = vec2mps(todense(A) \ todense(b), sites)
+    alg(; kwargs...) = DifferenTT.TTCG(; maxiter=100, tol=1e-6, cutoff=1e-15, orth_cutoff=1e-15, kwargs...)
+    _, info = KrylovKit.linsolve(A, b, x_exact, M⁻¹, alg())
+    @test info.converged == 1 && info.numiter == 0
+    @test_logs (:info, r"without any iterations") KrylovKit.linsolve(A, b, x_exact, M⁻¹, alg(; verbosity=2))
+    @test_logs (:info, r"without any iterations") KrylovKit.linsolve(A, b, x_exact, alg(; verbosity=2))
+    for M in (nothing, M⁻¹)
+        args = isnothing(M) ? (A, b, zeros_mps(sites)) : (A, b, zeros_mps(sites), M)
+        @test_logs (:info, r"starts") (:info, r"in iteration") (:info, r"converged") match_mode = :any KrylovKit.linsolve(
+            args..., alg(; verbosity=3)
+        )
+        @test_logs (:warn, r"stopped without converging") match_mode = :any KrylovKit.linsolve(
+            args..., alg(; maxiter=2, tol=1e-14, verbosity=1)
+        )
+    end
+end

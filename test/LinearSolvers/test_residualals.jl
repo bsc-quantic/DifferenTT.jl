@@ -43,6 +43,7 @@ end
 
 include(joinpath(@__DIR__, "..", "testutils.jl"))
 using .TestUtils
+using ITensorMPS: linkdims
 
 # The Frobenius floor of the residual-based truncation follows the ITensors convention: with a residual tolerance so
 # loose that the residual alone would keep rank 1, the rank chosen is the one that ITensors' svd keeps for the same
@@ -72,4 +73,39 @@ using .TestUtils
         @test result.chosen_rank == itensors_rank
         @test result.chosen_rank < length(σ)
     end
+end
+
+@testset "ResidualALS: nsite = 1, zero right-hand side, invalid local tensor and printed output" begin
+    A, sites, _, _ = qtt_laplacian((5,))
+    b = random_mps(rng(1), sites; linkdims=2)
+    loc = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-12)
+    # With nsite = 1 it falls back to the ALS truncation, which keeps the bond dimension of the initial guess
+    x0 = random_mps(rng(2), sites; linkdims=8)
+    x1 = linearsolve(ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=6, nsite=1), updater_kwargs=loc), A, b, x0)
+    @test relres(A, x1, b) < 1e-9
+    @test all(linkdims(x1) .<= linkdims(x0))
+
+    # A zero right-hand side truncates as ITensors does, and gives the zero solution
+    solver = ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=8), updater_kwargs=loc)
+    @test norm(linearsolve(solver, A, 0.0 * b, random_mps(rng(3), sites; linkdims=2))) < 1e-12
+
+    # A non-finite two-site tensor is rejected before the SVD
+    problem = ITensorMPS.ReducedLinearProblem(A, b)
+    state = orthogonalize(random_mps(rng(2), sites; linkdims=4), 2)
+    ITensorMPS.set_nsite!(problem, 2)
+    ITensorMPS.position!(problem, state, 2)
+    phi = state[2] * state[3]
+    phi[1] = NaN
+    @test_throws ArgumentError DifferenTT.residual_replacebond!(copy(state), 2, phi, problem)
+
+    # outputlevel = 2 prints one line per bond and one per sweep
+    out = mktemp() do path, io
+        redirect_stdout(io) do
+            linearsolve(solver, A, b, nothing; outputlevel=2)
+        end
+        close(io)
+        read(path, String)
+    end
+    @test occursin("After sweep 2", out)
+    @test occursin("Sweep 1, direction", out)
 end

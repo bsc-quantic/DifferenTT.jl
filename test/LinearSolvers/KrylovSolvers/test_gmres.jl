@@ -78,3 +78,17 @@ end
     # The preconditioned norm is far from it here, so the two cannot be confused
     @test !isapprox(norm(Minv * (b - Abad * x)), info.normres; rtol=0.5)
 end
+
+@testset "Preconditioned GMRES: early return and verbosity" begin
+    N, _, b, x0 = gmres_fixtures()
+    Minv = Diagonal(1 ./ diag(N))
+    x_exact = N \ b
+    _, info = DifferenTT.preconditioned_linsolve(N, b, x_exact, Minv, GMRES(; tol=1e-8))
+    @test info.converged == 1 && info.numiter == 0
+    @test_logs (:info, r"without any iterations") DifferenTT.preconditioned_linsolve(
+        N, b, x_exact, Minv, GMRES(; tol=1e-8, verbosity=2)
+    )
+    @test_logs (:info, r"starts") (:info, r"in iteration") (:info, r"converged") match_mode = :any DifferenTT.preconditioned_linsolve(
+        N, b, x0, Minv, GMRES(; tol=1e-8, krylovdim=5, verbosity=3)
+    )
+end

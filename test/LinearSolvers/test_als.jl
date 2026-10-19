@@ -92,7 +92,7 @@ end
 
 include(joinpath(@__DIR__, "..", "testutils.jl"))
 using .TestUtils
-using LinearAlgebra: norm
+using LinearAlgebra: norm, eigvals, Symmetric
 
 # Plain ALS (E5): the 2-site and the 1-site variants solve an SPD system to the dense solution
 @testset "ALS solves an SPD system" begin
@@ -116,4 +116,22 @@ using LinearAlgebra: norm
     )
     @test all(linkdims(x1) .<= linkdims(x0))
     @test relres(A, x1, b) < 1e-9
+end
+
+@testset "spectrum_store on an unpreconditioned solve" begin
+    A, sites, _, _ = qtt_laplacian((4,))
+    b = random_mps(rng(1), sites; linkdims=2)
+    store = DifferenTT.KrylovSpectrumStats()
+    solver = ALS(;
+        sweep_kwargs=DifferenTT.SweepingArgs(; nsweeps=2),
+        updater_kwargs=DifferenTT.LocalUpdaterArgs(; spectrum_store=store),
+    )
+    linearsolve(solver, A, b, nothing)
+    table = DifferenTT.spectrum_table(store)
+    # The local blocks of an SPD operator are SPD, with spectra inside that of A; nothing is recorded for M⁻¹
+    λ = eigvals(Symmetric(todense(A)))
+    @test all(table["eigmin_A"] .>= minimum(λ) * (1 - 1e-10))
+    @test all(table["eigmax_A"] .<= maximum(λ) * (1 + 1e-10))
+    @test all(isnan, table["eigmin_P"])
+    @test all(==(-1), table["nneg_P"])
 end

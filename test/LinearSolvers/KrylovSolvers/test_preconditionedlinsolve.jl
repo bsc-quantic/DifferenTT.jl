@@ -19,3 +19,12 @@ using DifferenTT
     @test info_asym.converged > 0
     @test A_asym * x_asym ≈ b
 end
+
+# alg_rrule is accepted as in KrylovKit.linsolve (it used to be forwarded to linselector, which threw a MethodError)
+@testset "preconditioned linsolve selector accepts alg_rrule" begin
+    A = [4.0 1.0; 1.0 3.0]
+    b = [1.0, 2.0]
+    x, info = DifferenTT.preconditioned_linsolve(A, b, zeros(2), inv([4.0 0.0; 0.0 3.0]); alg_rrule=GMRES())
+    @test info.converged > 0
+    @test A * x ≈ b
+end

@@ -172,3 +172,9 @@ end
         @test todense(P_copy.operator) == todense(P.operator)
     end
 end
+
+@testset "_swapprime leaves an empty environment unchanged" begin
+    @test DifferenTT._swapprime(ITensors.OneITensor(), 0, 2) isa ITensors.OneITensor
+    i = Index(2)
+    @test inds(DifferenTT._swapprime(random_itensor(i, i''), 0, 2)) == (i'', i)
+end

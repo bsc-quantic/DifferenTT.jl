@@ -557,6 +557,7 @@ function residual_sub_sweep_update(
             normalize && (reduced_state /= norm(reduced_state))
 
             ortho_str = ITensorMPS.isforward(direction) ? "left" : "right"
+            # TODO(release): drho is computed but never used, so `noise` has no effect on ResidualALS
             drho = nothing
             if noise > 0.0 && ITensorMPS.isforward(direction)
                 drho = noise * noiseterm(reduced_operator, reduced_state, ortho_str)

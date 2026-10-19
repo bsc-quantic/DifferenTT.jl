@@ -59,10 +59,13 @@ object be reused with different settings:
 
   - DMRG-type solvers ([`AbstractDMRGSolver`](@ref)): any field of [`SweepingArgs`](@ref) (`nsweeps`, `maxdim`,
     `cutoff`, `nsite`, `outputlevel`, `observer!`, `sweep_observer!`, `checkdone`), and the other keywords of
-    `ITensorMPS.alternating_update` (e.g. `mindim`). An observer without an operator or right-hand side, such as
-    `ResidualObserver(rtol=1e-6)`, is bound to `A` and `b` of this call (see [`bind_observer`](@ref)). The
-    preconditioned method also accepts `preconditioner_sites`, a collection of site indices in `1:length(b)`: only
-    the local problems whose first site is in it are preconditioned, and the others are solved with `A` alone.
+    `ITensorMPS.alternating_update` (e.g. `mindim`), except its time-evolution and disk options (`time_step`,
+    `write_when_maxdim_exceeds`), which ITensorMPS does not support for linear systems; `noise` is accepted but ignored
+    by [`ResidualALS`](@ref) and [`AMEn`](@ref). An observer without an operator
+    or right-hand side, such as `ResidualObserver(rtol=1e-6)`, is bound to `A` and `b` of this call (see
+    [`bind_observer`](@ref)). The preconditioned method also accepts `preconditioner_sites`, a collection of site
+    indices in `1:length(b)`: only the local problems whose first site is in it are preconditioned, and the others are
+    solved with `A` alone.
   - Global solvers ([`AbstractGlobalSolver`](@ref)): any field of [`GlobalUpdaterArgs`](@ref) (e.g. `rtol`,
     `maxiter`, `maxdim`). Other keywords are ignored.
 
