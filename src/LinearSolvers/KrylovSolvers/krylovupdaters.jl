@@ -317,7 +317,7 @@ function (up::KrylovUpdater)(
     end
 
     if use_preconditioner
-        x, info = linsolve(
+        x, info = preconditioned_linsolve(
             operator(problem.linear_problem),
             constant_term(problem.linear_problem),
             init,

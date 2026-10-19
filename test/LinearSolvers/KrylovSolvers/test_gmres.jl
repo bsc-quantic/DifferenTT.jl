@@ -14,13 +14,13 @@ using DifferenTT
 
     # Preconditioned GMRES
     alg = GMRES()
-    x, info = linsolve(A, b, x0, Minv, alg)
+    x, info = DifferenTT.preconditioned_linsolve(A, b, x0, Minv, alg)
 
     @test info.converged > 0
     @test A * x ≈ b
 
     # Test a0 and a1
-    x2, info2 = linsolve(A, b, x0, Minv, alg, 1.0, -1.0)
+    x2, info2 = DifferenTT.preconditioned_linsolve(A, b, x0, Minv, alg, 1.0, -1.0)
     # solves (I - A)x = b
     @test info2.converged > 0
     @test (I - A) * x2 ≈ b

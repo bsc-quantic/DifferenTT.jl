@@ -4,7 +4,14 @@ using KrylovKit: Givens
 
 # Regular non-preconditioned implentation is taken directly from KrylovKit.jl
 
-function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
+"""
+    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.GMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
+
+Solve ``(a_0 + a_1 A) x = b`` by left-preconditioned restarted GMRES, with the preconditioner applied as
+`KrylovKit.apply(M⁻¹, ·)`. The unpreconditioned iteration is that of KrylovKit.jl; see the header of this file.
+Returns `(x, info)` as `KrylovKit.linsolve` does.
+"""
+function preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::GMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
     # Initial function operation and division defines number type
     y₀ = KrylovKit.apply(operator, x₀)
     T = typeof(KrylovKit.inner(b, y₀) / norm(b) * one(a₀) * one(a₁))
