@@ -5,17 +5,44 @@ using LinearAlgebra
 using ITensors.NDTensors.BackendSelection: @Algorithm_str, Algorithm
 using Printf
 
-# TODO Test all of this
-function ITensors.Index(pivs::Vector{Vector{P}}; dir::Arrow=ITensors.Out, tags="", plev=0) where {P<:Pair}
-    return Index(rand(ITensors.index_id_rng(), ITensors.IDType), pivs, dir, tags, plev)
+"""
+    PivotSpace{P<:Pair}
+
+Space of an index whose values are labelled by pivots, as built by the cross interpolation of `interpolative`: entry
+`r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping the pivots in an owned type
+lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
+"""
+struct PivotSpace{P<:Pair}
+    pivots::Vector{Vector{P}}
 end
 
-const PivotIndex = Index{Vector{Vector{P}}} where {P<:Pair}
+Base.:(==)(a::PivotSpace, b::PivotSpace) = a.pivots == b.pivots
+Base.length(s::PivotSpace) = length(s.pivots)
+Base.copy(s::PivotSpace) = PivotSpace(copy(s.pivots))
+
+const PivotIndex = Index{<:PivotSpace}
+
+"""
+    pivot_index(pivs::Vector{Vector{<:Pair}}; dir=ITensors.Out, tags="", plev=0) -> Index{PivotSpace}
+
+Return a new index of dimension `length(pivs)` that carries the pivots `pivs` in its space.
+"""
+function pivot_index(pivs::Vector{Vector{P}}; dir::Arrow=ITensors.Out, tags="", plev=0) where {P<:Pair}
+    return Index(rand(ITensors.index_id_rng(), ITensors.IDType), PivotSpace(pivs), dir, tags, plev)
+end
+
+"""
+Return the pivots stored in the space of the pivot index `i`.
+"""
+index_pivots(i::PivotIndex) = space(i).pivots
 
 ITensors.NDTensors.dim(i::PivotIndex) = length(space(i))
 
 ITensors.hasqns(i::PivotIndex) = false
 
+"""
+Return whether the index `i` carries pivots, i.e. whether it is an `Index{PivotSpace}`.
+"""
 haspivots(i::PivotIndex) = true
 haspivots(i::Index) = false
 
@@ -250,7 +277,7 @@ Optional keyword arguments:
 function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Nothing,Index}=nothing, tags="Link", kws...)
     cols = nothing
     if !isnothing(pivot_index)
-        pivots = space(pivot_index)
+        pivots = index_pivots(pivot_index)
         # Remove pivot data involving the current vertex (local_vert)
         local_pivots = [only(filter(p->(p.first == local_vert), piv_set)).second for piv_set in pivots]
         other_pivots = [filter(p->(p.first != local_vert), piv_set) for piv_set in pivots]
@@ -263,10 +290,10 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
             for j in 1:length(local_pivots)
                 l = local_pivots[j]
                 if haspivots(col_inds[1])
-                    o = findfirst(==(other_pivots[j]), space(col_inds[1]))
+                    o = findfirst(==(other_pivots[j]), index_pivots(col_inds[1]))
                     cols[j] = o + dim(col_inds[1])*(l-1)
                 else
-                    o = findfirst(==(other_pivots[j]), space(col_inds[2]))
+                    o = findfirst(==(other_pivots[j]), index_pivots(col_inds[2]))
                     cols[j] = l + dim(col_inds[1])*(o-1)
                 end
             end
@@ -305,19 +332,19 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     pivs = Vector{Vector{pivot_eltype}}(undef, rank)
     function get_pivs(r, c)
         i, ip = col_inds[c], col_pivs[r][c]
-        return haspivots(i) ? space(i)[ip] : [local_vert => ip]
+        return haspivots(i) ? index_pivots(i)[ip] : [local_vert => ip]
     end
     pivs = [vcat([get_pivs(r, c) for c in 1:length(col_inds)]...) for r in 1:rank]
 
     # TODO: debugging code to check if reconstructed pivot index matches
-    check_pivot_index = Index(pivs; tags)
+    check_pivot_index = DifferenTT.pivot_index(pivs; tags) # qualified: the keyword `pivot_index` shadows it here
     @assert dim(check_pivot_index) == rank
     if isnothing(pivot_index)
         pivot_index = check_pivot_index
     else
-        if space(pivot_index) != space(check_pivot_index)
-            @show space(pivot_index)
-            @show space(check_pivot_index)
+        if index_pivots(pivot_index) != index_pivots(check_pivot_index)
+            @show index_pivots(pivot_index)
+            @show index_pivots(check_pivot_index)
             error("reconstructed pivot index space does not matched user provided pivot index space")
         end
     end
@@ -421,7 +448,9 @@ Reset the counter reported by [`tt_mul_fallbacks`](@ref).
 """
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
-"Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it."
+"""
+Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it.
+"""
 function _rand_uniform!(rng::AbstractRNG, T::ITensor)
     # Mutate the underlying NDTensors.Tensor directly with Base's rand!
     rand!(rng, ITensors.tensor(T))

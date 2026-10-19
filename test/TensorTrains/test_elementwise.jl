@@ -112,6 +112,23 @@ using StableRNGs
         reset_tt_mul_fallbacks!()
     end
 
+    @testset "pivot indices" begin
+        pivs = [[1 => 2, 2 => 1], [1 => 1, 2 => 2], [1 => 2, 2 => 2]]
+        i = DifferenTT.pivot_index(pivs; tags="Link,l=1")
+        @test i isa Index{<:DifferenTT.PivotSpace}
+        @test dim(i) == 3
+        @test !ITensors.hasqns(i)
+        @test DifferenTT.haspivots(i)
+        @test !DifferenTT.haspivots(Index(3))
+        @test DifferenTT.index_pivots(i) == pivs
+        @test DifferenTT.index_pivots(copy(i)) == pivs
+        @test DifferenTT.index_pivots(i') == pivs
+        @test startswith(sprint(show, i), "(PI|dim=3|")
+        @test occursin("Link,l=1", sprint(show, i))
+        T = random_itensor(StableRNG(1), i, Index(2))
+        @test norm(T) > 0
+    end
+
     @testset "uniform_itensor" begin
         i, j = Index(3, "i"), Index(4, "j")
         T = DifferenTT.uniform_itensor(StableRNG(1), i, j)
