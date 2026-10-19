@@ -28,7 +28,7 @@ function Base.copy(reduced_preconditioner::ReducedPreconditioner)
     ReducedPreconditioner(copy(reduced_preconditioner.reduced_op))
 end
 ITensors.contract(P::ReducedPreconditioner, v::ITensor) = ITensors.contract(P.reduced_op, v)
-ITensors.contract(P::ReducedPreconditioner) = ITensors.contract(P.reduced_op)
+ITensors.contract(P::ReducedPreconditioner) = dense_projected_operator(P.reduced_op)
 ITensorMPS.product(P::ReducedPreconditioner, v::ITensor) = ITensorMPS.product(P.reduced_op, v)
 (P::ReducedPreconditioner)(v::ITensor) = ITensorMPS.product(P, v)
 
@@ -65,7 +65,7 @@ function ITensors.contract(P::ReducedFactorizedPreconditioner, v::ITensor)::ITen
 end
 
 function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
-    contractedGL = contract(P.reduced_op)
+    contractedGL = dense_projected_operator(P.reduced_op)
     transpose_itensor_map = _itensor_map(P.reduced_op)
 
     transpose_itensor_map = [_swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
@@ -225,7 +225,13 @@ function ITensorMPS.position!(reduced_problem::ReducedFAIPrecondLinearProblem, s
     return reduced_problem
 end
 
-function ITensors.contract(P::AbstractProjMPO)::ITensor
+"""
+    dense_projected_operator(P::AbstractProjMPO) -> ITensor
+
+Contract the projected operator `P` (left environment, the MPO tensors of its current sites and right environment)
+into one ITensor, the dense local operator of the sweep at the current position.
+"""
+function dense_projected_operator(P::AbstractProjMPO)::ITensor
     itensor_map = Union{ITensor,OneITensor}[lproj(P)]
     append!(itensor_map, P.H[site_range(P)])
     push!(itensor_map, rproj(P))

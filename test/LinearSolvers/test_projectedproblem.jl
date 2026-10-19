@@ -10,11 +10,13 @@ using DifferenTT: ReducedPreconditioner, ReducedFactorizedPreconditioner
     A = random_mpo(s)
     P = ProjMPO(A)
 
-    # Test contract for AbstractProjMPO
+    # dense_projected_operator contracts the projected operator into the dense local operator
     b = random_mps(s)
     position!(P, b, 2)
-    H = ITensors.contract(P)
+    H = DifferenTT.dense_projected_operator(P)
     @test H isa ITensor
+    v = b[2] * b[3]
+    @test noprime(H * v) ≈ ITensorMPS.product(P, v)
 
     # Test contract for ReducedPreconditioner
     precond = DifferenTT.rank1_preconditioner(A)
