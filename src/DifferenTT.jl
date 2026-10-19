@@ -160,6 +160,19 @@ export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timi
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity
 
+# Documented API that is not exported: reachable as `DifferenTT.name`, and covered by semantic versioning
+# Tensor-train utilities
+public upper_triang_mpo, lower_triang_mpo, triang_projector_mpo, ndim_operator_sum_mpo, toeplitz_mpo
+public row_pick_mpo, column_pick_mpo, entry_mpo, arrays2mps, arrays2mpo, point_sequence, sequence_to_point, iszero_tt
+public site_indices, link_indices, replace_mpo_siteinds!, replace_mpo_siteinds, transpose_mpo, reverse_mpo
+# Operators and physics
+public onedim_differential_operator, derivative_coefficients, wall_vorticity_coefficients
+public poisson_rhs, vorticity_transport, wall_vorticity_source, face_profile_mps, remove_mean
+public regularization_check, mask_correction, cfl_spectral_radii
+# Solvers and statistics
+public TTCG, TTGMRES, KrylovUpdater, QRUpdater, positions_sum, krylov_numiters, krylov_conds
+public dense_projected_operator, preconditioned_linsolve
+
 function __init__()
     _register_plots_error_hint()
     return nothing
