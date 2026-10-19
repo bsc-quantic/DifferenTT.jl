@@ -22,9 +22,9 @@ where ``\\varepsilon`` is `residual_tol`, ``\\delta`` is `residual_damp` and ``N
 bisection over ``r`` that assumes the residual decreases with the rank. The scaling by ``1/\\sqrt{N}`` follows Dolgov's
 implementations, so that the ``N`` local errors of a sweep add up to about ``\\varepsilon``. The rank is then clamped to
 `[mindim, maxdim]`. The sweeping `cutoff` (from [`SweepingArgs`](@ref)) adds a floor on the rank: we keep at least the
-smallest rank whose discarded relative weight ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff^2`,
-and `cutoff = 0` disables the floor, so that the rank is chosen by the residual alone. In a preconditioned solve, the
-local residual is always that of the unpreconditioned ``A_{\\text{loc}}``.
+smallest rank whose discarded relative weight ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff`, as
+in ITensors, and `cutoff = 0` disables the floor, so that the rank is chosen by the residual alone. In a preconditioned
+solve, the local residual is always that of the unpreconditioned ``A_{\\text{loc}}``.
 
 The residual-based truncation applies only to `nsite = 2`. With `nsite = 1`, the sweep falls back to the truncation
 of [`ALS`](@ref). The cost per bond is that of the local solve plus ``\\mathcal{O}(\\log r_{\\max})`` applications
@@ -113,11 +113,11 @@ end
     residual_replacebond!(state::MPS, b::Int, phi::ITensor, reduced_operator; maxdim, mindim, cutoff, normalize,
                           ortho, resid_tol, resid_damp)
 
-Split the two-site tensor `phi` into `state[b]` and `state[b+1]`, with the rank chosen by [`_residual_rank`](@ref)
-(the smallest rank that keeps the local residual below `max(resid_tol, res_exact) * resid_damp`, with `cutoff^2` as
-a Frobenius floor). Falls back to the ITensors truncation if the local right-hand side is zero. Returns
-`(; truncerr, chosen_rank, res_exact, spec)`, or the spectrum alone in that fallback; throws an `ArgumentError` if
-`phi` is not finite.
+Split the two-site tensor `phi` into `state[b]` and `state[b+1]`, with the rank chosen by [`_residual_rank`](@ref) (the
+smallest rank that keeps the local residual below `max(resid_tol, res_exact) * resid_damp`, with `cutoff` as a Frobenius
+floor in the ITensors convention). Falls back to the ITensors truncation if the local right-hand side is zero. Returns
+`(; truncerr, chosen_rank, res_exact, spec)`, or the spectrum alone in that fallback; throws an `ArgumentError` if `phi`
+is not finite.
 """
 function residual_replacebond!(
     state::MPS,
@@ -156,10 +156,9 @@ function residual_replacebond!(
     end
 
     # ── 3–5. Residual-based rank selection, with the Frobenius cutoff as a floor ──
-    # The floor compares the discarded relative weight Σσ² with `cutoff^2`, whereas ITensors, ALS and AMEn compare
-    # it with `cutoff`. TODO(release): decide whether to align the convention (it changes ResidualALS results).
+    # The floor follows the ITensors convention: the discarded relative weight Σσ² is at most `cutoff`
     chosen_rank, truncerr, res_exact = _residual_rank(
-        reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp, frob_weight=cutoff^2, mindim, maxdim
+        reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp, frob_weight=cutoff, mindim, maxdim
     )
 
     # ── 6. Perform the actual truncation ─────────────────────────────

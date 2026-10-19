@@ -43,6 +43,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - The global solvers (`GlobalCG`, `GlobalGMRES`) warn when they stop without converging, and throw `ArgumentError`
   for a `numiter_store` or `converged_store` that does not support `store[] = value`.
 - `ResidualALS.residual_tol` and `residual_damp` are `Float64`.
+- `ResidualALS` follows the ITensors cutoff convention in the Frobenius floor of its residual-based truncation: the
+  discarded relative weight `Σσ²` is at most `cutoff`, as for `ALS` and `AMEn` (it was `cutoff^2`). With `cutoff > 0`
+  the floor keeps fewer singular values than before, so the bond dimensions and solutions of `ResidualALS` differ from
+  v0.0.1 and from the paper data, which used `cutoff = 1e-13` (Sec. 5.1) or `cutoff = 0` (Sec. 5.2, unaffected).
 - `tt_mul_fallbacks` counts with a `Threads.Atomic{Int}`.
 - `elementwise_function` builds its suffix sketches once per call, as `tt_mul` does (one sketch index and one
   right-to-left pass, `suffix_sketches(...; positive)`), instead of re-sketching every suffix at every bond. It is

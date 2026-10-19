@@ -282,9 +282,8 @@ whole extra sweep (Sec. 5.1 of Torrente et al.).
   - `maxdim::Int=30`: maximum bond dimension of the solution after each SVD.
   - `cutoff::Float64=1e-10`: SVD cutoff. [`ALS`](@ref) follows the ITensors convention and discards the smallest
     singular values whose relative weight ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff`.
-    [`ResidualALS`](@ref) and [`AMEn`](@ref) choose the rank by the local residual instead, and use the cutoff only as
-    a floor on the rank: [`AMEn`](@ref) keeps the weight at most `cutoff`, as ITensors does, while
-    [`ResidualALS`](@ref) keeps it at most `cutoff^2` (see its docstring).
+    [`ResidualALS`](@ref) and [`AMEn`](@ref) choose the rank by the local residual instead, and use the cutoff, in the
+    same convention, only as a floor on the rank.
   - `nsite::Int=2`: number of sites of the local problem. [`ALS`](@ref) accepts 1 or 2, but only the 2-site variant
     (MALS) can change the bond dimension. [`ResidualALS`](@ref) truncates by the residual only for `nsite = 2`;
     [`AMEn`](@ref) ignores it; [`ExpandedALS`](@ref) requires 1.
