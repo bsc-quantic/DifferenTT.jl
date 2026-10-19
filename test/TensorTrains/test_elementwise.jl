@@ -156,6 +156,23 @@ using StableRNGs
         end
     end
 
+    @testset "suffix_sketches, positive (uniform) variant" begin
+        # An entrywise-positive MPS
+        M = random_mps(StableRNG(5), sites; linkdims=3)
+        for i in 1:n
+            M[i] = ITensor(abs.(array(M[i])) .+ 0.1, inds(M[i]))
+        end
+        k = Index(4, "sketch")
+        S = DifferenTT.suffix_sketches(M, k; positive=true, rng=StableRNG(1))
+        @test length(S) == n + 1
+        for v in 2:n
+            @test issetequal(inds(S[v]), inds(DifferenTT.positive_sketch(M, v:n, k)))
+            # Contracted with the dense prefix of sites 1:v-1, the positive sketch of a positive MPS stays positive
+            prefix = prod(M[u] for u in 1:(v-1))
+            @test all(>(0), array(prefix * S[v], (sites[1:(v-1)]..., k)...))
+        end
+    end
+
     @testset "elementwise_function against the dense map" begin
         N = 8
         qs = siteinds("Qubit", N)

@@ -41,6 +41,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
   for a `numiter_store` or `converged_store` that does not support `store[] = value`.
 - `ResidualALS.residual_tol` and `residual_damp` are `Float64`.
 - `tt_mul_fallbacks` counts with a `Threads.Atomic{Int}`.
+- `elementwise_function` builds its suffix sketches once per call, as `tt_mul` does (one sketch index and one
+  right-to-left pass, `suffix_sketches(...; positive)`), instead of re-sketching every suffix at every bond. It is
+  faster, and with a fixed seed its results (including the `D` of `fai_preconditioner`) differ from v0.0.1 at the
+  sketch-noise level.
 - `Project.toml`: version `0.1.0-DEV`; `DataFrames`, `LaTeXStrings` and `Statistics` removed; `Plots` is a weak
   dependency.
 
