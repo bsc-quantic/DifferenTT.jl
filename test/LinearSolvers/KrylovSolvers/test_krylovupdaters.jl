@@ -4,7 +4,8 @@ using ITensorMPS
 using KrylovKit
 using LinearAlgebra
 using DifferenTT
-using DifferenTT: _uses_cg_metric, _eig_condition, _check_spd, _wants_cond, _local_dense_matrix, NotSPDError, KrylovCondStats
+using DifferenTT:
+    _uses_cg_metric, _eig_condition, _check_spd, _wants_cond, _local_dense_matrix, NotSPDError, KrylovCondStats
 
 @testset "KrylovUpdater instantiation" begin
     updater = DifferenTT.KrylovUpdater()

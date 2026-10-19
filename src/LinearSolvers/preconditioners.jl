@@ -5,7 +5,7 @@ Invert `mat` with Tikhonov regularization: `(mat + ε I)⁻¹` where
 `ε = rtol * max(‖mat‖₂, 1)`. Avoids `SingularException` / huge entries when
 TT truncation leaves a nearly singular local tensor.
 """
-function _regularized_inv(mat::AbstractMatrix; rtol::Float64 = eps(Float64))
+function _regularized_inv(mat::AbstractMatrix; rtol::Float64=eps(Float64))
     n = size(mat, 1)
     @assert size(mat, 1) == size(mat, 2) "Local rank-1 tensor must be square"
     ε = rtol * max(opnorm(mat), 1.0)
@@ -18,7 +18,8 @@ end
 Build a rank-1 preconditioner by truncating the operator to bond dimension 1 and inverting each local n×n matrix.
 
 # Returns
-- `Preconditioner`: The preconditioner with all bond dimensions equal to 1.
+
+  - `Preconditioner`: The preconditioner with all bond dimensions equal to 1.
 """
 function rank1_preconditioner(operator::MPO)
     rank1_operator = deepcopy(operator)
@@ -39,8 +40,11 @@ end
 
 Refine a preconditioner via Newton iteration: X_{k+1} = X_k (2I - A X_k). Not yet implemented.
 """
-function newtoniter_preconditioner(operator::MPO, init_preconditioner::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    siteinds(operator) != siteinds(init_preconditioner) && throw(ArgumentError("Index mismatch between operator and init_preconditioner"))
+function newtoniter_preconditioner(
+    operator::MPO, init_preconditioner::MPO, niter::Int; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
+)
+    siteinds(operator) != siteinds(init_preconditioner) &&
+        throw(ArgumentError("Index mismatch between operator and init_preconditioner"))
 
     preconditioner = init_preconditioner
     for _ in 1:niter
@@ -66,9 +70,18 @@ end
 Build a preconditioner M⁻¹ by solving the Sylvester-like equation `A*X + X*A = 2I` using a linear solver in an extended Hilbert space.
 
 # Returns
-- `Preconditioner`: The approximate inverse of the operator.
+
+  - `Preconditioner`: The approximate inverse of the operator.
 """
-function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, symmetrize::Bool=true; linsolve_x0=nothing, preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
+function linsolve_preconditioner(
+    operator::MPO,
+    solver::AbstractLinearSolver,
+    symmetrize::Bool=true;
+    linsolve_x0=nothing,
+    preconditioning::Bool=false,
+    residual_tol::Union{Float64,Nothing}=nothing,
+    kwargs...,
+)
     op1 = deepcopy(operator) # To construct AX
     sites = only.(siteinds(operator; plev=0))
 
@@ -90,7 +103,7 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
     for i in 1:N
         op1[i] = op1[i] * delta(helper_sites[i], helper_sites[i]') # Id living on the helper space for op1
         op1[i] = op1[i] * combiners[i] * combiners[i]' # Join op and identity into a single leg for both operators
-        
+
         if symmetrize
             op2[i] = op2[i] * delta(sites[i], sites[i]') # Id living on the original space for op1
             op2[i] = op2[i] * combiners[i] * combiners[i]'
@@ -119,12 +132,12 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
     end
 
     @info "Linsolve preconditioner with preconditioning set to $preconditioning"
-    
-    ls_kwargs = Dict{Symbol, Any}(kwargs)
+
+    ls_kwargs = Dict{Symbol,Any}(kwargs)
     if !isnothing(residual_tol)
-        ls_kwargs[:sweep_observer!] = ResidualObserver(A=linsolve_A, b=linsolve_b, rtol=residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(; A=linsolve_A, b=linsolve_b, rtol=residual_tol)
     end
-    
+
     if preconditioning
         preconditioner = rank1_preconditioner(linsolve_A)
         preconditioner_mps = linearsolve(solver, linsolve_A, linsolve_b, preconditioner, _linsolve_x0; ls_kwargs...)
@@ -139,7 +152,15 @@ function linsolve_preconditioner(operator::MPO, solver::AbstractLinearSolver, sy
 end
 
 # TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
-function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
+function fai_dg(
+    operator::MPO,
+    μ::Real,
+    g_solver::AbstractLinearSolver,
+    D_kwargs;
+    preconditioning::Bool=false,
+    residual_tol::Union{Float64,Nothing}=nothing,
+    kwargs...,
+)
     A = transpose(operator) # To construct XA
     array_type = backend_type(operator)
 
@@ -169,19 +190,29 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
         linsolve_x0[i] = linsolve_x0[i] * combiners[i]
     end
 
-    projected_A = +(apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum")
+    projected_A = +(
+        apply(projector, apply(A, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum"
+    )
     projected_b = MPS([linsolve_b...])
 
     projected_x0 = MPS([linsolve_x0...])
-    ls_kwargs = Dict{Symbol, Any}(kwargs)
+    ls_kwargs = Dict{Symbol,Any}(kwargs)
     if !isnothing(residual_tol)
-        ls_kwargs[:sweep_observer!] = ResidualObserver(A=projected_A, b=projected_b, rtol=residual_tol)
+        ls_kwargs[:sweep_observer!] = ResidualObserver(; A=projected_A, b=projected_b, rtol=residual_tol)
     end
 
     if preconditioning
         preconditioner = rank1_preconditioner(projected_A)
-        projected_preconditioner = Preconditioner(+(apply(projector, apply(preconditioner.operator, projector; alg="naive"); alg="naive"), μ * projector_complement; alg="directsum"))
-        unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_preconditioner, projected_x0; ls_kwargs...)
+        projected_preconditioner = Preconditioner(
+            +(
+                apply(projector, apply(preconditioner.operator, projector; alg="naive"); alg="naive"),
+                μ * projector_complement;
+                alg="directsum",
+            ),
+        )
+        unscaledG = linearsolve(
+            g_solver, projected_A, projected_b, projected_preconditioner, projected_x0; ls_kwargs...
+        )
     else
         unscaledG = linearsolve(g_solver, projected_A, projected_b, projected_x0; ls_kwargs...)
     end
@@ -207,7 +238,9 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     maxdim = get(D_kwargs, :maxdim, typemax(Int))
     oversample = get(D_kwargs, :oversample, 10)
 
-    D_mps = elementwise_function(f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0)
+    D_mps = elementwise_function(
+        f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0
+    )
 
     placeholder_sites = sim.(sites)
     ITensorMPS.replace_siteinds!(D_mps, placeholder_sites)
@@ -217,8 +250,19 @@ function fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwarg
     return unscaledG, MPO([D_mps...])
 end
 
-function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; totalmaxdim::Int=5, preconditioning::Bool=false, residual_tol::Union{Float64, Nothing}=nothing, kwargs...)
-    unscaledG, D = fai_dg(operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, kwargs...)
+function fai_preconditioner(
+    operator::MPO,
+    μ::Real,
+    g_solver::AbstractLinearSolver,
+    D_kwargs;
+    totalmaxdim::Int=5,
+    preconditioning::Bool=false,
+    residual_tol::Union{Float64,Nothing}=nothing,
+    kwargs...,
+)
+    unscaledG, D = fai_dg(
+        operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, kwargs...
+    )
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
 end
@@ -246,7 +290,14 @@ The quadrature of `1/x` is accurate on spectra normalized to `[1, R]`. With `nor
 regardless of the scaling of `A_list` (e.g. a `1/h²` factor). `normalize_spectrum=false` applies
 the quadrature to the unscaled operators.
 """
-function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:Index}, A_list::Vector{<:AbstractMatrix}, M::Int; array_type::Type{<:AbstractArray}=Array, normalize_spectrum::Bool=true) where N
+function sincquadrature_preconditioner(
+    arch::TTArchitecture{N},
+    sites::Vector{<:Index},
+    A_list::Vector{<:AbstractMatrix},
+    M::Int;
+    array_type::Type{<:AbstractArray}=Array,
+    normalize_spectrum::Bool=true,
+) where {N}
     d = length(A_list)
     @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
     @assert N == d "Number of local operators does not match architecture dimensions"
@@ -260,20 +311,20 @@ function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:
     precond_mpo = nothing
     total_sites = length(sites)
 
-    for k in -M:M
+    for k in (-M):M
         t_k = exp(k * h) / λmin
         c_k = h * t_k
 
-        links = [Index(1, "Link,l=$i") for i in 1:total_sites-1]
+        links = [Index(1, "Link,l=$i") for i in 1:(total_sites-1)]
         mpo_tensors = Vector{ITensor}(undef, total_sites)
 
         for i in 1:total_sites
             l = arch.site_map[i]
             expA = exp(-t_k * A_list[l])
             s = sites[i]
-            
+
             T = ITensor(array_type(expA), s', s)
-            
+
             if total_sites > 1
                 if i == 1
                     T *= adapt(array_type, onehot(links[1] => 1))
@@ -286,21 +337,27 @@ function sincquadrature_preconditioner(arch::TTArchitecture{N}, sites::Vector{<:
             end
             mpo_tensors[i] = adapt(array_type, T)
         end
-        
+
         term_mpo = c_k * MPO(mpo_tensors)
-        
+
         precond_mpo = _nothing_sum_handler(precond_mpo, term_mpo; cutoff=0.0)
     end
-    
+
     return Preconditioner(precond_mpo)
 end
 
 # Implementation following the tt_toolbox, not the paper
-function _dd_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+function _dd_exact_inverse_laplacian(
+    sites::Vector{<:Index},
+    arch::QTTArchitecture{1},
+    grid::Grid,
+    bc::BoundaryConditions,
+    array_type::Type{<:AbstractArray}=Array,
+)
     @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC) "Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."
-    
+
     L = abs(arch.var_nsites[1])
-    
+
     I_mat = [1.0 0.0; 0.0 1.0]
     P_mat = [0.0 1.0; 1.0 0.0]
     E_mat = [1.0 1.0; 1.0 1.0]
@@ -308,65 +365,65 @@ function _dd_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitectu
     K_mat = [-1.0 0.0; 0.0 1.0]
     L_mat = [0.0 -1.0; 1.0 0.0]
 
-    link_inds = [Index(5, "Link,l=$i") for i in 1:L-1]
-    
+    link_inds = [Index(5, "Link,l=$i") for i in 1:(L-1)]
+
     tensors = ITensor[]
-    
+
     for kappa in 1:L
         s = sites[kappa]
-        
-        k = L - kappa + 1 
-        
-        xi_k   = (2.0^(k-1) + 1.0) / (2.0^k + 1.0)
-        eta_k  = (2.0^(k-2)) / (2.0^k + 1.0)
+
+        k = L - kappa + 1
+
+        xi_k = (2.0^(k-1) + 1.0) / (2.0^k + 1.0)
+        eta_k = (2.0^(k-2)) / (2.0^k + 1.0)
         zeta_k = ((2.0^(k-1) + 1.0) / 2.0^(k-1)) * xi_k
-        
+
         if kappa == 1
             T = zeros(Float64, 2, 2, 5)
-            
+
             T[:, :, 1] = I_mat
             T[:, :, 2] = 0.25 * xi_k * I_mat + 0.25 * zeta_k * P_mat
             T[:, :, 3] = xi_k * I_mat - zeta_k * P_mat
-            T[:, :, 4] = -0.5 * xi_k * K_mat   
-            T[:, :, 5] = 0.5 * zeta_k * L_mat  
-            
+            T[:, :, 4] = -0.5 * xi_k * K_mat
+            T[:, :, 5] = 0.5 * zeta_k * L_mat
+
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa]))
             push!(tensors, it)
-            
+
         elseif kappa == L
             T = zeros(Float64, 2, 2, 5)
-            
+
             T[:, :, 1] = (1.0 / 3.0) * (I_mat + E_mat)
             T[:, :, 2] = 2.0 * E_mat
             T[:, :, 3] = (1.0 / 18.0) * F_mat
             T[:, :, 4] = (2.0 / 3.0) * K_mat
             T[:, :, 5] = -(2.0 / 3.0) * L_mat
-            
+
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1]))
             push!(tensors, it)
-            
+
         else
             T = zeros(Float64, 2, 2, 5, 5)
-            
+
             T[:, :, 1, 1] = I_mat
             T[:, :, 1, 2] = 0.25 * xi_k * I_mat + 0.25 * zeta_k * P_mat
             T[:, :, 1, 3] = xi_k * I_mat - zeta_k * P_mat
-            T[:, :, 1, 4] = -0.5 * xi_k * K_mat   
-            T[:, :, 1, 5] = 0.5 * zeta_k * L_mat 
-            
+            T[:, :, 1, 4] = -0.5 * xi_k * K_mat
+            T[:, :, 1, 5] = 0.5 * zeta_k * L_mat
+
             T[:, :, 2, 2] = 2.0 * E_mat
-            
-            T[:, :, 3, 2] = 2.0 * (eta_k^2) * F_mat    
+
+            T[:, :, 3, 2] = 2.0 * (eta_k^2) * F_mat
             T[:, :, 3, 3] = 2.0 * (xi_k^2) * E_mat
             T[:, :, 3, 4] = 2.0 * xi_k * eta_k * K_mat
-            T[:, :, 3, 5] = 2.0 * xi_k * eta_k * L_mat 
-            
-            T[:, :, 4, 2] = 4.0 * eta_k * K_mat        
+            T[:, :, 3, 5] = 2.0 * xi_k * eta_k * L_mat
+
+            T[:, :, 4, 2] = 4.0 * eta_k * K_mat
             T[:, :, 4, 4] = 2.0 * xi_k * E_mat
-            
-            T[:, :, 5, 2] = -4.0 * eta_k * L_mat    
+
+            T[:, :, 5, 2] = -4.0 * eta_k * L_mat
             T[:, :, 5, 5] = 2.0 * xi_k * E_mat
-            
+
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1], link_inds[kappa]))
             push!(tensors, it)
         end
@@ -375,62 +432,67 @@ function _dd_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitectu
     return (-grid.dx[1]^2) * MPO(tensors)
 end
 
-function _dn_exact_inverse_laplacian(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+function _dn_exact_inverse_laplacian(
+    sites::Vector{<:Index},
+    arch::QTTArchitecture{1},
+    grid::Grid,
+    bc::BoundaryConditions,
+    array_type::Type{<:AbstractArray}=Array,
+)
     @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC) "Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."
-    
+
     L = abs(arch.var_nsites[1])
-    
+
     I_mat = [1.0 0.0; 0.0 1.0]
     I2_mat = [0.0 0.0; 0.0 1.0]
     J_mat = [0.0 1.0; 0.0 0.0]
     E_mat = [1.0 1.0; 1.0 1.0]
 
-    link_inds = [Index(4, "Link,l=$i") for i in 1:L-1]
-    
+    link_inds = [Index(4, "Link,l=$i") for i in 1:(L-1)]
+
     tensors = ITensor[]
-    
+
     for kappa in 1:L
-            
         s = sites[kappa]
-        
+
         if kappa == 1
             T = zeros(Float64, 2, 2, 4)
             T[:, :, 1] = I_mat
             T[:, :, 2] = I2_mat
             T[:, :, 3] = J_mat
             T[:, :, 4] = J_mat'
-            
+
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa]))
             push!(tensors, it)
-            
+
         elseif kappa == L
             T = zeros(Float64, 2, 2, 4)
             T[:, :, 1] = E_mat + I2_mat
             T[:, :, 2] = 2.0 * E_mat
             T[:, :, 3] = E_mat + I2_mat + J_mat'
             T[:, :, 4] = E_mat + I2_mat + J_mat
-            
+
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1]))
             push!(tensors, it)
-            
+
         else
             T = zeros(Float64, 2, 2, 4, 4)
             T[:, :, 1, 1] = I_mat
             T[:, :, 1, 2] = I2_mat
             T[:, :, 1, 3] = J_mat
             T[:, :, 1, 4] = J_mat'
-            
+
             T[:, :, 2, 2] = 2.0 * E_mat
 
             T[:, :, 3, 2] = I2_mat + J_mat'
             T[:, :, 3, 3] = E_mat
-  
+
             T[:, :, 4, 2] = I2_mat + J_mat
             T[:, :, 4, 4] = E_mat
             it = adapt(array_type, ITensor(T, s, s', link_inds[kappa-1], link_inds[kappa]))
             push!(tensors, it)
         end
-    end   
+    end
     return (-grid.dx[1]^2) * MPO(tensors)
 end
 
@@ -441,7 +503,13 @@ Construct the exact explicit QTT representation of the -1.0 * 1D inverse Laplaci
 Kazeev & Khoromskij 2012 "Low-Rank Explicit QTT Representation of the Laplace Operator and Its Inverse".
 Currently supports Dirichlet-Dirichlet and Dirichlet-Neumann boundary conditions.
 """
-function inverse_laplacian_preconditioner(sites::Vector{<:Index}, arch::QTTArchitecture{1}, grid::Grid, bc::BoundaryConditions, array_type::Type{<:AbstractArray}=Array)
+function inverse_laplacian_preconditioner(
+    sites::Vector{<:Index},
+    arch::QTTArchitecture{1},
+    grid::Grid,
+    bc::BoundaryConditions,
+    array_type::Type{<:AbstractArray}=Array,
+)
     if isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)
         mpo = _dd_exact_inverse_laplacian(sites, arch, grid, bc, array_type)
     elseif isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)
@@ -451,5 +519,3 @@ function inverse_laplacian_preconditioner(sites::Vector{<:Index}, arch::QTTArchi
     end
     return Preconditioner(mpo)
 end
-
-

@@ -3,7 +3,7 @@
 
 Update the siteinds with plev=0, 1 with a new set of siteinds, mathcing the prime levels.
 """
-function ITensorMPS.replace_siteinds!(mpo::MPO, new_sites::Vector{I}) where I <: Index
+function ITensorMPS.replace_siteinds!(mpo::MPO, new_sites::Vector{I}) where {I<:Index}
     sites = only.(siteinds(mpo; plev=0))
     nsite = length(mpo)
     for j in 1:nsite
@@ -44,11 +44,9 @@ function Base.reverse(mpo::MPO)
     end
 
     # Reverse link naming -> index system would otherwise have long range connections!
-    for k in 1:nsite-1
-
+    for k in 1:(nsite-1)
         l_k = commonind(mpo[k], mpo[k+1])
         if !isnothing(l_k)
-
             new_link = Index(dim(l_k), "Link,l=$(nsite-k)")
             replaceind!(new_mpo[nsite-k], l_k, new_link)
             replaceind!(new_mpo[nsite-k+1], l_k, new_link)
@@ -91,10 +89,12 @@ end
 
 Helper to apply (multiply) a sequence of operators where some might be `nothing`.
 """
-function _nothing_apply_handler(elements::Vararg{Union{T, Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where T <: MPO
+function _nothing_apply_handler(
+    elements::Vararg{Union{T,Nothing}}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
+) where {T<:MPO}
     element_vec = collect(elements)
     filtered_elements = element_vec[.!isnothing.(element_vec)]
-    
+
     if length(filtered_elements) == 0
         return nothing
     elseif length(filtered_elements) == 1
@@ -153,8 +153,9 @@ Concatenate multiple MPOs into a single larger MPO along the site dimension.
 Glue indices are inserted between the MPOs to connect them.
 
 # Arguments
-- `site_inds::Vector{<:Index}`: The site indices for the combined MPO.
-- `mpos::MPO...`: Variable number of MPOs to concatenate.
+
+  - `site_inds::Vector{<:Index}`: The site indices for the combined MPO.
+  - `mpos::MPO...`: Variable number of MPOs to concatenate.
 """
 function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     total_len = sum(length, mpos)
@@ -185,7 +186,7 @@ function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     nmpo = length(mpos)
     current_idx = 0
 
-    for k in 1:nmpo-1
+    for k in 1:(nmpo-1)
         current_idx += length(mpos[k])
         glue_index = Index(1, "Link,l=$k") # Glue index -> ITensor MPSs & MPOs do not have dummy end legs
 
@@ -202,8 +203,9 @@ end
 Concatenate multiple MPSs into a single larger MPS along the site dimension.
 
 # Arguments
-- `site_inds::Vector{<:Index}`: The site indices for the combined MPS.
-- `mpss::MPS...`: Variable number of MPSs to concatenate.
+
+  - `site_inds::Vector{<:Index}`: The site indices for the combined MPS.
+  - `mpss::MPS...`: Variable number of MPSs to concatenate.
 """
 function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     total_len = sum(length, mpss)
@@ -233,7 +235,7 @@ function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     nmps = length(mpss)
     current_idx = 0
 
-    for k in 1:nmps-1
+    for k in 1:(nmps-1)
         current_idx += length(mpss[k])
         glue_index = Index(1, "Link,l=$k") # Glue index -> ITensor MPSs & MPOs do not have dummy end legs
 
@@ -250,7 +252,8 @@ end
 Fully contract an MPO into a dense matrix, reordering from the TT basis to the standard linear basis via bit-reversal permutation.
 
 # Returns
-- `Matrix{Float64}`: The dense matrix representation.
+
+  - `Matrix{Float64}`: The dense matrix representation.
 """
 function contract_mpo(mpo::MPO)
     # Contract using package-consistent in/out convention
@@ -272,7 +275,8 @@ end
 Fully contract an MPS into a dense vector, reordering from the TT basis to the standard linear basis via bit-reversal permutation.
 
 # Returns
-- `Vector{Float64}`: The dense vector representation.
+
+  - `Vector{Float64}`: The dense vector representation.
 """
 function contract_mps(mps::MPS)
     # Contract using package-consistent in/out convention
@@ -292,19 +296,22 @@ Lift a 1D operator matrix into an N-dimensional MPO acting on the `axis`-th dime
 Identities are placed on all other sites.
 
 # Arguments
-- `onedim_op::AbstractMatrix`: The 1D operator matrix.
-- `axis::Int`: The logical dimension (1 to N) this operator acts on.
-- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-- `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
+
+  - `onedim_op::AbstractMatrix`: The 1D operator matrix.
+  - `axis::Int`: The logical dimension (1 to N) this operator acts on.
+  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+  - `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
 """
-function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+function ndim_operator_mpo(
+    onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}
+) where {N}
     @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
-    
+
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
-    
+
     link_dims = ones(Int, max(0, total_sites - 1))
-    links = [Index(1, "Link,l=$i") for i in 1:total_sites-1]
+    links = [Index(1, "Link,l=$i") for i in 1:(total_sites-1)]
 
     # Determine array type from the matrix type
     array_type = Base.typename(typeof(onedim_op)).wrapper
@@ -313,7 +320,7 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
         if arch.site_map[i] == axis
             s = site_inds[i]
             T = ITensor(array_type(onedim_op), s', s)
-            
+
             if total_sites > 1
                 if i == 1
                     T *= adapt(array_type, onehot(links[1] => 1))
@@ -339,7 +346,7 @@ function ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vect
             end
         end
     end
-    
+
     return MPO(mpo_tensors)
 end
 
@@ -355,13 +362,18 @@ so the bond dimension is exactly 3. `P` and `Q` are indexed by variable, like `o
 variable on the last site and the `Q` of the variable on the first site are never used.
 
 # Arguments
-- `onedim_ops::NTuple{N, AbstractMatrix}`: The 1D operator matrices for each dimension.
-- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-- `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
-- `pair_ops`: Optional tuple `(P, Q)` of N 1D operator matrices each, defining the pairwise term.
+
+  - `onedim_ops::NTuple{N, AbstractMatrix}`: The 1D operator matrices for each dimension.
+  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+  - `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
+  - `pair_ops`: Optional tuple `(P, Q)` of N 1D operator matrices each, defining the pairwise term.
 """
-function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N};
-                               pair_ops::Union{Nothing, Tuple{NTuple{N, AbstractMatrix}, NTuple{N, AbstractMatrix}}}=nothing) where N
+function ndim_operator_sum_mpo(
+    onedim_ops::NTuple{N,AbstractMatrix},
+    site_inds::Vector{<:Index},
+    arch::TTArchitecture{N};
+    pair_ops::Union{Nothing,Tuple{NTuple{N,AbstractMatrix},NTuple{N,AbstractMatrix}}}=nothing,
+) where {N}
     @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
 
     total_sites = length(site_inds)
@@ -369,7 +381,7 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds:
 
     # States: 1 = nothing placed, 2 = term complete, 3 = P placed and waiting for Q (only with pair_ops)
     has_pairs = !isnothing(pair_ops) && total_sites > 1
-    links = [Index(has_pairs ? 3 : 2, "Link,l=$i") for i in 1:total_sites-1]
+    links = [Index(has_pairs ? 3 : 2, "Link,l=$i") for i in 1:(total_sites-1)]
 
     # Determine array type from the matrix type
     array_type = Base.typename(typeof(onedim_ops[1])).wrapper
@@ -378,20 +390,19 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds:
         c = arch.site_map[i]
         Oc = onedim_ops[c]
         s = site_inds[i]
-        
+
         # Base tensors
         T_Oc = ITensor(array_type(Oc), s', s)
         T_I = ITensor(array_type(Matrix{eltype(Oc)}(I, dim(s), dim(s))), s', s)
-        
+
         if total_sites > 1
             if i == 1
-                T = T_I * adapt(array_type, onehot(links[1] => 1)) + 
-                    T_Oc * adapt(array_type, onehot(links[1] => 2))
+                T = T_I * adapt(array_type, onehot(links[1] => 1)) + T_Oc * adapt(array_type, onehot(links[1] => 2))
             elseif i == total_sites
-                T = T_Oc * adapt(array_type, onehot(links[end] => 1)) + 
-                    T_I * adapt(array_type, onehot(links[end] => 2))
+                T = T_Oc * adapt(array_type, onehot(links[end] => 1)) + T_I * adapt(array_type, onehot(links[end] => 2))
             else
-                T = T_I * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 1)) + 
+                T =
+                    T_I * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 1)) +
                     T_Oc * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 2)) +
                     T_I * adapt(array_type, onehot(links[i-1] => 2)) * adapt(array_type, onehot(links[i] => 2))
             end
@@ -408,14 +419,15 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds:
             elseif i == total_sites
                 T += T_Q * adapt(array_type, onehot(links[end] => 3))
             else
-                T += T_P * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 3)) +
-                     T_I * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 3)) +
-                     T_Q * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 2))
+                T +=
+                    T_P * adapt(array_type, onehot(links[i-1] => 1)) * adapt(array_type, onehot(links[i] => 3)) +
+                    T_I * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 3)) +
+                    T_Q * adapt(array_type, onehot(links[i-1] => 3)) * adapt(array_type, onehot(links[i] => 2))
             end
         end
         mpo_tensors[i] = adapt(array_type, T)
     end
-    
+
     return MPO(mpo_tensors)
 end
 
@@ -430,7 +442,7 @@ function onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:
     elseif pad_len == 0
         return mpo
     end
-    eye_sites = side == :left ? site_inds[1:pad_len] : site_inds[nsite-pad_len+1:nsite]
+    eye_sites = side == :left ? site_inds[1:pad_len] : site_inds[(nsite-pad_len+1):nsite]
 
     eyes = identity_mpo(eye_sites, array_type)
 

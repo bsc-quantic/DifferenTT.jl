@@ -3,7 +3,7 @@
 
 Obtain the positions in the given grid that lie closer to the given point.
 """
-function point_position(point::NTuple{N,Number}, grid::Grid{N}) where N
+function point_position(point::NTuple{N,Number}, grid::Grid{N}) where {N}
     return collect(Int(round(clamp(point[i], 0.0, grid.box_size[i]) / grid.dx[i])) for i in 1:N)
 end
 
@@ -12,7 +12,7 @@ end
 
 Obtain the bit sequence that represents the position in the given grid of a certain point, according to the specified QTT architecture.
 """
-function point_sequence(point::NTuple{N,Number}, grid::Grid{N}, arch::QTTArchitecture{N}) where N
+function point_sequence(point::NTuple{N,Number}, grid::Grid{N}, arch::QTTArchitecture{N}) where {N}
     position = point_position(point, grid)
     binary_repr = collect(decimal_to_binary(position[i], abs(arch.var_nsites[i])) for i in 1:N)
     reversed_repr = collect(arch.var_nsites[i] < 0 ? reverse(binary_repr[i]) : binary_repr[i] for i in 1:N)
@@ -31,7 +31,7 @@ end
 
 Convert a bit sequence into a vector of points in a grid, given a QTT Architecture.
 """
-function sequence_to_point(sequence::Vector{Int}, grid::Grid{N}, arch::QTTArchitecture{N}) where N
+function sequence_to_point(sequence::Vector{Int}, grid::Grid{N}, arch::QTTArchitecture{N}) where {N}
     bits_per_var = Dict{Int,Vector{Int}}()
 
     for (site_idx, var_idx) in enumerate(arch.site_map)
@@ -59,7 +59,7 @@ end
 
 Obtain the index sequence that represents the position in the given grid of a certain point, according to the specified TT Architecture.
 """
-function point_sequence(point::NTuple{N,Number}, grid::Grid{N}, arch::TTArchitecture{N}) where N
+function point_sequence(point::NTuple{N,Number}, grid::Grid{N}, arch::TTArchitecture{N}) where {N}
     position = point_position(point, grid)
     sequence = zeros(Int, length(arch.site_map))
     for (site_idx, var_idx) in enumerate(arch.site_map)
@@ -73,7 +73,7 @@ end
 
 Convert an index sequence into a vector of points in a grid, given a TT Architecture.
 """
-function sequence_to_point(sequence::Vector{Int}, grid::Grid{N}, arch::TTArchitecture{N}) where N
+function sequence_to_point(sequence::Vector{Int}, grid::Grid{N}, arch::TTArchitecture{N}) where {N}
     positions = zeros(Int, N)
     for (site_idx, var_idx) in enumerate(arch.site_map)
         positions[var_idx] = sequence[site_idx]
@@ -87,10 +87,19 @@ end
 
 Interpolate by a 2 site scheme a scalar function `func(point::NTuple{N,Float64})::ValueType` given a specified grid and architecture.
 Uses `TensorCrossInterpolation` (TCI) engine.
-
 """
-function TensorCrossInterpolation.crossinterpolate2(func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture;
-    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))], tolerance::Float64=1e-8, maxbonddim::Int=100, maxiter::Int=50, verbosity::Int=0, kwargs...) where N
+function TensorCrossInterpolation.crossinterpolate2(
+    func_type::Type{<:Number},
+    func::Function,
+    grid::Grid{N},
+    arch::Architecture;
+    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))],
+    tolerance::Float64=1e-8,
+    maxbonddim::Int=100,
+    maxiter::Int=50,
+    verbosity::Int=0,
+    kwargs...,
+) where {N}
     @assert !isempty(initialpivots) "At least one initial pivot is required."
     @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
 
@@ -104,12 +113,17 @@ function TensorCrossInterpolation.crossinterpolate2(func_type::Type{<:Number}, f
 
     batchthreaded_func = TensorCrossInterpolation.ThreadedBatchEvaluator{func_type}(eval_func, local_dims)
 
-    return crossinterpolate2(func_type, batchthreaded_func, local_dims, initialpivots;
+    return crossinterpolate2(
+        func_type,
+        batchthreaded_func,
+        local_dims,
+        initialpivots;
         tolerance=tolerance,
         maxbonddim=maxbonddim,
         maxiter=maxiter,
         verbosity=verbosity,
-        kwargs...)
+        kwargs...,
+    )
 end
 
 """
@@ -117,11 +131,18 @@ end
 
 Interpolate a scalar function `func(point::NTuple{N,Float64})::ValueType` given a specified grid and architecture.
 Uses `TensorCrossInterpolation` (TCI) engine.
-
 """
-function TensorCrossInterpolation.crossinterpolate1(func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture;
-    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))], tolerance::Float64=1e-8, maxiter::Int=50, verbosity::Int=0, kwargs...) where N
-
+function TensorCrossInterpolation.crossinterpolate1(
+    func_type::Type{<:Number},
+    func::Function,
+    grid::Grid{N},
+    arch::Architecture;
+    initialpivots::Vector{Vector{Int64}}=[ones(Int, length(arch.site_map))],
+    tolerance::Float64=1e-8,
+    maxiter::Int=50,
+    verbosity::Int=0,
+    kwargs...,
+) where {N}
     @assert !isempty(initialpivots) "At least one initial pivot is required."
     @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
 
@@ -138,12 +159,17 @@ function TensorCrossInterpolation.crossinterpolate1(func_type::Type{<:Number}, f
 
     batchthreaded_func = TensorCrossInterpolation.ThreadedBatchEvaluator{func_type}(eval_func, local_dims)
 
-    return crossinterpolate1(func_type, batchthreaded_func, local_dims, first_pivot;
+    return crossinterpolate1(
+        func_type,
+        batchthreaded_func,
+        local_dims,
+        first_pivot;
         tolerance=tolerance,
         maxiter=maxiter,
         verbosity=verbosity,
         additionalpivots=additionalpivots,
-        kwargs...)
+        kwargs...,
+    )
 end
 
 """
@@ -167,7 +193,7 @@ decays as `((d-2)/d)^N`).
 """
 function _tci_random_pivot(local_dims::AbstractVector{Int})::Vector{Int}
     return map(local_dims) do d
-        d >= 3 ? rand(2:(d - 1)) : rand(1:d)
+        d >= 3 ? rand(2:(d-1)) : rand(1:d)
     end
 end
 
@@ -182,13 +208,8 @@ refines by random search over interior sites. This avoids the
 vanish on the domain boundary.
 """
 function TensorCrossInterpolation.optfirstpivot(
-    func_type::Type{<:Number},
-    func::Function,
-    grid::Grid{N},
-    arch::Architecture;
-    iters::Int=1000,
-) where N
-
+    func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture; iters::Int=1000
+) where {N}
     local_dims = collect(Int, site_dims(arch))
 
     function eval_func(indices)
@@ -213,13 +234,12 @@ function TensorCrossInterpolation.optfirstpivot(
         error(
             "optfirstpivot: all sampled values were zero (center + $iters interior trials). " *
             "The function may be identically zero on this grid, or vanish on every " *
-            "sampled multi-index; provide an explicit nonzero initial pivot."
+            "sampled multi-index; provide an explicit nonzero initial pivot.",
         )
     end
 
     return pivot
 end
-
 
 """
     SampleCache{N,ValueType}
@@ -227,7 +247,8 @@ end
 A simple dictionary-based cache that stores previously sampled values keyed by their N-dimensional point coordinates. Avoids redundant MPS sampling evaluations.
 
 # Fields
-- `cache_data::Dict{NTuple{N,Float64},ValueType}`: The underlying cache storage.
+
+  - `cache_data::Dict{NTuple{N,Float64},ValueType}`: The underlying cache storage.
 """
 struct SampleCache{N,ValueType}
     cache_data::Dict{NTuple{N,Float64},ValueType}
@@ -249,16 +270,16 @@ function Base.setindex!(cache::SampleCache{N,ValueType}, value::ValueType, point
     cache.cache_data[point] = value
 end
 
-
 """
     sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture) where N
 
 Evaluate an MPS at a specific physical point by converting the point to a sequence and contracting the MPS.
 
 # Returns
-- `Number`: The scalar value of the MPS at the given point.
+
+  - `Number`: The scalar value of the MPS at the given point.
 """
-function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture) where N
+function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture) where {N}
     @assert length(mps) == length(arch.site_map) "MPS and architecture must have the same number of sites, got $(length(mps)) and $(length(arch.site_map))."
 
     sequence = point_sequence(point, grid, arch)
@@ -266,7 +287,7 @@ function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Archite
     s = siteinds(mps)
     nsite = length(mps)
 
-    out = ITensor(1.)
+    out = ITensor(1.0)
     for i in 1:nsite
         out *= (mps[i] * state(s[i], state_vals[i]))
     end
@@ -278,7 +299,9 @@ end
 
 Evaluate an MPS at a specific physical point, using a `SampleCache` to avoid redundant evaluations.
 """
-function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture, sample_cache::SampleCache{N,ValueType}) where {N,ValueType}
+function sample(
+    mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture, sample_cache::SampleCache{N,ValueType}
+) where {N,ValueType}
     if haskey(sample_cache, point)
         return sample_cache[point]
     end
@@ -295,10 +318,11 @@ Compute the sum of all entries of an MPS by contracting each site tensor with th
 Does not account for the physical domain volume (grid spacing).
 
 # Returns
-- `Number`: The integral (sum) of the MPS entries.
+
+  - `Number`: The integral (sum) of the MPS entries.
 """
 function integrate(mps::MPS)
-    out = ITensor(1.)
+    out = ITensor(1.0)
     s = siteinds(mps)
     nsite = length(mps)
     cpu_mps = adapt(Array, mps)
@@ -316,8 +340,8 @@ end
 Helper function to sample an MPS on a regular grid of `npoints` per dimension.
 Returns a tuple `(ranges, data)`.
 """
-function samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::NTuple{N,Int}) where N
-    ranges = [range(0.0, grid.box_size[i], length=npoints[i]) for i in 1:N]
+function samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::NTuple{N,Int}) where {N}
+    ranges = [range(0.0, grid.box_size[i]; length=npoints[i]) for i in 1:N]
 
     # Initialize data array
     data = zeros(Float64, ntuple(i -> npoints[i], N))
@@ -334,6 +358,6 @@ function samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::NTuple{N,
     return ranges, data
 end
 
-function samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::Int) where N
+function samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::Int) where {N}
     return samples(mps, grid, arch, ntuple(_ -> npoints, N))
 end

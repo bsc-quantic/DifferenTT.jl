@@ -4,12 +4,13 @@
 Represents a scalar field in N dimensions, stored as a time-series of MPSs.
 
 # Fields
-- `u::Vector{MPS}`: Time series of the field states (each state is an MPS).
-- `usites::I`: The site indices used by the MPSs.
-- `arch::Arch`: The Architecture mapping.
-- `dims::NTuple{N,Int}`: The physical grid dimensions.
-- `bcu::BCU`: Boundary conditions for the field.
-- `array_type::Type{A}`: The backend array type.
+
+  - `u::Vector{MPS}`: Time series of the field states (each state is an MPS).
+  - `usites::I`: The site indices used by the MPSs.
+  - `arch::Arch`: The Architecture mapping.
+  - `dims::NTuple{N,Int}`: The physical grid dimensions.
+  - `bcu::BCU`: Boundary conditions for the field.
+  - `array_type::Type{A}`: The backend array type.
 """
 struct ScalarField{N,A<:AbstractArray,I<:Vector{<:Index},BCU<:BoundaryConditions{N},Arch<:Architecture}
     u::Vector{MPS}
@@ -20,7 +21,7 @@ struct ScalarField{N,A<:AbstractArray,I<:Vector{<:Index},BCU<:BoundaryConditions
     array_type::Type{A}
 end
 
-backend_type(::ScalarField{N, A}) where {N, A} = A
+backend_type(::ScalarField{N,A}) where {N,A} = A
 
 """
     ScalarField(init_u::MPS, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array) where N
@@ -28,12 +29,18 @@ backend_type(::ScalarField{N, A}) where {N, A} = A
 Construct a ScalarField from an initial MPS state.
 
 # Arguments
-- `init_u::MPS`: The initial state MPS.
-- `arch::QTTArchitecture{N}`: The QTTArchitecture configuration.
-- `bcu::BoundaryConditions{N}`: The boundary conditions.
-- `array_type`: The array backend type (default: `Array`).
+
+  - `init_u::MPS`: The initial state MPS.
+  - `arch::QTTArchitecture{N}`: The QTTArchitecture configuration.
+  - `bcu::BoundaryConditions{N}`: The boundary conditions.
+  - `array_type`: The array backend type (default: `Array`).
 """
-function ScalarField(init_u::MPS, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Union{Nothing, Type{<:AbstractArray}}=nothing) where N
+function ScalarField(
+    init_u::MPS,
+    arch::Architecture,
+    bcu::BoundaryConditions{N},
+    array_type::Union{Nothing,Type{<:AbstractArray}}=nothing,
+) where {N}
     dims = variable_dims(arch)
     total_site_count = total_sites(arch)
     @assert length(init_u) == total_site_count "Mismatch between init MPS length and arch: ($(length(init_u)) != $total_site_count)"
@@ -58,11 +65,12 @@ end
 Construct an empty ScalarField (no time steps).
 
 # Arguments
-- `arch::QTTArchitecture{N}`: The QTTArchitecture configuration.
-- `bcu::BoundaryConditions{N}`: The boundary conditions.
-- `array_type`: The array backend type.
+
+  - `arch::QTTArchitecture{N}`: The QTTArchitecture configuration.
+  - `bcu::BoundaryConditions{N}`: The boundary conditions.
+  - `array_type`: The array backend type.
 """
-function ScalarField(arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array) where N
+function ScalarField(arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array) where {N}
     dims = variable_dims(arch)
     usites = [Index(site_dim(arch, i), "Site,n=$i") for i in 1:total_sites(arch)]
 
@@ -71,7 +79,9 @@ function ScalarField(arch::Architecture, bcu::BoundaryConditions{N}, array_type:
     return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu, array_type)
 end
 
-function ScalarField(usites::Vector{<:Index}, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array) where N
+function ScalarField(
+    usites::Vector{<:Index}, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array
+) where {N}
     @assert all(site_dims(arch) .== dim.(usites)) "Site dimensions do not match with architecture properties"
     dims = variable_dims(arch)
     u = MPS[]

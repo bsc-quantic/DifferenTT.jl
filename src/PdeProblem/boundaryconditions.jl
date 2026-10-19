@@ -1,5 +1,4 @@
-"""    
-    
+"""
     abstract type BoundaryCond
 
 Abstract type for all boundary condition types.``
@@ -11,7 +10,7 @@ abstract type BoundaryCond end
 
 Periodic boundary conditions.
 """
-struct PeriodicBC <: BoundaryCond 
+struct PeriodicBC <: BoundaryCond
     value::Nothing
     function PeriodicBC()
         return new(nothing)
@@ -20,10 +19,10 @@ end
 
 """
     struct OpenBC <: BoundaryCond
-    
+
 Open/free boundary conditions.
 """
-struct OpenBC <: BoundaryCond 
+struct OpenBC <: BoundaryCond
     value::Nothing
     function OpenBC()
         return new(nothing)
@@ -38,11 +37,12 @@ Dirichlet boundary condition with a specific value.
 Currently only homogeneous Dirichlet conditions are supported.
 
 # Fields
-- `value::T`: The value of the field at the boundary.
+
+  - `value::T`: The value of the field at the boundary.
 """
 struct DirichletBC{T<:Number} <: BoundaryCond
     value::T
-    function DirichletBC(value::T) where T<:Number
+    function DirichletBC(value::T) where {T<:Number}
         @info "Dirichlet BCs in explicit schemes are handled by the initial field values at the boundaries, not by the value specified in the DirichletBC object"
         return new{T}(value)
     end
@@ -56,13 +56,14 @@ Neumann boundary condition with a specific derivative value.
 Currently only homogeneous Neumann conditions equal to 0 are supported.
 
 # Fields
-- `value::T`: The value of the normal derivative at the boundary.
+
+  - `value::T`: The value of the normal derivative at the boundary.
 """
 struct NeumannBC{T<:Number} <: BoundaryCond
     value::T
-    function NeumannBC(value::T) where T<:Number
-        !(value≈0.0) && throw(ArgumentError("NeumannBC with value != 0.0 are not yet implemented.")) 
-        return  new{T}(value)
+    function NeumannBC(value::T) where {T<:Number}
+        !(value≈0.0) && throw(ArgumentError("NeumannBC with value != 0.0 are not yet implemented."))
+        return new{T}(value)
     end
 end
 
@@ -72,8 +73,9 @@ end
 Pair of boundary conditions (left and right) for a 1D domain.
 
 # Fields
-- `left::BCL`: Boundary condition at the left end.
-- `right::BCR`: Boundary condition at the right end.
+
+  - `left::BCL`: Boundary condition at the left end.
+  - `right::BCR`: Boundary condition at the right end.
 """
 struct BoundaryCond1d{BCL<:BoundaryCond,BCR<:BoundaryCond}
     left::BCL
@@ -103,7 +105,8 @@ end
 Container for boundary conditions for N dimensions.
 
 # Fields
-- `conditions::NTuple{N,BC}`: Tuple of 1D boundary conditions for each dimension.
+
+  - `conditions::NTuple{N,BC}`: Tuple of 1D boundary conditions for each dimension.
 """
 struct BoundaryConditions{N,BC<:BoundaryCond1d}
     conditions::NTuple{N,BC}

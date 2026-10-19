@@ -10,7 +10,8 @@ Optionally computes the condition number κ_λ = max|λ| / min|λ| of the reduce
 dense local spectrum, when a `cond_store` or an `spd_tol` is passed via `kwargs`.
 
 # Returns
-- `(x::ITensor, (; info))`: The solution tensor and a named tuple containing KrylovKit convergence info.
+
+  - `(x::ITensor, (; info))`: The solution tensor and a named tuple containing KrylovKit convergence info.
 """
 struct KrylovUpdater <: AbstractUpdater end
 
@@ -80,8 +81,11 @@ struct NotSPDError <: Exception
 end
 
 function Base.showerror(io::IO, e::NotSPDError)
-    print(io, "NotSPDError: $(e.label) is not SPD at lpos = $(e.lpos): min Re λ = $(e.λmin), ",
-              "min Re λ / max|λ| = $(e.λmin / e.λmax_abs)")
+    print(
+        io,
+        "NotSPDError: $(e.label) is not SPD at lpos = $(e.lpos): min Re λ = $(e.λmin), ",
+        "min Re λ / max|λ| = $(e.λmin / e.λmax_abs)",
+    )
 end
 
 # Throws a `NotSPDError` when the most negative real part of the spectrum is below -spd_tol * max|λ|, i.e. clearly
@@ -98,7 +102,9 @@ end
 
 # The dense local spectrum is only computed when one of its consumers is attached: a condition-number store records
 # κ, `spd_tol` checks the sign of the spectrum. `verbosity` only logs what was computed.
-_wants_cond(cond_store, pc_cond_store, spd_tol) = !isnothing(cond_store) || !isnothing(pc_cond_store) || !isnothing(spd_tol)
+function _wants_cond(cond_store, pc_cond_store, spd_tol)
+    !isnothing(cond_store) || !isnothing(pc_cond_store) || !isnothing(spd_tol)
+end
 
 function _record_cond!(store, problem, κ)
     if !isnothing(store) && isfinite(κ)
@@ -109,7 +115,9 @@ end
 # A non-preconditioned problem has no κ_PC of its own. When `pc_cond_store` is given (a block of a preconditioned
 # solve that skips the preconditioner, see `preconditioner_sites`), κ(A) is recorded in it as well, so that
 # `pc_cond_store` holds an entry for every visited block and stays aligned with `cond_store`.
-function _compute_and_record_cond!(problem::ReducedLinearProblem, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing)
+function _compute_and_record_cond!(
+    problem::ReducedLinearProblem, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing
+)
     lpos = _krylov_lpos(problem)
     A, = _local_dense_matrix(contract(operator(problem)), constant_term(problem))
     κ_A, λ_A = _eig_condition(A)
@@ -122,10 +130,19 @@ end
 
 # The dense matrices are the transposes of the operators (rows are the unprimed indices), so the dense product is
 # (A P⁻¹)ᵀ, which is similar to P⁻¹A: the spectrum is the same.
-function _compute_and_record_cond!(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing)
+function _compute_and_record_cond!(
+    problem::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem},
+    use_cg,
+    verbosity,
+    cond_store,
+    pc_cond_store,
+    spd_tol=nothing,
+)
     lpos = _krylov_lpos(problem)
     linear_problem = problem.linear_problem
-    A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(contract(operator(linear_problem)), constant_term(linear_problem))
+    A, rowinds, colinds, rowdim, coldim = _local_dense_matrix(
+        contract(operator(linear_problem)), constant_term(linear_problem)
+    )
     # For the FAI preconditioner, contract returns the dense Glᵀ Gl
     Pinv = reshape(array(contract(problem.preconditioner), rowinds..., colinds...), rowdim, coldim)
 
@@ -149,9 +166,18 @@ end
 # hold: a positive local block only says that M⁻¹ is positive on the span of V.
 # ---------------------------------------------------------------------------
 
-const _EMPTY_LOCAL_SPECTRUM = (; eigmin_A = NaN, eigmax_A = NaN, asym_A = NaN,
-                                 eigmin_P = NaN, eigmax_P = NaN, nneg_P = -1, asym_P = NaN,
-                                 eigmin_PA = NaN, eigmax_PA = NaN, nneg_PA = -1)
+const _EMPTY_LOCAL_SPECTRUM = (;
+    eigmin_A=NaN,
+    eigmax_A=NaN,
+    asym_A=NaN,
+    eigmin_P=NaN,
+    eigmax_P=NaN,
+    nneg_P=-1,
+    asym_P=NaN,
+    eigmin_PA=NaN,
+    eigmax_PA=NaN,
+    nneg_PA=-1,
+)
 
 _relative_asymmetry(M::AbstractMatrix) = norm(M - transpose(M)) / norm(M)
 
@@ -166,21 +192,24 @@ symmetric parts S_A, S_P are diagonalized, since they set the sign of the quadra
 the spectrum of S_P S_A (the PCG operator if `Pinv` is symmetric) is that of the symmetric Lᵀ S_P L, which has the
 inertia of S_P.
 """
-function _local_spectrum(A::AbstractMatrix, Pinv::Union{Nothing, AbstractMatrix})
+function _local_spectrum(A::AbstractMatrix, Pinv::Union{Nothing,AbstractMatrix})
     SA = Symmetric((A + transpose(A)) / 2)
     λA = eigvals(SA)
-    spectrum = merge(_EMPTY_LOCAL_SPECTRUM, (; eigmin_A = first(λA), eigmax_A = last(λA), asym_A = _relative_asymmetry(A)))
+    spectrum = merge(_EMPTY_LOCAL_SPECTRUM, (; eigmin_A=first(λA), eigmax_A=last(λA), asym_A=_relative_asymmetry(A)))
     isnothing(Pinv) && return spectrum
 
     SP = Symmetric((Pinv + transpose(Pinv)) / 2)
     λP = eigvals(SP)
-    spectrum = merge(spectrum, (; eigmin_P = first(λP), eigmax_P = last(λP), nneg_P = _count_negative(λP), asym_P = _relative_asymmetry(Pinv)))
+    spectrum = merge(
+        spectrum,
+        (; eigmin_P=first(λP), eigmax_P=last(λP), nneg_P=_count_negative(λP), asym_P=_relative_asymmetry(Pinv)),
+    )
 
     chol = cholesky(SA; check=false)
     issuccess(chol) || return spectrum
     L = chol.L
     λPA = eigvals(Symmetric(transpose(L) * Matrix(SP) * L))
-    return merge(spectrum, (; eigmin_PA = first(λPA), eigmax_PA = last(λPA), nneg_PA = _count_negative(λPA)))
+    return merge(spectrum, (; eigmin_PA=first(λPA), eigmax_PA=last(λPA), nneg_PA=_count_negative(λPA)))
 end
 
 _record_spectrum!(::Nothing, problem, info) = nothing
@@ -195,7 +224,9 @@ function _record_spectrum!(store::KrylovSpectrumStats, problem::ReducedLinearPro
     record_krylov_spectrum!(store, _krylov_lpos(problem), dim(b), info, spectrum)
 end
 
-function _record_spectrum!(store::KrylovSpectrumStats, problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, info)
+function _record_spectrum!(
+    store::KrylovSpectrumStats, problem::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, info
+)
     linear_problem = problem.linear_problem
     b = constant_term(linear_problem)
     spectrum = nothing
@@ -231,7 +262,8 @@ CG/PCG. For GMRES it is a heuristic indicator only: it is a lower bound on κ₂
 GMRES convergence also depends on the eigenvector conditioning and on the spectrum distribution.
 
 # Returns
-- `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
+
+  - `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
 """
 function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     numiter_store = get(kwargs, :numiter_store, nothing)
@@ -242,14 +274,7 @@ function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwarg
     use_cg = _uses_cg_metric(kwargs)
     kwargs = filter(p -> first(p) ∉ (:numiter_store, :cond_store, :pc_cond_store, :spectrum_store, :spd_tol), kwargs)
 
-    x, info = linsolve(
-        operator(problem),
-        constant_term(problem),
-        init,
-        coefficients[1],
-        coefficients[2];
-        kwargs...,
-    )
+    x, info = linsolve(operator(problem), constant_term(problem), init, coefficients[1], coefficients[2]; kwargs...)
 
     if _wants_cond(cond_store, nothing, spd_tol)
         _compute_and_record_cond!(problem, use_cg, verbosity, cond_store, nothing, spd_tol)
@@ -265,7 +290,13 @@ end
 
 # Since now we leverage multiple dispatch at the _compute_and_record_cond level, we can use the same function
 # for both types of preconditioned linear problems
-function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
+function (up::KrylovUpdater)(
+    problem::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem},
+    init;
+    internal_kwargs,
+    coefficients,
+    kwargs...,
+)
     numiter_store = get(kwargs, :numiter_store, nothing)
     cond_store = get(kwargs, :cond_store, nothing)
     pc_cond_store = get(kwargs, :pc_cond_store, nothing)
@@ -274,7 +305,10 @@ function (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, Reduced
     spectrum_store = get(kwargs, :spectrum_store, nothing)
     spd_tol = get(kwargs, :spd_tol, nothing)
     use_cg = _uses_cg_metric(kwargs)
-    kwargs = filter(p -> first(p) ∉ (:numiter_store, :cond_store, :pc_cond_store, :spectrum_store, :spd_tol, :preconditioner_sites), kwargs)
+    kwargs = filter(
+        p -> first(p) ∉ (:numiter_store, :cond_store, :pc_cond_store, :spectrum_store, :spd_tol, :preconditioner_sites),
+        kwargs,
+    )
 
     use_preconditioner = true
     if !isnothing(preconditioner_sites)

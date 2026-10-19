@@ -7,12 +7,18 @@ CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder = (use_nocond ? "experiments/preconditioner_benchmarks/liddriven_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/liddriven_pipeline/results") * RESULTS_SUFFIX
+base_folder = (
+    if use_nocond
+        "experiments/preconditioner_benchmarks/liddriven_pipeline/results_nocond"
+    else
+        "experiments/preconditioner_benchmarks/liddriven_pipeline/results"
+    end
+) * RESULTS_SUFFIX
 tasks_folder = joinpath(base_folder, "tasks")
 
 const COND_NODES = [(8, 8), (10, 10), (12, 12)]
 
-function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in COND_NODES
 end
 
@@ -26,9 +32,9 @@ for file in readdir(tasks_folder)
             if !haskey(result, "compute_cond")
                 result["compute_cond"] = should_compute_cond(Tuple(result["nodes"]), use_nocond)
             end
-            
-            result_sym = Dict{Symbol, Any}(Symbol(k) => v for (k, v) in result)
-            push!(df, result_sym, cols=:union)
+
+            result_sym = Dict{Symbol,Any}(Symbol(k) => v for (k, v) in result)
+            push!(df, result_sym; cols=:union)
         catch e
             println("Error loading $file: $e")
         end

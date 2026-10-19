@@ -27,7 +27,7 @@ taken: all repeats solve the same problem, so their final states only differ by 
 tolerance, and the stats workers store the snapshot only for repeat 1 (`SNAPSHOT_REPEAT`).
 """
 function snapshot_task_files(tasks_dir::AbstractString)
-    chosen = Dict{Int, Tuple{Int, String}}()
+    chosen = Dict{Int,Tuple{Int,String}}()
     for file in readdir(tasks_dir)
         m = match(SNAPSHOT_TASK_FILE_RE, file)
         isnothing(m) && continue
@@ -45,9 +45,37 @@ function plot_last_snapshot(snapshot, out_dir::AbstractString, name::AbstractStr
     u_fields = snapshot["u_fields"]
     p_field = snapshot["p_field"]
 
-    visualize_vector(u_fields, length(u_fields), grid, joinpath(out_dir, "$(name)_vector.svg"); npoints=256, quiver_npoints=16, arrow_scale=0.05, aspect_ratio=:equal, size=SNAPSHOT_FIG_SIZE)
-    visualize_vorticity(u_fields, length(u_fields), grid, joinpath(out_dir, "$(name)_vorticity.svg"); npoints=256, quiver_npoints=16, arrow_scale=0.0, aspect_ratio=:equal, size=SNAPSHOT_FIG_SIZE)
-    visualize_scalar(p_field, length(p_field), grid, joinpath(out_dir, "$(name)_press.svg"); npoints=256, aspect_ratio=:equal, size=SNAPSHOT_FIG_SIZE)
+    visualize_vector(
+        u_fields,
+        length(u_fields),
+        grid,
+        joinpath(out_dir, "$(name)_vector.svg");
+        npoints=256,
+        quiver_npoints=16,
+        arrow_scale=0.05,
+        aspect_ratio=:equal,
+        size=SNAPSHOT_FIG_SIZE,
+    )
+    visualize_vorticity(
+        u_fields,
+        length(u_fields),
+        grid,
+        joinpath(out_dir, "$(name)_vorticity.svg");
+        npoints=256,
+        quiver_npoints=16,
+        arrow_scale=0.0,
+        aspect_ratio=:equal,
+        size=SNAPSHOT_FIG_SIZE,
+    )
+    visualize_scalar(
+        p_field,
+        length(p_field),
+        grid,
+        joinpath(out_dir, "$(name)_press.svg");
+        npoints=256,
+        aspect_ratio=:equal,
+        size=SNAPSHOT_FIG_SIZE,
+    )
 end
 
 """
@@ -60,7 +88,7 @@ workers stored the snapshot are skipped with a warning.
 function plot_last_snapshots(tasks_dir::AbstractString, plots_dir::AbstractString)
     if !isdir(tasks_dir)
         @warn "No tasks folder at $tasks_dir, skipping the last-snapshot plots"
-        return
+        return nothing
     end
     for path in snapshot_task_files(tasks_dir)
         result = try

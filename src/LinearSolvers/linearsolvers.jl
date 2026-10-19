@@ -13,7 +13,8 @@ abstract type AbstractGlobalSolver <: AbstractLinearSolver end
 Solve the linear system `A x = b` using the specified `solver`.
 
 # Returns
-- `x`: the solved state.
+
+  - `x`: the solved state.
 """
 function linearsolve end
 
@@ -38,13 +39,41 @@ Base.@kwdef struct LocalUpdaterArgs
     cond_store::Any = nothing
     pc_cond_store::Any = nothing
     spectrum_store::Any = nothing
-    spd_tol::Union{Nothing, Float64} = nothing
+    spd_tol::Union{Nothing,Float64} = nothing
 
-    function LocalUpdaterArgs(ishermitian, isposdef, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
+    function LocalUpdaterArgs(
+        ishermitian,
+        isposdef,
+        rtol,
+        krylovdim,
+        maxiter,
+        verbosity,
+        numiter_store,
+        cond_store,
+        pc_cond_store,
+        spectrum_store,
+        spd_tol,
+    )
         if !isnothing(spd_tol) && (!ishermitian || !isposdef)
-            throw(ArgumentError("spd_tol checks the local blocks of a CG solve, which requires ishermitian=true and isposdef=true."))
+            throw(
+                ArgumentError(
+                    "spd_tol checks the local blocks of a CG solve, which requires ishermitian=true and isposdef=true."
+                ),
+            )
         end
-        new(ishermitian, isposdef, rtol, krylovdim, maxiter, verbosity, numiter_store, cond_store, pc_cond_store, spectrum_store, spd_tol)
+        new(
+            ishermitian,
+            isposdef,
+            rtol,
+            krylovdim,
+            maxiter,
+            verbosity,
+            numiter_store,
+            cond_store,
+            pc_cond_store,
+            spectrum_store,
+            spd_tol,
+        )
     end
 end
 
@@ -71,12 +100,17 @@ end
 function default_differenTT_checkdone(; kwargs...)
     obs = get(kwargs, :observer, get(kwargs, :observer!, ITensorMPS.default_observer()))
     sweep_obs = get(kwargs, :sweep_observer, get(kwargs, :sweep_observer!, ITensorMPS.default_sweep_observer()))
-    
+
     clean_kwargs = filter(kv -> kv.first ∉ (:observer, :observer!, :sweep_observer, :sweep_observer!), kwargs)
-    
-    obs_done = (typeof(obs) === typeof(ITensorMPS.default_observer())) ? false : ITensorMPS.checkdone!(obs; clean_kwargs...)
-    sweep_obs_done = (typeof(sweep_obs) === typeof(ITensorMPS.default_sweep_observer())) ? false : ITensorMPS.checkdone!(sweep_obs; clean_kwargs...)
-    
+
+    obs_done =
+        (typeof(obs) === typeof(ITensorMPS.default_observer())) ? false : ITensorMPS.checkdone!(obs; clean_kwargs...)
+    sweep_obs_done = if (typeof(sweep_obs) === typeof(ITensorMPS.default_sweep_observer()))
+        false
+    else
+        ITensorMPS.checkdone!(sweep_obs; clean_kwargs...)
+    end
+
     return obs_done || sweep_obs_done
 end
 
@@ -103,17 +137,17 @@ Convert `LocalUpdaterArgs` to a `NamedTuple`.
 """
 function Base.NamedTuple(args::LocalUpdaterArgs)
     return (;
-        ishermitian = args.ishermitian,
-        isposdef = args.isposdef,
-        rtol = args.rtol,
-        krylovdim = args.krylovdim,
-        maxiter = args.maxiter,
-        verbosity = args.verbosity,
-        numiter_store = args.numiter_store,
-        cond_store = args.cond_store,
-        pc_cond_store = args.pc_cond_store,
-        spectrum_store = args.spectrum_store,
-        spd_tol = args.spd_tol
+        ishermitian=args.ishermitian,
+        isposdef=args.isposdef,
+        rtol=args.rtol,
+        krylovdim=args.krylovdim,
+        maxiter=args.maxiter,
+        verbosity=args.verbosity,
+        numiter_store=args.numiter_store,
+        cond_store=args.cond_store,
+        pc_cond_store=args.pc_cond_store,
+        spectrum_store=args.spectrum_store,
+        spd_tol=args.spd_tol,
     )
 end
 
@@ -124,17 +158,17 @@ Convert `GlobalUpdaterArgs` to a `NamedTuple`.
 """
 function Base.NamedTuple(args::GlobalUpdaterArgs)
     return (;
-        ishermitian = args.ishermitian,
-        isposdef = args.isposdef,
-        rtol = args.rtol,
-        krylovdim = args.krylovdim,
-        maxiter = args.maxiter,
-        verbosity = args.verbosity,
-        maxdim = args.maxdim,
-        cutoff = args.cutoff,
-        orth_maxdim = args.orth_maxdim,
-        orth_cutoff = args.orth_cutoff,
-        numiter_store = args.numiter_store
+        ishermitian=args.ishermitian,
+        isposdef=args.isposdef,
+        rtol=args.rtol,
+        krylovdim=args.krylovdim,
+        maxiter=args.maxiter,
+        verbosity=args.verbosity,
+        maxdim=args.maxdim,
+        cutoff=args.cutoff,
+        orth_maxdim=args.orth_maxdim,
+        orth_cutoff=args.orth_cutoff,
+        numiter_store=args.numiter_store,
     )
 end
 
@@ -145,14 +179,14 @@ Convert `SweepingArgs` to a `NamedTuple`.
 """
 function Base.NamedTuple(args::SweepingArgs)
     return (;
-        nsweeps = args.nsweeps,
-        maxdim = args.maxdim,
-        cutoff = args.cutoff,
-        nsite = args.nsite,
-        outputlevel = args.outputlevel,
-        observer! = args.observer!,
-        sweep_observer! = args.sweep_observer!,
-        checkdone = args.checkdone
+        nsweeps=args.nsweeps,
+        maxdim=args.maxdim,
+        cutoff=args.cutoff,
+        nsite=args.nsite,
+        outputlevel=args.outputlevel,
+        (observer!)=args.observer!,
+        (sweep_observer!)=args.sweep_observer!,
+        checkdone=args.checkdone,
     )
 end
 
@@ -172,11 +206,10 @@ Abstract type for local updaters used in alternating linear schemes.
 """
 abstract type AbstractUpdater end
 
-
 """
     ResidualObserver <: AbstractObserver
 
-An observer that computes the relative global residual norm `||A * x - b||/||b||` 
+An observer that computes the relative global residual norm `||A * x - b||/||b||`
 and terminates the DMRG/ALS sweeps early if the residual falls below a given tolerance.
 
 `A` and `b` can be left as `nothing`: the sweep-based `linearsolve` methods then bind them to the
@@ -186,7 +219,7 @@ Global solvers (`GlobalCG`, `GlobalGMRES`) do not use observers; they stop on th
 """
 Base.@kwdef struct ResidualObserver <: AbstractObserver
     A::Any = nothing
-    b::Union{MPS, Nothing} = nothing
+    b::Union{MPS,Nothing} = nothing
     rtol::Float64 = 1e-8
 end
 
@@ -210,10 +243,13 @@ system `A x = b` of this call.
 """
 function linearsolve_sweep_kwargs(solver, A, b, kwargs)
     sweep_kwargs = merge(NamedTuple(solver.sweep_kwargs), values(kwargs))
-    return merge(sweep_kwargs, (;
-        observer! = bind_observer(sweep_kwargs.observer!, A, b),
-        sweep_observer! = bind_observer(sweep_kwargs.sweep_observer!, A, b)
-    ))
+    return merge(
+        sweep_kwargs,
+        (;
+            (observer!)=bind_observer(sweep_kwargs.observer!, A, b),
+            (sweep_observer!)=bind_observer(sweep_kwargs.sweep_observer!, A, b),
+        ),
+    )
 end
 
 """
@@ -230,13 +266,16 @@ condition-number stores would still fill with `κ(A)`. The remaining `kwargs` ar
 `SweepingArgs` by `linearsolve_sweep_kwargs`.
 
 # Returns
-- `(updater_kwargs, sweep_kwargs)`
+
+  - `(updater_kwargs, sweep_kwargs)`
 """
 function _checked_preconditioner_sites(preconditioner_sites::Nothing, n::Int)::Nothing
     return nothing
 end
 
-function _checked_preconditioner_sites(preconditioner_sites::Union{AbstractVector, AbstractRange, Tuple}, n::Int)::Vector{Int}
+function _checked_preconditioner_sites(
+    preconditioner_sites::Union{AbstractVector,AbstractRange,Tuple}, n::Int
+)::Vector{Int}
     sites = Vector{Int}()
     for site in preconditioner_sites
         site isa Integer || throw(ArgumentError("preconditioner_sites entries must be integers, got $(repr(site))"))
@@ -246,9 +285,13 @@ function _checked_preconditioner_sites(preconditioner_sites::Union{AbstractVecto
     return sites
 end
 
-function precond_linearsolve_kwargs(solver::AbstractDMRGSolver, A::MPO, b::MPS, kwargs::Base.Pairs)::Tuple{NamedTuple, NamedTuple}
+function precond_linearsolve_kwargs(
+    solver::AbstractDMRGSolver, A::MPO, b::MPS, kwargs::Base.Pairs
+)::Tuple{NamedTuple,NamedTuple}
     preconditioner_sites = _checked_preconditioner_sites(get(kwargs, :preconditioner_sites, nothing), length(b))
-    updater_kwargs = (; coefficients = (false, true), preconditioner_sites = preconditioner_sites, NamedTuple(solver.updater_kwargs)...)
+    updater_kwargs = (;
+        coefficients=(false, true), preconditioner_sites=preconditioner_sites, NamedTuple(solver.updater_kwargs)...
+    )
     kw = Dict(kwargs...)
     delete!(kw, :preconditioner_sites)
     sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, pairs((; kw...)))
@@ -256,7 +299,11 @@ function precond_linearsolve_kwargs(solver::AbstractDMRGSolver, A::MPO, b::MPS, 
 end
 
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
-    (isnothing(o.A) || isnothing(o.b)) && throw(ArgumentError("ResidualObserver has no operator or right-hand side bound; pass A and b explicitly or use it through a sweep-based `linearsolve`."))
+    (isnothing(o.A) || isnothing(o.b)) && throw(
+        ArgumentError(
+            "ResidualObserver has no operator or right-hand side bound; pass A and b explicitly or use it through a sweep-based `linearsolve`.",
+        ),
+    )
 
     term1 = inner(o.A, state, o.A, state)
     term2 = -2.0 * real(inner(o.b', o.A, state))

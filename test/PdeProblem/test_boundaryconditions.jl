@@ -38,7 +38,7 @@ using Test
     @testset "BoundaryConditions (2D)" begin
         bc1d_x = BoundaryCond1d(dirichlet_bc, neumann_bc)
         bc1d_y = BoundaryCond1d(neumann_bc, dirichlet_bc)
-        
+
         # New constructor: tuple or varargs
         bc2d = BoundaryConditions(bc1d_x, bc1d_y)
 
@@ -53,7 +53,7 @@ using Test
         bc1d_x = BoundaryCond1d(dirichlet_bc, neumann_bc)
         bc1d_y = BoundaryCond1d(neumann_bc, dirichlet_bc)
         bc1d_z = BoundaryCond1d(dirichlet_bc, dirichlet_bc)
-        
+
         bc3d = BoundaryConditions(bc1d_x, bc1d_y, bc1d_z)
 
         @test bc3d isa BoundaryConditions{3}

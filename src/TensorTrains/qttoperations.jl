@@ -5,12 +5,13 @@
 Lift a 1D QTT operator in MPO format into an N-dimensional MPO operator acting on the `axis`-th dimension, respecting the qubitization mapping defined by `arch`.
 
 # Arguments
-- `onedim_mpo::MPO`: The 1D operator MPO.
-- `axis::Int`: The logical dimension (1 to N) this operator acts on.
-- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-- `arch::Architecture{N}`: The architecture defining the variable mapping.
+
+  - `onedim_mpo::MPO`: The 1D operator MPO.
+  - `axis::Int`: The logical dimension (1 to N) this operator acts on.
+  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+  - `arch::Architecture{N}`: The architecture defining the variable mapping.
 """
-function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where N
+function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where {N}
     @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
 
     active_vars = count(==(axis), arch.site_map)
@@ -29,17 +30,17 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
     link_dims = ones(Int, total_sites - 1)
     # Propagate MPO bond dimensions through all links between consecutive active sites,
     # so identity sites in interleaved architectures can thread the full bond through.
-    for i in 1:length(active_indices)-1
+    for i in 1:(length(active_indices)-1)
         from_idx = active_indices[i]
         to_idx = active_indices[i+1]
         bond_dim = linkdims(working_mpo)[i]
-        for j in from_idx:to_idx-1
+        for j in from_idx:(to_idx-1)
             link_dims[j] = bond_dim
         end
     end
 
     links = Vector{Index}(undef, total_sites - 1)
-    for i in 1:total_sites-1
+    for i in 1:(total_sites-1)
         links[i] = Index(link_dims[i], "Link,l=$i")
     end
 
@@ -62,7 +63,7 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
     end
 
     # --- 3. Handle the middle sites ---
-    for i in 2:total_sites-1
+    for i in 2:(total_sites-1)
         if i in active_indices
             # We need to handle left-right bond legs of the first and last tensors in the onedim_mpo separately
             if counter == 1
@@ -97,7 +98,11 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
                 old_right_link = onedim_links[counter]
                 new_right_link = links[i]
 
-                replaceinds!(working_mpo[counter], [old_s, old_s', old_left_link, old_right_link], [new_s, new_s', new_left_link, new_right_link])
+                replaceinds!(
+                    working_mpo[counter],
+                    [old_s, old_s', old_left_link, old_right_link],
+                    [new_s, new_s', new_left_link, new_right_link],
+                )
                 mpo_tensors[i] = working_mpo[counter] # No need to add legs, just to update them
             end
             counter += 1
@@ -132,25 +137,28 @@ Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting 
 This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension.
 
 # Arguments
-- `onedim_ops::NTuple{N, Any}`: The 1D operator MPOs for each dimension.
-- `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-- `arch::QTTArchitecture{N}`: The architecture defining the variable mapping.
+
+  - `onedim_ops::NTuple{N, Any}`: The 1D operator MPOs for each dimension.
+  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
+  - `arch::QTTArchitecture{N}`: The architecture defining the variable mapping.
 """
-function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where N
+function ndim_operator_sum_mpo(
+    onedim_ops::NTuple{N,Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}
+) where {N}
     @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
-    
+
     # Handle reversal if needed
     working_mpos = ntuple(i -> arch.var_nsites[i] < 0 ? reverse(onedim_ops[i]) : deepcopy(onedim_ops[i]), N)
     array_type = backend_type(working_mpos[1])
     active_indices = [findall(==(i), arch.site_map) for i in 1:N]
-    
+
     D = zeros(Int, max(0, total_sites - 1))
-    offsets = [Dict{Int, Int}() for _ in 1:total_sites-1]
-    
+    offsets = [Dict{Int,Int}() for _ in 1:(total_sites-1)]
+
     # 1. Compute link dimensions and offsets
-    for k in 1:total_sites-1
+    for k in 1:(total_sites-1)
         current_dim = 3 # 1: Id, 2: Finished. Active states start at 3.
         for i in 1:N
             p = active_indices[i]
@@ -164,23 +172,23 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
         end
         D[k] = current_dim - 1
     end
-    
-    links = [Index(D[k], "Link,l=$k") for k in 1:total_sites-1]
-    
+
+    links = [Index(D[k], "Link,l=$k") for k in 1:(total_sites-1)]
+
     function make_projector(old_ind, new_ind, offset)
         chi = dim(old_ind)
         d_new = dim(new_ind)
         mat = zeros(Float64, chi, d_new)
         for i in 1:chi
-            mat[i, offset + i - 1] = 1.0
+            mat[i, offset+i-1] = 1.0
         end
         return adapt(array_type, ITensor(mat, old_ind, new_ind))
     end
-    
+
     function make_pass_projector(l_ind, r_ind, off_l, off_r, chi)
         mat = zeros(Float64, dim(l_ind), dim(r_ind))
         for i in 1:chi
-            mat[off_l + i - 1, off_r + i - 1] = 1.0
+            mat[off_l+i-1, off_r+i-1] = 1.0
         end
         return adapt(array_type, ITensor(mat, l_ind, r_ind))
     end
@@ -190,11 +198,11 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
         c = arch.site_map[k]
         a = searchsortedlast(active_indices[c], k)
         L_c = length(active_indices[c])
-        
+
         old_s = only(siteinds(working_mpos[c], a; plev=0))
         new_s = site_inds[k]
         T_c = replaceinds(working_mpos[c][a], old_s => new_s, old_s' => new_s')
-        
+
         # Build embedded T_c
         T_embedded = T_c
         if a > 1
@@ -206,7 +214,7 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
                 T_embedded *= adapt(array_type, onehot(links[k-1] => 1))
             end
         end
-        
+
         if a < L_c
             r_old = commonind(working_mpos[c][a], working_mpos[c][a+1])
             P_R = make_projector(r_old, links[k], offsets[k][c])
@@ -216,13 +224,13 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
                 T_embedded *= adapt(array_type, onehot(links[k] => 2))
             end
         end
-        
+
         # Build Identity and passing terms
         I_mat = Matrix{Float64}(I, dim(new_s), dim(new_s))
         I_site = adapt(array_type, ITensor(I_mat, new_s', new_s))
-        
+
         W_k = T_embedded
-        
+
         # Id -> Id
         if k < total_sites
             if k == 1
@@ -231,7 +239,7 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
                 W_k += I_site * adapt(array_type, onehot(links[k-1] => 1)) * adapt(array_type, onehot(links[k] => 1))
             end
         end
-        
+
         # Fin -> Fin
         if k > 1
             if k == total_sites
@@ -240,7 +248,7 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
                 W_k += I_site * adapt(array_type, onehot(links[k-1] => 2)) * adapt(array_type, onehot(links[k] => 2))
             end
         end
-        
+
         # Active passes for j != c
         if 1 < k < total_sites
             for j in 1:N
@@ -256,10 +264,10 @@ function ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:I
                 end
             end
         end
-        
+
         mpo_tensors[k] = W_k
     end
-    
+
     return MPO(mpo_tensors)
 end
 
@@ -289,7 +297,6 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
     end
 
     new_mpo = MPO(totlen)
-
 
     pad_links = [Index(1, "Link,Pad,$n") for n in 1:pad_len]
 

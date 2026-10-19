@@ -93,7 +93,15 @@ if save_mask
     @show error_mask
     object_mask = replace_siteinds!(MPS(tci_mask), sites)
 
-    visualize_scalar(object_mask, grid, arch, destination_folder * "/mask_buffer.png"; npoints=200, aspect_ratio=:equal, size=fig_size)
+    visualize_scalar(
+        object_mask,
+        grid,
+        arch,
+        destination_folder * "/mask_buffer.png";
+        npoints=200,
+        aspect_ratio=:equal,
+        size=fig_size,
+    )
     # save(mask_path, mask_name, object_mask)
 end
 
@@ -133,7 +141,11 @@ bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
 bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
 bcsp = BoundaryConditions(bcspx, bcspy)
 
-v_field = load_timevolved_mps ? VectorField((kickstart_mps_vx, kickstart_mps_vy), arch, (bcsvx, bcsvy)) : VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
+v_field = if load_timevolved_mps
+    VectorField((kickstart_mps_vx, kickstart_mps_vy), arch, (bcsvx, bcsvy))
+else
+    VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
+end
 p_field = ScalarField(sites, arch, bcsp)
 
 ############################################################
@@ -166,7 +178,13 @@ ENV["JULIA_DEBUG"] = ""
 p_diff_ops = DifferentialOpsScalar(experiment.grid, experiment.p_field; stencil_order=experiment.stencil_order)
 u_diff_ops = DifferentialOps(experiment.grid, experiment.u_fields; stencil_order=experiment.stencil_order)
 u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=experiment.stencil_order)
-symmetrized_Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid; stencil_order=experiment.stencil_order, maxdim=experiment.maxdim, cutoff=experiment.cutoff)
+symmetrized_Δ_cache = symmetrized_laplacian(
+    experiment.p_field,
+    experiment.grid;
+    stencil_order=experiment.stencil_order,
+    maxdim=experiment.maxdim,
+    cutoff=experiment.cutoff,
+)
 
 ############################################################
 
@@ -174,44 +192,18 @@ symmetrized_Δ_cache = symmetrized_laplacian(experiment.p_field, experiment.grid
 
 ############################################################
 prec_updater_kwargs = LocalUpdaterArgs(;
-    ishermitian=true,
-    isposdef=true,
-    rtol=1e-8,
-    krylovdim=1,
-    maxiter=1000,
-    verbosity=1
+    ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=1000, verbosity=1
 )
-prec_sweep_kwargs = SweepingArgs(;
-    nsweeps=20,
-    maxdim=8,
-    cutoff=1e-11,
-    nsite=2,
-    outputlevel=0,
-)
+prec_sweep_kwargs = SweepingArgs(; nsweeps=20, maxdim=8, cutoff=1e-11, nsite=2, outputlevel=0)
 prec_solver = ALS(; sweep_kwargs=prec_sweep_kwargs, updater_kwargs=prec_updater_kwargs)
 
 g_updater_kwargs = LocalUpdaterArgs(;
-    ishermitian=true,
-    isposdef=true,
-    rtol=1e-9,
-    krylovdim=1,
-    maxiter=2000,
-    verbosity=1
+    ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=2000, verbosity=1
 )
-g_sweep_kwargs = SweepingArgs(;
-    nsweeps=20,
-    maxdim=5,
-    cutoff=1e-12,
-    nsite=2,
-    outputlevel=1
-)
+g_sweep_kwargs = SweepingArgs(; nsweeps=20, maxdim=5, cutoff=1e-12, nsite=2, outputlevel=1)
 g_solver = ALS(; sweep_kwargs=g_sweep_kwargs, updater_kwargs=g_updater_kwargs)
 
-D_kwargs = (;
-    maxdim=5,
-    cutoff=1e-11,
-    oversample=10,
-)
+D_kwargs = (; maxdim=5, cutoff=1e-11, oversample=10)
 
 input = -1.0 * truncate(symmetrized_Δ_cache; maxdim=3)
 # Here the 3 different available constructors are set up, and tests on their eigenvalues are 
@@ -241,20 +233,10 @@ for i in 3:15
     # A and b are bound by linearsolve to the system built inside linsolve_preconditioner
     observer = ResidualObserver()
     loop_prec_updater_kwargs = LocalUpdaterArgs(;
-        ishermitian=true,
-        isposdef=true,
-        rtol=1e-3,
-        krylovdim=1,
-        maxiter=200,
-        verbosity=1
+        ishermitian=true, isposdef=true, rtol=1e-3, krylovdim=1, maxiter=200, verbosity=1
     )
     loop_prec_sweep_kwargs = SweepingArgs(;
-        nsweeps=100,
-        maxdim=i,
-        cutoff=1e-11,
-        nsite=2,
-        outputlevel=0,
-        observer! = observer
+        nsweeps=100, maxdim=i, cutoff=1e-11, nsite=2, outputlevel=0, (observer!)=observer
     )
     loop_prec_solver = ALS(; sweep_kwargs=loop_prec_sweep_kwargs, updater_kwargs=loop_prec_updater_kwargs)
 
@@ -267,7 +249,6 @@ for i in 3:15
     vals_list[i] = vals
 end
 
-
 #---------------------------------------------------
 
 # 9. Poisson solver 
@@ -278,35 +259,25 @@ end
 stats = KrylovSweepStats()
 
 local_updater_kwargs = LocalUpdaterArgs(;
-    ishermitian=false,
-    isposdef=false,
-    rtol=1e-4,
-    krylovdim=1,
-    maxiter=500,
-    verbosity=1,
-    numiter_store=stats
+    ishermitian=false, isposdef=false, rtol=1e-4, krylovdim=1, maxiter=500, verbosity=1, numiter_store=stats
 )
-sweep_kwargs = SweepingArgs(;
-    nsweeps=5,
-    maxdim=150,
-    cutoff=1e-11
-)
+sweep_kwargs = SweepingArgs(; nsweeps=5, maxdim=150, cutoff=1e-11)
 als_solver = ALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=local_updater_kwargs)
 
 global_updater_kwargs = GlobalUpdaterArgs(;
-    ishermitian = true,
-    isposdef = true,
-    krylovdim = 1,
-    maxiter = 50,
-    rtol = 1e-6,
-    verbosity = 1,
-    maxdim = 70,
-    cutoff = 1e-8,
-    orth_maxdim = 150,
-    orth_cutoff = 1e-12,
+    ishermitian=true,
+    isposdef=true,
+    krylovdim=1,
+    maxiter=50,
+    rtol=1e-6,
+    verbosity=1,
+    maxdim=70,
+    cutoff=1e-8,
+    orth_maxdim=150,
+    orth_cutoff=1e-12,
 )
 
-ttcg_solver = GlobalCG(; updater_kwargs = global_updater_kwargs)
+ttcg_solver = GlobalCG(; updater_kwargs=global_updater_kwargs)
 
 dt = time_stepper.time_evol_kwargs.dt
 cutoff = experiment.cutoff
@@ -315,25 +286,66 @@ maxdim = experiment.maxdim
 masked_u = DifferenTT.mask_correction(last(experiment.u_fields), object_mask; cutoff=cutoff, maxdim=maxdim)
 
 nondivfree_advection_terms = advection(masked_u, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-visualize_vector(-1.0 .* nondivfree_advection_terms, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_nondivfree_advection.png"; arrow_scale=0.0, npoints=100, size=(1200, 600), clims=(-20, 20))
+visualize_vector(
+    -1.0 .* nondivfree_advection_terms,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_nondivfree_advection.png";
+    arrow_scale=0.0,
+    npoints=100,
+    size=(1200, 600),
+    clims=(-20, 20),
+)
 
 # Obtain the divergence of the field
 ∇u = divergence(masked_u, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_∇u.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-20, 20))
+visualize_scalar(
+    ∇u,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_∇u.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+    clims=(-20, 20),
+)
 
 # Boundary nullifiers for the divergence
-∇u_correction = divergence_dirichlet_correction(experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+∇u_correction = divergence_dirichlet_correction(
+    experiment.u_fields; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim
+)
 
 # Dirichlet correction on the pressure field moved to the rhs of the linear system
-Δp_correction_mpo = scalar_dirichlet_correction(experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
-Δp_correction = (isnothing(Δp_correction_mpo)) ? nothing : apply(Δp_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(Δp_correction_mpo)); alg="naive", cutoff=cutoff, maxdim=maxdim)
+Δp_correction_mpo = scalar_dirichlet_correction(
+    experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim
+)
+Δp_correction = if (isnothing(Δp_correction_mpo))
+    nothing
+else
+    apply(
+        Δp_correction_mpo,
+        ones_mps(experiment.p_field.usites, 1, backend_type(Δp_correction_mpo));
+        alg="naive",
+        cutoff=cutoff,
+        maxdim=maxdim,
+    )
+end
 
 # Apply the boundary nullifier
 ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff, maxdim=maxdim)
 
 # Add the pressure dirichlet contribution coming from the lhs, scaled with dt
 ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff, maxdim=maxdim)
-visualize_scalar(∇u, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_∇u_corrected.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-20, 20))
+visualize_scalar(
+    ∇u,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_∇u_corrected.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+    clims=(-20, 20),
+)
 
 previous_p = nothing
 epsilon = 1e-10
@@ -341,19 +353,40 @@ epsilon = 1e-10
 # Weight the rhs with the same Neumann weight W as the symmetrized Laplacian (1/2 on the Neumann rows, 1/4 on
 # Neumann corners). Since we are solving -∇²p = -dt⁻¹∇⋅u we weight -1.0 * ∇u
 rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
-visualize_scalar(rhs, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_rhs.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-20, 20))
+visualize_scalar(
+    rhs,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_rhs.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+    clims=(-20, 20),
+)
 
 # ---------------------------
 
 # Choose between the preconditioners built before or nothing
 precond = nothing
 @time begin
-    pdt = isnothing(precond) ? linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p) : linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)
+    pdt = if isnothing(precond)
+        linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, previous_p)
+    else
+        linearsolve(als_solver, -1.0 * symmetrized_Δ_cache, rhs, precond, previous_p)
+    end
 end
 
 divfree_p = pdt * (1 / dt)
 
-visualize_scalar(divfree_p, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_divfreep.png"; arrow_scale=0.0, npoints=200, size=(1200, 600))#, clims=(-0.1, 0.1))
+visualize_scalar(
+    divfree_p,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_divfreep.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+)#, clims=(-0.1, 0.1))
 push!(experiment.p_field, divfree_p)
 
 # l2 error of the linear solver = ||Ax - b||² = <psi|A†A|psi> - 2Re<psi|A†|b> + <b|b>
@@ -373,13 +406,25 @@ res_l2norm = sqrt(max(0.0, term1 - term2 + term3))
 
 #---------------------------------------------------
 
-div_free_u_mpss = ntuple(i -> begin
+div_free_u_mpss = ntuple(
+    i -> begin
         dp = apply(p_diff_ops.d_ops[i], divfree_p; cutoff=cutoff, maxdim=maxdim)
         # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
-        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order)#, cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(
+            experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order
+        )#, cutoff=cutoff, maxdim=maxdim)
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction = if (isnothing(dirichlet_correction_mpo))
+            nothing
+        else
+            apply(
+                dirichlet_correction_mpo,
+                ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo));
+                cutoff=cutoff,
+                maxdim=maxdim,
+            )
+        end
 
         full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
 
@@ -387,35 +432,80 @@ div_free_u_mpss = ntuple(i -> begin
             println("left ∇p correction for component $i")
             display(round.(contract_mps(full_dp))[1:8])
             println("right ∇p correction for component $i")
-            display(round.(contract_mps(full_dp))[end-7:end])
+            display(round.(contract_mps(full_dp))[(end-7):end])
         end
 
         output = +(masked_u[i], (-1.0 * dt) * full_dp; cutoff=cutoff, maxdim=maxdim)
-        visualize_scalar((-1.0 * dt) * full_dp, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_dp$(i).png"; npoints=200, size=(1200, 600))
+        visualize_scalar(
+            (-1.0 * dt) * full_dp,
+            experiment.grid,
+            experiment.u_fields.arch,
+            "experiments/inse/tunnel2dsteps/test_dp$(i).png";
+            npoints=200,
+            size=(1200, 600),
+        )
         return output
-    end, 2)
+    end,
+    2,
+)
 
-visualize_vector(div_free_u_mpss, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_div_free_u_mpss.png"; arrow_scale=0.0, npoints=300, size=(1200, 600))
+visualize_vector(
+    div_free_u_mpss,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_div_free_u_mpss.png";
+    arrow_scale=0.0,
+    npoints=300,
+    size=(1200, 600),
+)
 
 #---------------------------------------------------
 
 # 11. Evaluate ∇p behaviour with the diffusin term, which is linear   
 
 #---------------------------------------------------
-∇p = ntuple(i -> begin
+∇p = ntuple(
+    i -> begin
         dp = apply(p_diff_ops.d_ops[i], divfree_p)#; cutoff=cutoff, maxdim=maxdim)
         # We correct dp/dxi per dimension, not mixing in corrections from other dimensions.
-        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(experiment.p_field, experiment.grid, 1, i; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction_mpo = DifferenTT.scalar_dirichlet_correction_dim(
+            experiment.p_field,
+            experiment.grid,
+            1,
+            i;
+            stencil_order=experiment.stencil_order,
+            cutoff=cutoff,
+            maxdim=maxdim,
+        )
 
         # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
-        dirichlet_correction = (isnothing(dirichlet_correction_mpo)) ? nothing : apply(dirichlet_correction_mpo, ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo)); cutoff=cutoff, maxdim=maxdim)
+        dirichlet_correction = if (isnothing(dirichlet_correction_mpo))
+            nothing
+        else
+            apply(
+                dirichlet_correction_mpo,
+                ones_mps(experiment.p_field.usites, 1, backend_type(dirichlet_correction_mpo));
+                cutoff=cutoff,
+                maxdim=maxdim,
+            )
+        end
 
         full_dp = isnothing(dirichlet_correction) ? dp : +(dp, dirichlet_correction)#; cutoff=cutoff, maxdim=maxdim) # Correct according to -dt * ∇p
         return full_dp
-    end, 2)
+    end,
+    2,
+)
 
 ∇p_diffusion = diffusion(-1.0 * dt .* ∇p, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-visualize_vector((1 / Re) .* ∇p_diffusion, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_∇p_diffusion.png"; arrow_scale=0.0, npoints=200, size=(1200, 600))
+visualize_vector(
+    (1 / Re) .* ∇p_diffusion,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_∇p_diffusion.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+)
 # BIG BIG ISSUE Here
 
 #---------------------------------------------------
@@ -425,13 +515,30 @@ visualize_vector((1 / Re) .* ∇p_diffusion, experiment.grid, experiment.u_field
 #---------------------------------------------------
 
 divfree_advection_terms = advection(div_free_u_mpss, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-visualize_vector(-1.0 .* divfree_advection_terms, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_divfree_advection.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-5, 5))
+visualize_vector(
+    -1.0 .* divfree_advection_terms,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_divfree_advection.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+    clims=(-5, 5),
+)
 divfree_diffusion_terms = diffusion(div_free_u_mpss, u_diff_ops; cutoff=cutoff, maxdim=maxdim)
-visualize_vector((1 / Re) .* divfree_diffusion_terms, experiment.grid, experiment.u_fields.arch, "experiments/inse/tunnel2dsteps/test_divfree_diffusion.png"; arrow_scale=0.0, npoints=200, size=(1200, 600), clims=(-5, 5))
+visualize_vector(
+    (1 / Re) .* divfree_diffusion_terms,
+    experiment.grid,
+    experiment.u_fields.arch,
+    "experiments/inse/tunnel2dsteps/test_divfree_diffusion.png";
+    arrow_scale=0.0,
+    npoints=200,
+    size=(1200, 600),
+    clims=(-5, 5),
+)
 
 NSrhs = NavierStokesPredictorRHS(experiment, u_diff_ops, u_boundary_null)
 timestepped_u_mpss = timestep(time_stepper, div_free_u_mpss, NSrhs, 1.0 * time_stepper.time_evol_kwargs.dt)
-
 
 #---------------------------------------------------
 
@@ -439,6 +546,28 @@ timestepped_u_mpss = timestep(time_stepper, div_free_u_mpss, NSrhs, 1.0 * time_s
 
 #---------------------------------------------------
 
-visualize_vector(timestepped_u_mpss, grid, arch, destination_folder * "/vector_buffer.png"; npoints=200, quiver_npoints=20, arrow_scale=0.1, aspect_ratio=:equal, size=fig_size)
-visualize_vorticity(timestepped_u_mpss, grid, arch, destination_folder * "/vorticity_buffer.png"; npoints=200, quiver_npoints=20, arrow_scale=0.0, aspect_ratio=:equal, size=fig_size)
-visualize_scalar(divfree_p, grid, arch, destination_folder * "/press_buffer.png"; npoints=200, aspect_ratio=:equal, size=fig_size)
+visualize_vector(
+    timestepped_u_mpss,
+    grid,
+    arch,
+    destination_folder * "/vector_buffer.png";
+    npoints=200,
+    quiver_npoints=20,
+    arrow_scale=0.1,
+    aspect_ratio=:equal,
+    size=fig_size,
+)
+visualize_vorticity(
+    timestepped_u_mpss,
+    grid,
+    arch,
+    destination_folder * "/vorticity_buffer.png";
+    npoints=200,
+    quiver_npoints=20,
+    arrow_scale=0.0,
+    aspect_ratio=:equal,
+    size=fig_size,
+)
+visualize_scalar(
+    divfree_p, grid, arch, destination_folder * "/press_buffer.png"; npoints=200, aspect_ratio=:equal, size=fig_size
+)

@@ -38,13 +38,13 @@ using ITensorMPS
         @test reversed_mpos isa MPO
         @test length(reversed_mpos) == nsite
         # Check connectivity
-        for i in 1:nsite-1
+        for i in 1:(nsite-1)
             @test !isnothing(commonind(reversed_mpos[i], reversed_mpos[i+1]))
         end
         # Check that original MPO is not mutated and objects are different
         @test reversed_mpos[1] !== mpo[nsite]
     end
-    
+
     @testset "_nothing_sum_handler" begin
         sites = siteinds(2, 4)
         a = random_mps(sites)
@@ -61,5 +61,4 @@ using ITensorMPS
         result2 = DifferenTT._nothing_sum_handler(a, b)
         @test result2 isa MPS
     end
-
 end

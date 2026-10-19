@@ -10,28 +10,28 @@ using LinearAlgebra
         s = Index(2, "Site")
         l = Index(1, "Link")
         T_edge = DifferenTT.make_identity_site(s, l, Array{Float64})
-        
+
         @test hasinds(T_edge, s, s', l)
         @test eltype(T_edge) == Float64
-        @test T_edge[s => 1, s' => 1, l => 1] == 1.0
-        @test T_edge[s => 2, s' => 2, l => 1] == 1.0
-        @test T_edge[s => 1, s' => 2, l => 1] == 0.0
-        @test T_edge[s => 2, s' => 1, l => 1] == 0.0
+        @test T_edge[s=>1, s'=>1, l=>1] == 1.0
+        @test T_edge[s=>2, s'=>2, l=>1] == 1.0
+        @test T_edge[s=>1, s'=>2, l=>1] == 0.0
+        @test T_edge[s=>2, s'=>1, l=>1] == 0.0
 
         # Bulk site (two links)
         s_bulk = Index(3, "Site")
         l1 = Index(1, "Link,l=1")
         l2 = Index(1, "Link,l=2")
         T_bulk = DifferenTT.make_identity_site(s_bulk, l1, l2, Array{Float64})
-        
+
         @test hasinds(T_bulk, s_bulk, s_bulk', l1, l2)
         @test eltype(T_bulk) == Float64
         for i in 1:3
             for j in 1:3
                 if i == j
-                    @test T_bulk[s_bulk => i, s_bulk' => j, l1 => 1, l2 => 1] == 1.0
+                    @test T_bulk[s_bulk=>i, s_bulk'=>j, l1=>1, l2=>1] == 1.0
                 else
-                    @test T_bulk[s_bulk => i, s_bulk' => j, l1 => 1, l2 => 1] == 0.0
+                    @test T_bulk[s_bulk=>i, s_bulk'=>j, l1=>1, l2=>1] == 0.0
                 end
             end
         end
@@ -44,7 +44,7 @@ using LinearAlgebra
         @test mpo1 isa MPO
         @test length(mpo1) == 4
         @test maxlinkdim(mpo1) == 1
-        
+
         # With site dimensions
         dims = [2, 3, 2, 4]
         mpo2 = identity_mpo(dims)
@@ -60,7 +60,7 @@ using LinearAlgebra
         @test length(mpo1) == 4
         @test maxlinkdim(mpo1) == 1
         @test norm(mpo1) == 0.0
-        
+
         # With site dimensions and custom linkdims
         dims = [2, 3, 2, 4]
         mpo2 = zeros_mpo(dims)
@@ -78,7 +78,7 @@ using LinearAlgebra
         @test length(mps1) == 4
         @test maxlinkdim(mps1) == 1
         @test norm(mps1) == 0.0
-        
+
         # With site dimensions and custom linkdims
         dims = [2, 3, 2, 4]
         mps2 = zeros_mps(dims; linkdims=2)
@@ -100,14 +100,14 @@ using LinearAlgebra
         @test norm(mps1[1]) ≈ sqrt(2*3)
         # Second tensor (3x2x3) should be sqrt(18)
         @test norm(mps1[2]) ≈ sqrt(3*2*3)
-        
+
         # With site indices and bond dim
         mps2 = ones_mps(sites, 2)
         @test mps2 isa MPS
         @test length(mps2) == 4
         @test maxlinkdim(mps2) == 2
         @test norm(mps2[1]) ≈ sqrt(2*2) # 2.0
-        
+
         # With site dimensions and bond dim
         dims = [2, 3, 2, 4]
         mps3 = ones_mps(dims, 2)
@@ -117,7 +117,7 @@ using LinearAlgebra
         @test norm(mps3[1]) ≈ sqrt(2*2)
         @test norm(mps3[2]) ≈ sqrt(2*3*2)
     end
-    
+
     @testset "ones_mpo" begin
         # With site indices and bond indices
         sites = [Index(2, "Site,n=$i") for i in 1:4]
@@ -130,14 +130,14 @@ using LinearAlgebra
         @test norm(mpo1[1]) ≈ sqrt(12)
         # Second tensor: link_prev x site x site' x link_next -> 3x2x2x3 = 36
         @test norm(mpo1[2]) ≈ sqrt(36)
-        
+
         # With site indices and bond dim
         mpo2 = ones_mpo(sites, 2)
         @test mpo2 isa MPO
         @test length(mpo2) == 4
         @test maxlinkdim(mpo2) == 2
         @test norm(mpo2[1]) ≈ sqrt(2*2*2) # 8
-        
+
         # With site dimensions and bond dim
         dims = [2, 3, 2, 4]
         mpo3 = ones_mpo(dims, 2)
@@ -178,7 +178,7 @@ using LinearAlgebra
         mpo_arrays = [
             rand(2, 2, 4), # Left end
             rand(2, 2, 4, 5), # Bulk
-            rand(2, 2, 5)  # Right end
+            rand(2, 2, 5),  # Right end
         ]
 
         mpo = DifferenTT.arrays2mpo(sites, mpo_arrays)
@@ -225,7 +225,6 @@ using LinearAlgebra
         @test siteinds(mps) == sites
 
         @test DifferenTT.contract_mps(DifferenTT.vec2mps(v, sites)) ≈ v
-
     end
 
     @testset "mat2tensor" begin
@@ -262,22 +261,22 @@ using LinearAlgebra
         dims = [2, 3, 2]
         sites = siteinds(dims)
         D = prod(dims)
-        
+
         # Upper with diag
         u_mpo = DifferenTT.upper_triang_mpo(sites, true)
         u_mat = contract_mpo(u_mpo)
         @test u_mat ≈ triu(ones(D, D))
-        
+
         # Upper without diag
         u_strict = DifferenTT.upper_triang_mpo(sites, false)
         u_strict_mat = contract_mpo(u_strict)
         @test u_strict_mat ≈ triu(ones(D, D), 1)
-        
+
         # Lower with diag
         l_mpo = DifferenTT.lower_triang_mpo(sites, true)
         l_mat = contract_mpo(l_mpo)
         @test l_mat ≈ tril(ones(D, D))
-        
+
         # Lower without diag
         l_strict = DifferenTT.lower_triang_mpo(sites, false)
         l_strict_mat = contract_mpo(l_strict)

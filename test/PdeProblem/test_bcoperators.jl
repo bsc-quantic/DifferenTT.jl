@@ -28,7 +28,7 @@ end
         @test L[3, 1] == 3.0
         @test L[1, 2] == 0.0
         @test L[2, 2] == 1.0
-        
+
         U = DifferenTT.upper_toeplitz_matrix(coeffs)
         @test U == L'
     end
@@ -38,25 +38,27 @@ end
         dim = 2^nsite
         qtt_arch = QTTArchitecture((nsite,))
         tt_arch = TTArchitecture((dim,))
-        
+
         for stencil_order in [2, 8]
             for (name, bc1d, expect_nothing) in [
                 ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC()), true),
                 ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), false),
                 ("Dirichlet-Neumann", BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), false),
-                ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0)), false)
+                ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0)), false),
             ]
                 @testset "Nullifier Stencil $stencil_order, BC $name" begin
                     expected_mat = expected_nullifier_matrix(dim, bc1d; stencil_order=stencil_order)
-                    
+
                     tt_null = DifferenTT.onedim_boundary_nullifier(tt_arch, 1, bc1d, Array; stencil_order=stencil_order)
                     if expect_nothing
                         @test isnothing(tt_null)
                     else
                         @test tt_null ≈ expected_mat atol=1e-10
                     end
-                    
-                    qtt_null_mpo = DifferenTT.onedim_boundary_nullifier(qtt_arch, 1, bc1d, Array; stencil_order=stencil_order)
+
+                    qtt_null_mpo = DifferenTT.onedim_boundary_nullifier(
+                        qtt_arch, 1, bc1d, Array; stencil_order=stencil_order
+                    )
                     if expect_nothing
                         @test isnothing(qtt_null_mpo)
                     else
@@ -72,14 +74,18 @@ end
         # A simple, hand-checkable coefficient vector so the expected matrices can be written
         # out literally rather than re-derived from the code under test.
         coeffs = [1.0, 2.0, 3.0, 4.0]
-        expected_upper = [1.0 2.0 3.0 4.0
-                           0.0 1.0 2.0 3.0
-                           0.0 0.0 1.0 2.0
-                           0.0 0.0 0.0 1.0]
-        expected_lower = [1.0 0.0 0.0 0.0
-                           2.0 1.0 0.0 0.0
-                           3.0 2.0 1.0 0.0
-                           4.0 3.0 2.0 1.0]
+        expected_upper = [
+            1.0 2.0 3.0 4.0
+             0.0 1.0 2.0 3.0
+             0.0 0.0 1.0 2.0
+             0.0 0.0 0.0 1.0
+        ]
+        expected_lower = [
+            1.0 0.0 0.0 0.0
+             2.0 1.0 0.0 0.0
+             3.0 2.0 1.0 0.0
+             4.0 3.0 2.0 1.0
+        ]
 
         @testset "corner_pick_matrix (TT, dense)" begin
             @test DifferenTT.corner_pick_matrix(coeffs, :upper) == expected_upper
@@ -97,9 +103,9 @@ end
             @test all(iszero, full_upper[5:N, :])     # no coupling out of the corner block at all
 
             full_lower = DifferenTT.contract_mpo(DifferenTT.corner_pick_mpo(coeffs, sites, :lower))
-            @test full_lower[N-3:N, N-3:N] ≈ expected_lower atol=1e-12
-            @test all(iszero, full_lower[N-3:N, 1:N-4])
-            @test all(iszero, full_lower[1:N-4, :])
+            @test full_lower[(N-3):N, (N-3):N] ≈ expected_lower atol=1e-12
+            @test all(iszero, full_lower[(N-3):N, 1:(N-4)])
+            @test all(iszero, full_lower[1:(N-4), :])
         end
     end
 
@@ -124,31 +130,55 @@ end
 
         for stencil_order in (2, 8), derivative_order in (1, 2)
             coeffs = DifferenTT.derivative_coefficients(derivative_order; stencil_order=stencil_order)
-            required_right = [sum(coeffs[k] for k in (m + 1):4) for m in 3:-1:0]
-            required_left = [sum(coeffs[k] for k in -4:-(m + 1)) for m in 0:3]
+            required_right = [sum(coeffs[k] for k in (m+1):4) for m in 3:-1:0]
+            required_left = [sum(coeffs[k] for k in -4:(-(m+1))) for m in 0:3]
 
             @testset "stencil_order=$stencil_order, derivative_order=$derivative_order" begin
                 # -- TT (dense) path --
-                D_right = DifferenTT.onedim_differential_operator(derivative_order, tt_arch, 1, bc_right, Array; stencil_order=stencil_order)
-                C_right = DifferenTT.onedim_right_dirichlet_correction(derivative_order, tt_arch, 1, Array; stencil_order=stencil_order)
-                @test (C_right * ones_vec)[end-3:end] ≈ required_right atol=1e-10
-                @test (D_right * ones_vec .+ C_right * ones_vec)[end-3:end] ≈ zeros(4) atol=1e-10
+                D_right = DifferenTT.onedim_differential_operator(
+                    derivative_order, tt_arch, 1, bc_right, Array; stencil_order=stencil_order
+                )
+                C_right = DifferenTT.onedim_right_dirichlet_correction(
+                    derivative_order, tt_arch, 1, Array; stencil_order=stencil_order
+                )
+                @test (C_right*ones_vec)[(end-3):end] ≈ required_right atol=1e-10
+                @test (D_right*ones_vec .+ C_right*ones_vec)[(end-3):end] ≈ zeros(4) atol=1e-10
 
-                D_left = DifferenTT.onedim_differential_operator(derivative_order, tt_arch, 1, bc_left, Array; stencil_order=stencil_order)
-                C_left = DifferenTT.onedim_left_dirichlet_correction(derivative_order, tt_arch, 1, Array; stencil_order=stencil_order)
-                @test (C_left * ones_vec)[1:4] ≈ required_left atol=1e-10
-                @test (D_left * ones_vec .+ C_left * ones_vec)[1:4] ≈ zeros(4) atol=1e-10
+                D_left = DifferenTT.onedim_differential_operator(
+                    derivative_order, tt_arch, 1, bc_left, Array; stencil_order=stencil_order
+                )
+                C_left = DifferenTT.onedim_left_dirichlet_correction(
+                    derivative_order, tt_arch, 1, Array; stencil_order=stencil_order
+                )
+                @test (C_left*ones_vec)[1:4] ≈ required_left atol=1e-10
+                @test (D_left*ones_vec .+ C_left*ones_vec)[1:4] ≈ zeros(4) atol=1e-10
 
                 # -- QTT path, contracted to dense --
-                D_right_q = DifferenTT.contract_mpo(DifferenTT.onedim_differential_operator(derivative_order, qtt_arch, 1, bc_right, Array; stencil_order=stencil_order))
-                C_right_q = DifferenTT.contract_mpo(DifferenTT.onedim_right_dirichlet_correction(derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order))
-                @test (C_right_q * ones_vec)[end-3:end] ≈ required_right atol=1e-10
-                @test (D_right_q * ones_vec .+ C_right_q * ones_vec)[end-3:end] ≈ zeros(4) atol=1e-10
+                D_right_q = DifferenTT.contract_mpo(
+                    DifferenTT.onedim_differential_operator(
+                        derivative_order, qtt_arch, 1, bc_right, Array; stencil_order=stencil_order
+                    ),
+                )
+                C_right_q = DifferenTT.contract_mpo(
+                    DifferenTT.onedim_right_dirichlet_correction(
+                        derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order
+                    ),
+                )
+                @test (C_right_q*ones_vec)[(end-3):end] ≈ required_right atol=1e-10
+                @test (D_right_q*ones_vec .+ C_right_q*ones_vec)[(end-3):end] ≈ zeros(4) atol=1e-10
 
-                D_left_q = DifferenTT.contract_mpo(DifferenTT.onedim_differential_operator(derivative_order, qtt_arch, 1, bc_left, Array; stencil_order=stencil_order))
-                C_left_q = DifferenTT.contract_mpo(DifferenTT.onedim_left_dirichlet_correction(derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order))
-                @test (C_left_q * ones_vec)[1:4] ≈ required_left atol=1e-10
-                @test (D_left_q * ones_vec .+ C_left_q * ones_vec)[1:4] ≈ zeros(4) atol=1e-10
+                D_left_q = DifferenTT.contract_mpo(
+                    DifferenTT.onedim_differential_operator(
+                        derivative_order, qtt_arch, 1, bc_left, Array; stencil_order=stencil_order
+                    ),
+                )
+                C_left_q = DifferenTT.contract_mpo(
+                    DifferenTT.onedim_left_dirichlet_correction(
+                        derivative_order, qtt_arch, 1, Array; stencil_order=stencil_order
+                    ),
+                )
+                @test (C_left_q*ones_vec)[1:4] ≈ required_left atol=1e-10
+                @test (D_left_q*ones_vec .+ C_left_q*ones_vec)[1:4] ≈ zeros(4) atol=1e-10
 
                 # -- QTT and TT must agree exactly: this is the invariant that was broken before
                 # the fix (the QTT and TT corrections were two different, independently wrong,
@@ -164,7 +194,7 @@ end
             # so a future change to the coefficient table can't silently break this test too.
             C_right = DifferenTT.onedim_right_dirichlet_correction(1, tt_arch, 1, Array; stencil_order=8)
             expected = [-1 / 280, 4 / 105 - 1 / 280, -1 / 5 + 4 / 105 - 1 / 280, 4 / 5 - 1 / 5 + 4 / 105 - 1 / 280]
-            @test (C_right * ones_vec)[end-3:end] ≈ expected atol=1e-12
+            @test (C_right*ones_vec)[(end-3):end] ≈ expected atol=1e-12
         end
     end
 
@@ -197,7 +227,9 @@ end
             ("Periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
         ]
 
-        @testset "onedim_wall_vorticity_correction, $formula, $name" for formula in (:jensen, :thom), (name, bc1d) in bc_cases
+        @testset "onedim_wall_vorticity_correction, $formula, $name" for formula in (:jensen, :thom),
+            (name, bc1d) in bc_cases
+
             c1, c2, _ = DifferenTT.wall_vorticity_coefficients(formula)
             # c₁ ψ₁ + c₂ ψ₂ on the node next to each wall, independent of the implementation
             expected = zeros(dim, dim)
@@ -236,11 +268,16 @@ end
             # The BoundaryCond1d methods are the flag methods with every DirichletBC side as a wall
             for (name, bc1d) in bc_cases, formula in (:jensen, :thom)
                 flags = (bc1d.left isa DirichletBC, bc1d.right isa DirichletBC)
-                @test DifferenTT.onedim_wall_vorticity_entries(bc1d, dim; formula=formula) == DifferenTT.onedim_wall_vorticity_entries(flags, dim; formula=formula)
+                @test DifferenTT.onedim_wall_vorticity_entries(bc1d, dim; formula=formula) ==
+                    DifferenTT.onedim_wall_vorticity_entries(flags, dim; formula=formula)
                 any(flags) || continue
-                @test DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, bc1d; formula=formula) == DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, flags; formula=formula)
-                @test DifferenTT.contract_mpo(DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, bc1d; formula=formula)) ≈
-                      DifferenTT.contract_mpo(DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, flags; formula=formula))
+                @test DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, bc1d; formula=formula) ==
+                    DifferenTT.onedim_wall_vorticity_correction(tt_arch, 1, flags; formula=formula)
+                @test DifferenTT.contract_mpo(
+                    DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, bc1d; formula=formula)
+                ) ≈ DifferenTT.contract_mpo(
+                    DifferenTT.onedim_wall_vorticity_correction(qtt_arch, 1, flags; formula=formula)
+                )
             end
         end
 

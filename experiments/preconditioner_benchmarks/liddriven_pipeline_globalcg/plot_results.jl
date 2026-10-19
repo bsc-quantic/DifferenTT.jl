@@ -27,15 +27,16 @@ using LaTeXStrings
 
 # Use GR backend
 gr()
-default(fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
-
+default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 # Configuration
 ENV["GKSwstype"] = "100"
 include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
 
 results_root = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg"
-const RESULTS_SUFFIX = cavity_results_suffix(s -> isfile(joinpath(results_root, "results" * s, "collected_results.jld2")))
+const RESULTS_SUFFIX = cavity_results_suffix(
+    s -> isfile(joinpath(results_root, "results" * s, "collected_results.jld2"))
+)
 @info "Plotting the lid-driven cavity results with folder suffix \"$RESULTS_SUFFIX\""
 base_folder = joinpath(results_root, "results" * RESULTS_SUFFIX)
 plots_dir = joinpath(base_folder, "plots")
@@ -61,7 +62,7 @@ for row in eachrow(df)
         "iters" => row.global_iters,
         "residuals" => row.residuals,
         "div_ratios" => row_vec(row, :div_ratios),
-        "n_steps" => length(row.solve_times)
+        "n_steps" => length(row.solve_times),
     )
     results[nodes][k] = d
 end
@@ -78,7 +79,7 @@ for nodes in system_sizes
     grid_data = results[nodes]
 
     has_baseline = haskey(grid_data, "baseline")
-    
+
     if !has_baseline
         @warn "Missing baseline data for $nodes. Absolute times will be plotted instead of speedups."
         first_v = first(values(grid_data))
@@ -120,7 +121,7 @@ for nodes in system_sizes
             sp_solve = v["total_solve_time"]
             sp_total = v["total_solve_time"] + v["precond_build_time"]
         end
-        
+
         push!(solve_speedups, sp_solve)
         push!(total_speedups, sp_total)
     end
@@ -150,51 +151,75 @@ for nodes in system_sizes
         Z_total[g_idx, μ_idx] = total_speedups[i]
     end
 
-    hm_solve_title = has_baseline ? "Aggregate Solve Speedup ($nodes, N=$n_steps)" : "Aggregate Solve Time [s] ($nodes, N=$n_steps)"
+    hm_solve_title =
+        has_baseline ? "Aggregate Solve Speedup ($nodes, N=$n_steps)" : "Aggregate Solve Time [s] ($nodes, N=$n_steps)"
     # Heatmap: Aggregate Solve Speedup/Time
-    hm_solve = heatmap(string.(unique_mus), string.(unique_gdims), Z_solve,
+    hm_solve = heatmap(
+        string.(unique_mus),
+        string.(unique_gdims),
+        Z_solve;
         title=hm_solve_title,
         xlabel="Regularization parameter (μ)",
         ylabel=L"Bond Dimension ($\chi_{max}$)",
         color=:viridis,
         clim=(minimum(filter(!isnan, Z_solve)), maximum(filter(!isnan, Z_solve))),
-        right_margin=5Plots.mm)
+        right_margin=5Plots.mm,
+    )
 
     savefig(hm_solve, joinpath(plots_dir, "heatmap_solve_$(nodes[1])x$(nodes[2]).png"))
 
-    hm_total_title = has_baseline ? "Aggregate Total Speedup ($nodes, N=$n_steps)" : "Aggregate Total Time [s] ($nodes, N=$n_steps)"
+    hm_total_title =
+        has_baseline ? "Aggregate Total Speedup ($nodes, N=$n_steps)" : "Aggregate Total Time [s] ($nodes, N=$n_steps)"
     # Heatmap: Aggregate Total Speedup/Time
-    hm_total = heatmap(string.(unique_mus), string.(unique_gdims), Z_total,
+    hm_total = heatmap(
+        string.(unique_mus),
+        string.(unique_gdims),
+        Z_total;
         title=hm_total_title,
         xlabel="Regularization parameter (μ)",
         ylabel=L"Bond Dimension ($\chi_{max}$)",
         color=:viridis,
         clim=(minimum(filter(!isnan, Z_total)), maximum(filter(!isnan, Z_total))),
-        right_margin=5Plots.mm)
+        right_margin=5Plots.mm,
+    )
 
     savefig(hm_total, joinpath(plots_dir, "heatmap_total_$(nodes[1])x$(nodes[2]).png"))
 
     # Pareto Front
-    pf_plot = plot(title="Trade-off: Build vs Total Solve Time ($nodes, N=$n_steps)",
+    pf_plot = plot(;
+        title="Trade-off: Build vs Total Solve Time ($nodes, N=$n_steps)",
         xlabel="Preconditioner Build Time (s)",
         ylabel="Aggregate Linear Solve Time (s)",
         legend=:outertopright,
         legendtitle=L"$\chi_{max}$",
-        framestyle=:box)
+        framestyle=:box,
+    )
     pf_colors = palette(:tab20)
     for (i, gdim) in enumerate(unique_gdims)
         idx = findall(x -> x == gdim, gdims)
-        scatter!(pf_plot, build_times[idx], total_solve_times[idx],
+        scatter!(
+            pf_plot,
+            build_times[idx],
+            total_solve_times[idx];
             label=latexstring("FAI \$\\chi_{max}=$(gdim)\$"),
-            color=pf_colors[mod1(i, length(pf_colors))], marker=:circle)
+            color=pf_colors[mod1(i, length(pf_colors))],
+            marker=:circle,
+        )
     end
 
     if has_baseline
-        hline!(pf_plot, [base_time], label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
-        plot!(pf_plot, [0, base_time], [base_time, 0],
-            fillrange=0, fillalpha=0.1, fillcolor=:green,
-            linealpha=0, label="Net Speedup Region")
-    
+        hline!(pf_plot, [base_time]; label="Baseline Total Solve", color=:red, lw=2, ls=:dash)
+        plot!(
+            pf_plot,
+            [0, base_time],
+            [base_time, 0];
+            fillrange=0,
+            fillalpha=0.1,
+            fillcolor=:green,
+            linealpha=0,
+            label="Net Speedup Region",
+        )
+
         xlims!(pf_plot, 0, maximum(build_times) * 1.05)
         ylims!(pf_plot, 0, max(maximum(total_solve_times), base_time) * 1.05)
     else
@@ -213,41 +238,43 @@ for nodes in system_sizes
     colors = palette(:tab20)
 
     # Iterations over time
-    p_iters = plot(title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
+    p_iters = plot(;
+        title=latexstring("Krylov Iterations vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
         xlabel="Time Step",
         ylabel="Avg Krylov Iterations per Site",
         legend=:outertopright,
-        yaxis=:log10)
+        yaxis=:log10,
+    )
 
     if has_baseline
-        plot!(p_iters, steps_range, base_iters,
-            label="Baseline", color=:black, lw=3, marker=:circle)
+        plot!(p_iters, steps_range, base_iters; label="Baseline", color=:black, lw=3, marker=:circle)
     end
 
     # Speedup over time
-    p_sp_title = has_baseline ? latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$") : latexstring("Solve Time vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$")
+    p_sp_title = if has_baseline
+        latexstring("Solve Speedup vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$")
+    else
+        latexstring("Solve Time vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$")
+    end
     p_sp_ylabel = has_baseline ? "Speedup Ratio" : "Solve Time (s)"
 
-    p_sp = plot(title=p_sp_title,
-        xlabel="Time Step",
-        ylabel=p_sp_ylabel,
-        legend=:outertopright,
-        yaxis=:log10)
+    p_sp = plot(; title=p_sp_title, xlabel="Time Step", ylabel=p_sp_ylabel, legend=:outertopright, yaxis=:log10)
 
     if has_baseline
-        hline!(p_sp, [1.0], color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
+        hline!(p_sp, [1.0]; color=:black, lw=3, ls=:dash, label="Break-even (1.0x)")
     end
 
     # Residuals over time
-    p_res = plot(title=latexstring("Relative Residual vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
+    p_res = plot(;
+        title=latexstring("Relative Residual vs Time Step ($nodes)\nBest μ per \$\\chi_{max}\$"),
         xlabel="Time Step",
         ylabel="Relative Residual",
         legend=:outertopright,
-        yaxis=:log10)
+        yaxis=:log10,
+    )
 
     if has_baseline
-        plot!(p_res, steps_range, base_residuals,
-            label="Baseline", color=:black, lw=3, marker=:circle)
+        plot!(p_res, steps_range, base_residuals; label="Baseline", color=:black, lw=3, marker=:circle)
     end
 
     for (i, gdim) in enumerate(unique_gdims)
@@ -271,20 +298,20 @@ for nodes in system_sizes
         end
 
         best_idx == -1 && continue
-        
+
         best_v = grid_data[keys_list[best_idx]]
         c_color = colors[mod1(i, length(colors))]
         label_str = latexstring("FAI \$\\chi_{max}=$(gdim)\$ (μ=$(best_v["mu"]))")
-        
-        plot!(p_iters, steps_range, best_v["iters"], label=label_str, color=c_color, lw=2, marker=:square)
-        plot!(p_res, steps_range, best_v["residuals"], label=label_str, color=c_color, lw=2, marker=:star5)
-        
+
+        plot!(p_iters, steps_range, best_v["iters"]; label=label_str, color=c_color, lw=2, marker=:square)
+        plot!(p_res, steps_range, best_v["residuals"]; label=label_str, color=c_color, lw=2, marker=:star5)
+
         if has_baseline
             per_step_metric = base_solve_times ./ best_v["solve_times"]
         else
             per_step_metric = best_v["solve_times"]
         end
-        plot!(p_sp, steps_range, per_step_metric, label=label_str, color=c_color, lw=2, marker=:diamond)
+        plot!(p_sp, steps_range, per_step_metric; label=label_str, color=c_color, lw=2, marker=:diamond)
     end
 
     savefig(p_iters, joinpath(plots_dir, "step_iterations_$(nodes[1])x$(nodes[2]).png"))
@@ -292,43 +319,70 @@ for nodes in system_sizes
     savefig(p_res, joinpath(plots_dir, "step_residuals_$(nodes[1])x$(nodes[2]).png"))
 
     # Per-step residual and incompressibility of every configuration
-    step_keys = sort(keys_list, by=k -> (grid_data[k]["G_maxdim"], grid_data[k]["mu"]))
+    step_keys = sort(keys_list; by=k -> (grid_data[k]["G_maxdim"], grid_data[k]["mu"]))
     function step_series(metric)
         series = Any[]
         has_baseline && push!(series, (; label="Baseline", values=grid_data["baseline"][metric], color=:black, lw=3))
         for (j, k) in enumerate(step_keys)
             v = grid_data[k]
-            push!(series, (; label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
-                values=v[metric], color=colors[mod1(j, length(colors))], lw=1.5))
+            push!(
+                series,
+                (;
+                    label=latexstring("\$\\chi=$(v["G_maxdim"]), \\mu=$(v["mu"])\$"),
+                    values=v[metric],
+                    color=colors[mod1(j, length(colors))],
+                    lw=1.5,
+                ),
+            )
         end
         return series
     end
-    p_res_all = step_profile_plot(step_series("residuals");
+    p_res_all = step_profile_plot(
+        step_series("residuals");
         title="Relative Residual vs Time Step ($nodes)\nAll Preconditioner Setups",
-        ylabel="Relative Residual")
-    p_div_all = step_profile_plot(step_series("div_ratios");
+        ylabel="Relative Residual",
+    )
+    p_div_all = step_profile_plot(
+        step_series("div_ratios");
         title="Incompressibility of the Stream Function Velocity ($nodes)\nAll Preconditioner Setups",
-        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖")
-    isnothing(p_res_all) || savefig(p_res_all, joinpath(plots_dir, "step_residuals_all_setups_$(nodes[1])x$(nodes[2]).png"))
-    isnothing(p_div_all) || savefig(p_div_all, joinpath(plots_dir, "step_div_ratio_all_setups_$(nodes[1])x$(nodes[2]).png"))
-
+        ylabel="Divergence Norm Ratio ‖∂ₓu + ∂ᵧv‖ / ‖(∂ₓu, ∂ᵧv)‖",
+    )
+    isnothing(p_res_all) ||
+        savefig(p_res_all, joinpath(plots_dir, "step_residuals_all_setups_$(nodes[1])x$(nodes[2]).png"))
+    isnothing(p_div_all) ||
+        savefig(p_div_all, joinpath(plots_dir, "step_div_ratio_all_setups_$(nodes[1])x$(nodes[2]).png"))
 end
 
 # Scaling View
 if !isempty(max_total_speedups) && length(max_total_speedups) > 1
-    p_scale = plot(1:length(grid_labels), max_solve_speedups,
-        label="Max Agg. Solve Speedup", color=:blue, lw=3, marker=:circle, markersize=8,
+    p_scale = plot(
+        1:length(grid_labels),
+        max_solve_speedups;
+        label="Max Agg. Solve Speedup",
+        color=:blue,
+        lw=3,
+        marker=:circle,
+        markersize=8,
         title="Scaling of Maximum Achievable Speedups (Evolution)",
         xlabel="System Size",
         ylabel="Speedup Factor",
         xticks=(1:length(grid_labels), grid_labels),
         legend=:topleft,
-        framestyle=:box)
+        framestyle=:box,
+    )
 
-    plot!(p_scale, 1:length(grid_labels), max_total_speedups,
-        label="Max Agg. Total Speedup", color=:green, lw=3, marker=:square, markersize=8)
+    plot!(
+        p_scale,
+        1:length(grid_labels),
+        max_total_speedups;
+        label="Max Agg. Total Speedup",
+        color=:green,
+        lw=3,
+        marker=:square,
+        markersize=8,
+    )
 
-    hline!(p_scale, [1.0], label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
+    hline!(p_scale, [1.0]; label="Break-even (1.0x)", color=:red, lw=2, ls=:dash)
 
     savefig(p_scale, joinpath(plots_dir, "scaling_summary_evolution.png"))
 end

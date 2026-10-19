@@ -6,19 +6,19 @@ using DifferenTT: ALS
 @testset "ALS Solver" begin
     n = 4
     s = siteinds("S=1/2", n)
-    
+
     # Small random MPS/MPO
     A = random_mpo(s)
     b = random_mps(s)
-    
+
     solver = ALS()
     x = linearsolve(solver, A, b, nothing; nsweeps=1)
-    
+
     @test x isa MPS
     @test length(x) == n
 
     # With preconditioning
-    M⁻¹ = DifferenTT.rank1_preconditioner(A) 
+    M⁻¹ = DifferenTT.rank1_preconditioner(A)
     x_precond = linearsolve(solver, A, b, M⁻¹, nothing; nsweeps=1)
     @test x_precond isa MPS
     @test length(x_precond) == n
@@ -36,7 +36,11 @@ using DifferenTT: ALS
     # record their unpreconditioned κ(A) in `pc_cond_store` too, so both stores cover the same positions
     cond_store = DifferenTT.KrylovCondStats()
     pc_cond_store = DifferenTT.KrylovCondStats()
-    cond_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(ishermitian=false, isposdef=false, cond_store=cond_store, pc_cond_store=pc_cond_store))
+    cond_solver = ALS(
+        updater_kwargs=DifferenTT.LocalUpdaterArgs(
+            ishermitian=false, isposdef=false, cond_store=cond_store, pc_cond_store=pc_cond_store
+        ),
+    )
     linearsolve(cond_solver, A, b, M⁻¹, nothing; nsweeps=2, preconditioner_sites=2:3)
 
     conds = DifferenTT.krylov_conds(cond_store)
@@ -59,7 +63,7 @@ using DifferenTT: ALS
     spd_A = MPO(s, "Id")
     for (scale, negative) in ((1.0, false), (-1.0, true))
         spectrum_store = DifferenTT.KrylovSpectrumStats()
-        spectrum_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(spectrum_store=spectrum_store))
+        spectrum_solver = ALS(updater_kwargs=DifferenTT.LocalUpdaterArgs(spectrum_store=spectrum_store))
         linearsolve(spectrum_solver, spd_A, b, Preconditioner(scale * MPO(s, "Id")), nothing; nsweeps=2)
 
         table = DifferenTT.spectrum_table(spectrum_store)
@@ -73,13 +77,15 @@ using DifferenTT: ALS
     # spd_tol alone (no condition-number store) stops the solve at the first indefinite local P⁻¹A, and an SPD
     # preconditioner runs through
     spd_kwargs = (; ishermitian=true, isposdef=true, spd_tol=1e-8, krylovdim=1, maxiter=50)
-    spd_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(; spd_kwargs...))
-    @test_throws DifferenTT.NotSPDError linearsolve(spd_solver, spd_A, b, Preconditioner(-1.0 * MPO(s, "Id")), nothing; nsweeps=2)
+    spd_solver = ALS(updater_kwargs=DifferenTT.LocalUpdaterArgs(; spd_kwargs...))
+    @test_throws DifferenTT.NotSPDError linearsolve(
+        spd_solver, spd_A, b, Preconditioner(-1.0 * MPO(s, "Id")), nothing; nsweeps=2
+    )
     @test linearsolve(spd_solver, spd_A, b, Preconditioner(MPO(s, "Id")), nothing; nsweeps=2) isa MPS
 
     # Blocks above max_blockdim are recorded without a spectrum
     skip_store = DifferenTT.KrylovSpectrumStats(max_blockdim=1)
-    skip_solver = ALS(updater_kwargs = DifferenTT.LocalUpdaterArgs(spectrum_store=skip_store))
+    skip_solver = ALS(updater_kwargs=DifferenTT.LocalUpdaterArgs(spectrum_store=skip_store))
     linearsolve(skip_solver, spd_A, b, nothing; nsweeps=1)
     @test all(isnan, DifferenTT.spectrum_table(skip_store)["eigmin_A"])
 end

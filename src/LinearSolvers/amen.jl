@@ -15,34 +15,36 @@ Alternating Minimal Energy (AMEn) solver for linear systems `A x = b` (Dolgov & 
 arXiv:1304.1222). It always sweeps with 1-site updates, so `SweepingArgs.nsite` is ignored.
 
 At every bond of a sweep:
-1. the core is updated by a 1-site local solve;
-2. the core is truncated **on its own** by the local residual (as in [`ResidualALS`](@ref)): the
-   smallest rank that keeps the local residual below `residual_tol / √N` (times `residual_damp`) is
-   kept, with the sweeping `cutoff` acting as a Frobenius floor;
-3. the truncated solution is enriched with up to `enrichment_maxdim` directions taken from the
-   residual, unless the residual is already below `kick_tol` (so the rank stops growing once the local
-   problem is solved). The enriched core is orthonormalised with a QR, so the enrichment never changes
-   `x` nor is affected by its scale;
-4. the orthogonality centre is moved to the next site.
+
+ 1. the core is updated by a 1-site local solve;
+ 2. the core is truncated **on its own** by the local residual (as in [`ResidualALS`](@ref)): the
+    smallest rank that keeps the local residual below `residual_tol / √N` (times `residual_damp`) is
+    kept, with the sweeping `cutoff` acting as a Frobenius floor;
+ 3. the truncated solution is enriched with up to `enrichment_maxdim` directions taken from the
+    residual, unless the residual is already below `kick_tol` (so the rank stops growing once the local
+    problem is solved). The enriched core is orthonormalised with a QR, so the enrichment never changes
+    `x` nor is affected by its scale;
+ 4. the orthogonality centre is moved to the next site.
 
 The sweeping `maxdim` is honoured: the truncation in 2. leaves room for the enrichment in 3.
 
 # Fields
-- `sweep_kwargs`, `updater_kwargs`, `updater`: sweeping arguments, local solver arguments and local
-  solver, as in the other DMRG-type solvers.
-- `enrichment_maxdim`: maximum number of residual directions added per bond and half-sweep.
-- `enrichment_cutoff`: relative (to ‖Z‖²) cutoff of the SVD of the residual that extracts the
-  enrichment directions.
-- `residual_tol`: target relative local residual. The rank of each core is chosen so that it is kept
-  below `residual_tol / √N` (with `N` the number of sites), and the sweeps stop once the local
-  residual of every core is below `residual_tol` (see `local_stop`).
-- `residual_damp`: factor by which the local residual of a truncated core may exceed
-  `max(residual_tol / √N, residual of the untruncated core)`.
-- `kick_tol`: no enrichment is added at a bond where `‖Z‖ ≤ kick_tol ‖b_local‖`, with `Z` the residual
-  of the local problem. `nothing` (default) uses `residual_tol / √N`.
-- `local_stop`: stop after the half-sweep in which the local residual of every core, evaluated just
-  before updating it, was below `residual_tol` (the stopping rule of Sec. 5.2 of the paper). It is
-  independent of any `checkdone` / `ResidualObserver` given in `sweep_kwargs`, which is still applied.
+
+  - `sweep_kwargs`, `updater_kwargs`, `updater`: sweeping arguments, local solver arguments and local
+    solver, as in the other DMRG-type solvers.
+  - `enrichment_maxdim`: maximum number of residual directions added per bond and half-sweep.
+  - `enrichment_cutoff`: relative (to ‖Z‖²) cutoff of the SVD of the residual that extracts the
+    enrichment directions.
+  - `residual_tol`: target relative local residual. The rank of each core is chosen so that it is kept
+    below `residual_tol / √N` (with `N` the number of sites), and the sweeps stop once the local
+    residual of every core is below `residual_tol` (see `local_stop`).
+  - `residual_damp`: factor by which the local residual of a truncated core may exceed
+    `max(residual_tol / √N, residual of the untruncated core)`.
+  - `kick_tol`: no enrichment is added at a bond where `‖Z‖ ≤ kick_tol ‖b_local‖`, with `Z` the residual
+    of the local problem. `nothing` (default) uses `residual_tol / √N`.
+  - `local_stop`: stop after the half-sweep in which the local residual of every core, evaluated just
+    before updating it, was below `residual_tol` (the stopping rule of Sec. 5.2 of the paper). It is
+    independent of any `checkdone` / `ResidualObserver` given in `sweep_kwargs`, which is still applied.
 """
 Base.@kwdef struct AMEn <: AbstractDMRGSolver
     sweep_kwargs::SweepingArgs = SweepingArgs()
@@ -52,46 +54,48 @@ Base.@kwdef struct AMEn <: AbstractDMRGSolver
     enrichment_cutoff::Float64 = 1e-10
     residual_tol::Float64 = 1e-8
     residual_damp::Float64 = 1.1
-    kick_tol::Union{Float64, Nothing} = nothing
+    kick_tol::Union{Float64,Nothing} = nothing
     local_stop::Bool = true
 end
 
-function linearsolve(solver::AMEn, A::MPO, b::MPS, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::AMEn, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
-    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
+    updater_kwargs = (; coefficients=(false, true), NamedTuple(solver.updater_kwargs)...)
     sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kwargs)
 
     return amen_alternating_update(
-        reduced_problem, init;
-        updater = solver.updater,
+        reduced_problem,
+        init;
+        updater=solver.updater,
         updater_kwargs,
-        enrich_maxdim = solver.enrichment_maxdim,
-        enrich_cutoff = solver.enrichment_cutoff,
-        resid_tol = solver.residual_tol,
-        resid_damp = solver.residual_damp,
-        kick_tol = solver.kick_tol,
-        local_stop = solver.local_stop,
-        sweep_kwargs...
+        enrich_maxdim=solver.enrichment_maxdim,
+        enrich_cutoff=solver.enrichment_cutoff,
+        resid_tol=solver.residual_tol,
+        resid_damp=solver.residual_damp,
+        kick_tol=solver.kick_tol,
+        local_stop=solver.local_stop,
+        sweep_kwargs...,
     )
 end
 
-function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS, Nothing}; kwargs...)
+function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
     updater_kwargs, sweep_kwargs = precond_linearsolve_kwargs(solver, A, b, kwargs)
 
     return amen_alternating_update(
-        reduced_precond_problem, init;
-        updater = solver.updater,
+        reduced_precond_problem,
+        init;
+        updater=solver.updater,
         updater_kwargs,
-        enrich_maxdim = solver.enrichment_maxdim,
-        enrich_cutoff = solver.enrichment_cutoff,
-        resid_tol = solver.residual_tol,
-        resid_damp = solver.residual_damp,
-        kick_tol = solver.kick_tol,
-        local_stop = solver.local_stop,
-        sweep_kwargs...
+        enrich_maxdim=solver.enrichment_maxdim,
+        enrich_cutoff=solver.enrichment_cutoff,
+        resid_tol=solver.residual_tol,
+        resid_damp=solver.residual_damp,
+        kick_tol=solver.kick_tol,
+        local_stop=solver.local_stop,
+        sweep_kwargs...,
     )
 end
 
@@ -119,7 +123,7 @@ function _clear_cache!(P::ITensorMPS.ReducedLinearProblem)
     end
 end
 
-function _clear_cache!(P::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem})
+function _clear_cache!(P::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem})
     _clear_cache!(P.linear_problem)
     _clear_cache!(P.preconditioner)
 end
@@ -132,29 +136,29 @@ function amen_alternating_update(
     operator,
     init::MPS;
     updater,
-    updater_kwargs = (;),
-    enrich_maxdim::Int = 5,
-    enrich_cutoff::Float64 = 1e-10,
-    resid_tol::Float64 = 1e-8,
-    resid_damp::Float64 = 1.1,
-    kick_tol::Union{Float64, Nothing} = nothing,
-    local_stop::Bool = true,
-    nsweeps = ITensorMPS.default_nsweeps(),
-    checkdone = ITensorMPS.default_checkdone(),
-    write_when_maxdim_exceeds = ITensorMPS.default_write_when_maxdim_exceeds(),
-    reverse_step = ITensorMPS.default_reverse_step(),
-    time_start = ITensorMPS.default_time_start(),
-    time_step = ITensorMPS.default_time_step(),
-    order = ITensorMPS.default_order(),
-    (observer!) = ITensorMPS.default_observer(),
-    (sweep_observer!) = ITensorMPS.default_sweep_observer(),
-    outputlevel = ITensorMPS.default_outputlevel(),
-    normalize = ITensorMPS.default_normalize(),
-    maxdim = ITensorMPS.default_maxdim(),
-    mindim = ITensorMPS.default_mindim(),
-    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(init)),
-    noise = ITensorMPS.default_noise(),
-    nsite = ITensorMPS.default_nsite(),
+    updater_kwargs=(;),
+    enrich_maxdim::Int=5,
+    enrich_cutoff::Float64=1e-10,
+    resid_tol::Float64=1e-8,
+    resid_damp::Float64=1.1,
+    kick_tol::Union{Float64,Nothing}=nothing,
+    local_stop::Bool=true,
+    nsweeps=ITensorMPS.default_nsweeps(),
+    checkdone=ITensorMPS.default_checkdone(),
+    write_when_maxdim_exceeds=ITensorMPS.default_write_when_maxdim_exceeds(),
+    reverse_step=ITensorMPS.default_reverse_step(),
+    time_start=ITensorMPS.default_time_start(),
+    time_step=ITensorMPS.default_time_step(),
+    order=ITensorMPS.default_order(),
+    (observer!)=ITensorMPS.default_observer(),
+    (sweep_observer!)=ITensorMPS.default_sweep_observer(),
+    outputlevel=ITensorMPS.default_outputlevel(),
+    normalize=ITensorMPS.default_normalize(),
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(ITensors.scalartype(init)),
+    noise=ITensorMPS.default_noise(),
+    nsite=ITensorMPS.default_nsite(),
 )
     # AMEn forces 1-site optimization explicitly during the custom sweep loop,
     # but uses a 2-site operator temporarily to compute the residual.
@@ -198,24 +202,22 @@ function amen_alternating_update(
                 observer!,
                 normalize,
                 outputlevel,
-                maxdim = maxdim[sweep],
-                mindim = mindim[sweep],
-                cutoff = cutoff[sweep],
-                noise = noise[sweep],
+                maxdim=maxdim[sweep],
+                mindim=mindim[sweep],
+                cutoff=cutoff[sweep],
+                noise=noise[sweep],
                 enrich_maxdim,
                 enrich_cutoff,
-                resid_tol = scaled_resid_tol,
+                resid_tol=scaled_resid_tol,
                 resid_damp,
-                kick_tol = scaled_kick_tol,
+                kick_tol=scaled_kick_tol,
                 stop_tol,
             )
         end
         if !isnothing(time_step)
             current_time += time_step
         end
-        ITensorMPS.update_observer!(
-            sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time
-        )
+        ITensorMPS.update_observer!(sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time)
         if outputlevel >= 1
             print("After sweep ", sweep, ":")
             print(" maxlinkdim=", maxlinkdim(state))
@@ -224,15 +226,13 @@ function amen_alternating_update(
                 @printf(" maxlocres=%.2E", info.maxlocres)
             end
             if !isnothing(current_time)
-                print(" current_time=", round(current_time; digits = 3))
+                print(" current_time=", round(current_time; digits=3))
             end
-            print(" time=", round(sweep_elapsed_time; digits = 3))
+            print(" time=", round(sweep_elapsed_time; digits=3))
             println()
             flush(stdout)
         end
-        isdone = checkdone(;
-            state, sweep, outputlevel, observer = (observer!), sweep_observer = (sweep_observer!), info
-        )
+        isdone = checkdone(; state, sweep, outputlevel, observer=(observer!), sweep_observer=(sweep_observer!), info)
         isdone && break
         if local_stop && info.maxlocres < resid_tol
             if outputlevel >= 1
@@ -244,14 +244,13 @@ function amen_alternating_update(
     return state
 end
 
-
 function amen_sweep_update(
     order::ITensorMPS.TDVPOrder,
     reduced_operator,
     state::MPS;
-    current_time = nothing,
-    time_step = nothing,
-    stop_tol = nothing,
+    current_time=nothing,
+    time_step=nothing,
+    stop_tol=nothing,
     kwargs...,
 )
     order_orderings = ITensorMPS.orderings(order)
@@ -268,7 +267,7 @@ function amen_sweep_update(
             reduced_operator,
             state;
             current_time,
-            time_step = sub_time_step,
+            time_step=sub_time_step,
             stop_tol,
             kwargs...,
         )
@@ -283,31 +282,30 @@ function amen_sweep_update(
     return state, reduced_operator, info
 end
 
-
 function amen_sub_sweep_update(
     direction::Base.Ordering,
     reduced_operator,
     state::MPS;
     updater,
     updater_kwargs,
-    sweep = ITensorMPS.default_sweep(),
-    current_time = nothing,
-    time_step = nothing,
-    nsite = 1,
-    reverse_step = ITensorMPS.default_reverse_step(),
-    normalize = ITensorMPS.default_normalize(),
-    (observer!) = ITensorMPS.default_observer(),
-    outputlevel = ITensorMPS.default_outputlevel(),
-    maxdim = ITensorMPS.default_maxdim(),
-    mindim = ITensorMPS.default_mindim(),
-    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(state)),
-    noise = ITensorMPS.default_noise(),
-    enrich_maxdim::Int = 5,
-    enrich_cutoff::Float64 = 1e-10,
-    resid_tol::Float64 = 1e-8,
-    resid_damp::Float64 = 1.1,
-    kick_tol::Float64 = 1e-8,
-    stop_tol::Union{Float64, Nothing} = nothing,
+    sweep=ITensorMPS.default_sweep(),
+    current_time=nothing,
+    time_step=nothing,
+    nsite=1,
+    reverse_step=ITensorMPS.default_reverse_step(),
+    normalize=ITensorMPS.default_normalize(),
+    (observer!)=ITensorMPS.default_observer(),
+    outputlevel=ITensorMPS.default_outputlevel(),
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(ITensors.scalartype(state)),
+    noise=ITensorMPS.default_noise(),
+    enrich_maxdim::Int=5,
+    enrich_cutoff::Float64=1e-10,
+    resid_tol::Float64=1e-8,
+    resid_damp::Float64=1.1,
+    kick_tol::Float64=1e-8,
+    stop_tol::Union{Float64,Nothing}=nothing,
 )
     reduced_operator = copy(reduced_operator)
     state = copy(state)
@@ -337,7 +335,7 @@ function amen_sub_sweep_update(
     maxlocres = isnothing(stop_tol) ? NaN : 0.0
     info = (; maxtruncerr, maxlocres)
 
-    for b in ITensorMPS.sweep_bonds(direction, N; ncenter = 1)
+    for b in ITensorMPS.sweep_bonds(direction, N; ncenter=1)
         # 1. Optimize state[b] (1-site)
         set_nsite!(reduced_operator, 1)
         position!(reduced_operator, state, b)
@@ -351,16 +349,25 @@ function amen_sub_sweep_update(
 
         internal_kwargs = (; current_time, time_step, outputlevel)
 
-        state[b], step_info = updater(
-            reduced_operator, state[b]; internal_kwargs, updater_kwargs...
-        )
+        state[b], step_info = updater(reduced_operator, state[b]; internal_kwargs, updater_kwargs...)
 
         # 2. Truncate the solution, enrich it and shift the ortho center to the next site
         nb = isforward ? b + 1 : b - 1
         if 1 <= nb <= N
             truncerr = _amen_truncate_enrich_shift!(
-                state, reduced_operator, b, nb, rhs;
-                maxdim, mindim, cutoff, enrich_maxdim, enrich_cutoff, resid_tol, resid_damp, kick_tol,
+                state,
+                reduced_operator,
+                b,
+                nb,
+                rhs;
+                maxdim,
+                mindim,
+                cutoff,
+                enrich_maxdim,
+                enrich_cutoff,
+                resid_tol,
+                resid_damp,
+                kick_tol,
             )
             maxtruncerr = max(maxtruncerr, truncerr)
         else
@@ -375,18 +382,22 @@ function amen_sub_sweep_update(
         end
 
         ITensorMPS.update_observer!(
-            observer!; state, reduced_operator,
-            bond = b, sweep,
-            half_sweep = isforward ? 1 : 2,
-            spec = nothing, outputlevel,
-            half_sweep_is_done = ITensorMPS.is_half_sweep_done(direction, b, N; ncenter = 1),
-            current_time, info,
+            observer!;
+            state,
+            reduced_operator,
+            bond=b,
+            sweep,
+            half_sweep=isforward ? 1 : 2,
+            spec=nothing,
+            outputlevel,
+            half_sweep_is_done=ITensorMPS.is_half_sweep_done(direction, b, N; ncenter=1),
+            current_time,
+            info,
         )
     end
     normalize && normalize!(state)
     return state, reduced_operator, info
 end
-
 
 """
     _slice_index(T, i, ir)
@@ -396,7 +407,7 @@ Return the part of `T` with the first `dim(ir)` values of its index `i`, with `i
 function _slice_index(T::ITensor, i::Index, ir::Index)
     rest = uniqueinds(T, i)
     A = array(permute(T, rest..., i))
-    return ITensor(A[ntuple(_ -> Colon(), ndims(A) - 1)..., 1:dim(ir)], rest..., ir)
+    return ITensor(A[ntuple(_->Colon(), ndims(A)-1)..., 1:dim(ir)], rest..., ir)
 end
 
 """
@@ -421,12 +432,12 @@ AMEn step for the bond between site `b` (holding the orthogonality center and th
 and its neighbour `nb = b ± 1`. It is direction-agnostic: the same code handles the forward
 (`nb = b + 1`) and the reverse (`nb = b - 1`) half-sweeps.
 
-1. Truncate `state[b]` alone by the local residual (`_residual_rank`), so that the truncation depends
-   neither on the scale of `x` nor on the enrichment. `reduced_operator` must be positioned at `b`
-   with `nsite = 1`, and `rhs` is its local right-hand side.
-2. Enrich the truncated core with up to `enrich_maxdim` directions of the residual (skipped if the
-   residual is below `kick_tol`, or if the bond has no room left below `maxdim`).
-3. Orthonormalise with a QR, so that `x` is unchanged and the center moves to `nb`.
+ 1. Truncate `state[b]` alone by the local residual (`_residual_rank`), so that the truncation depends
+    neither on the scale of `x` nor on the enrichment. `reduced_operator` must be positioned at `b`
+    with `nsite = 1`, and `rhs` is its local right-hand side.
+ 2. Enrich the truncated core with up to `enrich_maxdim` directions of the residual (skipped if the
+    residual is below `kick_tol`, or if the bond has no room left below `maxdim`).
+ 3. Orthonormalise with a QR, so that `x` is unchanged and the center moves to `nb`.
 
 Returns the relative truncation error of step 1.
 """
@@ -450,7 +461,7 @@ function _amen_truncate_enrich_shift!(
     bondtags = "Link,l=$(min(b, nb))"
 
     # 1. Truncate the solution core alone by the local residual, leaving room for the enrichment
-    U, S, V = svd(X, linds; lefttags = bondtags, righttags = bondtags)
+    U, S, V = svd(X, linds; lefttags=bondtags, righttags=bondtags)
     full_rank = dim(commonind(U, S))
     rmax = max(mindim, maxdim - enrich_maxdim)
     if iszero(norm(rhs))
@@ -460,8 +471,7 @@ function _amen_truncate_enrich_shift!(
         truncerr = _truncation_error(svals, r)
     else
         r, truncerr, _ = _residual_rank(
-            reduced_operator, X, rhs, U, S, V;
-            resid_tol, resid_damp, frob_weight = cutoff, mindim, maxdim = rmax,
+            reduced_operator, X, rhs, U, S, V; resid_tol, resid_damp, frob_weight=cutoff, mindim, maxdim=rmax
         )
     end
     state[b], Xn = _truncate_svd(U, S, V, r)
@@ -503,7 +513,7 @@ function _amen_truncate_enrich_shift!(
         # Skip the enrichment when the local problem is already solved: this is what stops the rank
         # from growing once converged
         if norm(Z) > kick_tol * norm(rhs2)
-            U_z, S_z, _ = svd(Z, linds; maxdim = kk, cutoff = enrich_cutoff, lefttags = bondtags, righttags = bondtags)
+            U_z, S_z, _ = svd(Z, linds; maxdim=kk, cutoff=enrich_cutoff, lefttags=bondtags, righttags=bondtags)
             if dim(S_z) > 0
                 Ub, Xnb = state[b], state[nb]
                 ur = commonind(Ub, Xnb)
@@ -512,11 +522,11 @@ function _amen_truncate_enrich_shift!(
                 # Expand the core with the residual directions, and pad the neighbour with zeros so
                 # that x is unchanged
                 zero_block = ITensor(eltype(Xnb), l_z, uniqueinds(Xnb, Ub)...)
-                Xb_exp, l1 = directsum(Ub => ur, U_z => l_z; tags = tags(ur))
-                Xnb_exp, l2 = directsum(Xnb => ur, zero_block => l_z; tags = tags(ur))
+                Xb_exp, l1 = directsum(Ub => ur, U_z => l_z; tags=tags(ur))
+                Xnb_exp, l2 = directsum(Xnb => ur, zero_block => l_z; tags=tags(ur))
 
                 # QR (no truncation) restores the orthonormality of the core: the subspace is unchanged
-                Q, R, _ = qr(Xb_exp, linds; tags = bondtags)
+                Q, R, _ = qr(Xb_exp, linds; tags=bondtags)
                 state[b] = Q
                 state[nb] = R * replaceind(Xnb_exp, l2 => l1)
             end

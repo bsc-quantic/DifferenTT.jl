@@ -32,27 +32,80 @@ end
 
 Construct the 1D differential operator MPO for QTT Architecture, including boundary corrections.
 """
-function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    return onedim_differential_operator(derivative_order, arch, dim, 0, boundary_conditions, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
+function onedim_differential_operator(
+    derivative_order::Int,
+    arch::QTTArchitecture,
+    dim::Int,
+    boundary_conditions::BoundaryCond1d,
+    array_type::Type{<:AbstractArray}=Array;
+    stencil_order::Int=8,
+    cutoff::Float64=1e-15,
+    maxdim::Int=typemax(Int64),
+)
+    return onedim_differential_operator(
+        derivative_order,
+        arch,
+        dim,
+        0,
+        boundary_conditions,
+        array_type;
+        stencil_order=stencil_order,
+        cutoff=cutoff,
+        maxdim=maxdim,
+    )
 end
 
-function onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+function onedim_differential_operator(
+    derivative_order::Int,
+    arch::QTTArchitecture,
+    dim::Int,
+    n_eyepad::Int,
+    boundary_conditions::BoundaryCond1d,
+    array_type::Type{<:AbstractArray}=Array;
+    stencil_order::Int=8,
+    cutoff::Float64=1e-15,
+    maxdim::Int=typemax(Int64),
+)
     nsite = abs(arch.var_nsites[dim])
     dummy_site_indices = siteinds(2, nsite)
     non_padded_site_indices = siteinds(2, nsite - n_eyepad)
-    
+
     coeffs = derivative_coefficients(derivative_order; stencil_order=stencil_order)
     onedim_mpo = toeplitz_mpo(non_padded_site_indices, coeffs, boundary_conditions, array_type)
 
     # Note: we use QTT version of neumann boundary correction explicitly here because we have sites
-    neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, non_padded_site_indices, array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim) : nothing
+    neumann_corr = if (boundary_conditions.left isa NeumannBC)
+        left_neumann_boundary_correction(
+            derivative_order,
+            arch,
+            non_padded_site_indices,
+            array_type;
+            stencil_order=stencil_order,
+            cutoff=cutoff,
+            maxdim=maxdim,
+        )
+    else
+        nothing
+    end
+    right_neumann_corr = if (boundary_conditions.right isa NeumannBC)
+        right_neumann_boundary_correction(
+            derivative_order,
+            arch,
+            non_padded_site_indices,
+            array_type;
+            stencil_order=stencil_order,
+            cutoff=cutoff,
+            maxdim=maxdim,
+        )
+    else
+        nothing
+    end
     neumann_corr = _nothing_sum_handler(neumann_corr, right_neumann_corr; cutoff=cutoff, maxdim=maxdim)
 
     if !isnothing(neumann_corr)
         onedim_mpo = _nothing_sum_handler(onedim_mpo, -1.0 * neumann_corr; cutoff=cutoff, maxdim=maxdim)
     end
-    
+
     if n_eyepad > 0
         return onedim_eye_padding(onedim_mpo, dummy_site_indices, :right)
     else
@@ -60,20 +113,38 @@ function onedim_differential_operator(derivative_order::Int, arch::QTTArchitectu
     end
 end
 
-
 """
     onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8)
 
 Construct the 1D differential operator dense matrix for TT Architecture, including boundary corrections.
 """
-function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, kwargs...)
-    return onedim_differential_operator(derivative_order, arch, dim, 0, boundary_conditions, array_type; stencil_order=stencil_order, kwargs...)
+function onedim_differential_operator(
+    derivative_order::Int,
+    arch::TTArchitecture,
+    dim::Int,
+    boundary_conditions::BoundaryCond1d,
+    array_type::Type{<:AbstractArray}=Array;
+    stencil_order::Int=8,
+    kwargs...,
+)
+    return onedim_differential_operator(
+        derivative_order, arch, dim, 0, boundary_conditions, array_type; stencil_order=stencil_order, kwargs...
+    )
 end
 
-function onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, n_eyepad::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order::Int=8, kwargs...)
+function onedim_differential_operator(
+    derivative_order::Int,
+    arch::TTArchitecture,
+    dim::Int,
+    n_eyepad::Int,
+    boundary_conditions::BoundaryCond1d,
+    array_type::Type{<:AbstractArray}=Array;
+    stencil_order::Int=8,
+    kwargs...,
+)
     noneye_dim = arch.var_dims[dim] - n_eyepad
     coeffs = derivative_coefficients(derivative_order; stencil_order=stencil_order)
-    
+
     mat = zeros(Float64, noneye_dim, noneye_dim)
     for i in 1:noneye_dim
         for (offset, val) in coeffs
@@ -93,9 +164,17 @@ function onedim_differential_operator(derivative_order::Int, arch::TTArchitectur
         end
     end
 
-    left_neumann_corr = (boundary_conditions.left isa NeumannBC) ? left_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order) : nothing
-    right_neumann_corr = (boundary_conditions.right isa NeumannBC) ? right_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order) : nothing
-    
+    left_neumann_corr = if (boundary_conditions.left isa NeumannBC)
+        left_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order)
+    else
+        nothing
+    end
+    right_neumann_corr = if (boundary_conditions.right isa NeumannBC)
+        right_neumann_boundary_correction(derivative_order, arch, noneye_dim, array_type; stencil_order=stencil_order)
+    else
+        nothing
+    end
+
     mat_gpu = adapt(array_type, mat)
     if !isnothing(left_neumann_corr)
         mat_gpu -= left_neumann_corr
@@ -107,14 +186,14 @@ function onedim_differential_operator(derivative_order::Int, arch::TTArchitectur
     if n_eyepad > 0
         full_dim = arch.var_dims[dim]
         padded_mat_cpu = zeros(eltype(mat), full_dim, full_dim)
-        
+
         # move unpadded to cpu to embed if it was gpu array
         unpadded_cpu = Array(mat_gpu)
         padded_mat_cpu[1:noneye_dim, 1:noneye_dim] = unpadded_cpu
-        for i in (noneye_dim + 1):full_dim
+        for i in (noneye_dim+1):full_dim
             padded_mat_cpu[i, i] = 1.0
         end
-        
+
         return adapt(array_type, padded_mat_cpu)
     else
         return mat_gpu
@@ -135,12 +214,24 @@ struct DifferentialOpsScalar{N}
     d2_ops::NTuple{N,MPO}  # Second derivatives Dxx, Dyy, Dzz...
 end
 
-function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
+function DifferentialOpsScalar(
+    grid::Grid{N}, fields::ScalarField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
+) where {N}
     array_type = backend_type(fields)
 
     function make_ops(order::Int)
-        ntuple(i -> begin
-                onedim_op = onedim_differential_operator(order, fields.arch, i, fields.bcu[i], array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
+        ntuple(
+            i -> begin
+                onedim_op = onedim_differential_operator(
+                    order,
+                    fields.arch,
+                    i,
+                    fields.bcu[i],
+                    array_type;
+                    stencil_order=stencil_order,
+                    cutoff=cutoff,
+                    maxdim=maxdim,
+                )
                 if onedim_op isa MPO
                     onedim_op *= (1 / grid.dx[i]^order)
                 else
@@ -148,7 +239,9 @@ function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_or
                 end
                 stacked_op = ndim_operator_mpo(onedim_op, i, fields.usites, fields.arch)
                 return stacked_op
-            end, N)
+            end,
+            N,
+        )
     end
 
     d_ops = make_ops(1)
@@ -157,17 +250,39 @@ function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_or
     return DifferentialOpsScalar{N}(d_ops, d2_ops)
 end
 
-function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}, n_eyepad::NTuple{N, Int}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
+function DifferentialOpsScalar(
+    grid::Grid{N},
+    fields::ScalarField{N},
+    n_eyepad::NTuple{N,Int};
+    stencil_order::Int=8,
+    cutoff::Float64=1e-15,
+    maxdim::Int=typemax(Int64),
+) where {N}
     array_type = backend_type(fields)
 
     function make_ops(order::Int)
-        ntuple(i -> begin
+        ntuple(
+            i -> begin
                 # calculate effective steps
-                noneye_nsites = fields.arch isa QTTArchitecture ? abs(fields.arch.var_nsites[i]) - n_eyepad[i] : Int(log2(fields.arch.var_dims[i])) - n_eyepad[i]
+                noneye_nsites = if fields.arch isa QTTArchitecture
+                    abs(fields.arch.var_nsites[i]) - n_eyepad[i]
+                else
+                    Int(log2(fields.arch.var_dims[i])) - n_eyepad[i]
+                end
                 effective_step_size = grid.lengths[i] / (2 ^ noneye_nsites)
-                
-                onedim_op = onedim_differential_operator(order, fields.arch, i, n_eyepad[i], fields.bcu[i], array_type; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim)
-                
+
+                onedim_op = onedim_differential_operator(
+                    order,
+                    fields.arch,
+                    i,
+                    n_eyepad[i],
+                    fields.bcu[i],
+                    array_type;
+                    stencil_order=stencil_order,
+                    cutoff=cutoff,
+                    maxdim=maxdim,
+                )
+
                 if onedim_op isa MPO
                     onedim_op *= (1 / effective_step_size^order)
                 else
@@ -176,7 +291,9 @@ function DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}, n_eyepad::
 
                 stacked_op = ndim_operator_mpo(onedim_op, i, fields.usites, fields.arch)
                 return stacked_op
-            end, N)
+            end,
+            N,
+        )
     end
 
     d_ops = make_ops(1)
@@ -194,11 +311,18 @@ struct DifferentialOps{N}
     ops::NTuple{N,DifferentialOpsScalar{N}}
 end
 
-function DifferentialOps(grid::Grid{N}, fields::VectorField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
-    ops = ntuple(i -> DifferentialOpsScalar(grid, fields.components[i]; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim), N)
+function DifferentialOps(
+    grid::Grid{N}, fields::VectorField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
+) where {N}
+    ops = ntuple(
+        i -> DifferentialOpsScalar(
+            grid, fields.components[i]; stencil_order=stencil_order, cutoff=cutoff, maxdim=maxdim
+        ),
+        N,
+    )
     return DifferentialOps{N}(ops)
 end
 
-function Base.getindex(ops::DifferentialOps{N}, i::Int) where N
+function Base.getindex(ops::DifferentialOps{N}, i::Int) where {N}
     return ops.ops[i]
 end

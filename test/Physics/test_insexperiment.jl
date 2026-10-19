@@ -9,16 +9,16 @@ using ITensorMPS
     grid = Grid(tt_arch, (1.0, 1.0))
     time_evol_kwargs = TimeEvolArgs(0.1, 1.0, 10)
     time_stepper = RK4(time_evol_kwargs=time_evol_kwargs, cutoff=1e-5, maxdim=10)
-    
+
     sites = [Index(2, "Site,n=$i") for i in 1:2]
     u_mps = random_mps(sites)
-    
+
     bc_periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     bcs = BoundaryConditions(bc_periodic, bc_periodic)
-    
+
     sfield = ScalarField(u_mps, tt_arch, bcs)
     vfield = VectorField((sfield, sfield))
-    
+
     @testset "INSExperiment instantiation" begin
         exp = DifferenTT.INSExperiment(grid, vfield, sfield, 100.0, nothing; stencil_order=2, maxdim=10, cutoff=1e-5)
         @test exp.Re == 100.0
@@ -27,17 +27,19 @@ using ITensorMPS
         @test exp.maxdim == 10
         @test exp.cutoff == 1e-5
         @test isnothing(exp.object_mask)
-        
+
         # Test checks
         @test (DifferenTT.check_cfl(exp, time_stepper); true)
-        @test (DifferenTT.check_cfl(exp, ExplicitEuler(time_evol_kwargs=time_evol_kwargs, cutoff=1e-5, maxdim=10)); true)
+        @test (
+            DifferenTT.check_cfl(exp, ExplicitEuler(time_evol_kwargs=time_evol_kwargs, cutoff=1e-5, maxdim=10)); true
+        )
         DifferenTT.check_kolmogorov_scale(exp)
     end
-    
+
     @testset "INSExperiment validation" begin
         # Invalid object mask
         mask = random_mps(siteinds("S=1/2", 3)) # wrong sites
-        @show !isnothing(mask)        
+        @show !isnothing(mask)
         @show vfield.usites != sfield.usites != siteinds(mask)
         @test_throws ArgumentError DifferenTT.INSExperiment(grid, vfield, sfield, 100.0, mask)
     end

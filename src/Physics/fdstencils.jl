@@ -4,7 +4,8 @@
 Coefficients for 1st derivative central difference stencil.
 
 # Arguments
-- `stencil_order::Int`: The order of accuracy (2 or 8).
+
+  - `stencil_order::Int`: The order of accuracy (2 or 8).
 """
 function first_deriv_coeffs(stencil_order::Int=8)
     coeffs = Dict{Int,Float64}()
@@ -38,7 +39,8 @@ end
 Coefficients for 2nd derivative central difference stencil.
 
 # Arguments
-- `stencil_order::Int`: The order of accuracy (2 or 8).
+
+  - `stencil_order::Int`: The order of accuracy (2 or 8).
 """
 function second_deriv_coeffs(stencil_order::Int=8)
     coeffs = Dict{Int,Float64}()
@@ -72,7 +74,8 @@ end
 Coefficients for 4th derivative central difference stencil.
 
 # Arguments
-- `stencil_order::Int`: The order of accuracy (2 or 8).
+
+  - `stencil_order::Int`: The order of accuracy (2 or 8).
 """
 function fourth_deriv_coeffs(stencil_order::Int=8)
     coeffs = Dict{Int,Float64}()
@@ -106,8 +109,9 @@ end
 Return a dictionary of finite difference coefficients for a specified derivative order and stencil accuracy.
 
 # Arguments
-- `derivative_order::Int`: The order of the derivative (1, 2, or 4).
-- `stencil_order::Int`: The order of accuracy (2 or 8).
+
+  - `derivative_order::Int`: The order of the derivative (1, 2, or 4).
+  - `stencil_order::Int`: The order of accuracy (2 or 8).
 """
 function derivative_coefficients(derivative_order::Int; stencil_order::Int=8)
     if derivative_order == 1
@@ -132,9 +136,10 @@ where `ψ₁` and `ψ₂` are the stream function at the first and second nodes 
 and `U` is the tangential velocity of a moving wall, with `c_U` taken for a top lid moving in `+x`.
 
 # Arguments
-- `formula::Symbol`: `:jensen` for Jensen's second-order formula (used by Kiffner & Jaksch, arXiv:2303.03010,
-  eq. 7, and identical to eqs. 3.4–3.5 of Ghia, Ghia & Shin, J. Comput. Phys. 48, 1982) or `:thom` for Thom's
-  first-order formula.
+
+  - `formula::Symbol`: `:jensen` for Jensen's second-order formula (used by Kiffner & Jaksch, arXiv:2303.03010,
+    eq. 7, and identical to eqs. 3.4–3.5 of Ghia, Ghia & Shin, J. Comput. Phys. 48, 1982) or `:thom` for Thom's
+    first-order formula.
 """
 function wall_vorticity_coefficients(formula::Symbol)
     if formula == :jensen

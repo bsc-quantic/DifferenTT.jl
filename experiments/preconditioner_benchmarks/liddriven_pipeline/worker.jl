@@ -63,7 +63,14 @@ CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-const default_base_folder = (use_nocond ? "experiments/preconditioner_benchmarks/liddriven_pipeline/results_nocond" : "experiments/preconditioner_benchmarks/liddriven_pipeline/results") * RESULTS_SUFFIX
+const default_base_folder =
+    (
+        if use_nocond
+            "experiments/preconditioner_benchmarks/liddriven_pipeline/results_nocond"
+        else
+            "experiments/preconditioner_benchmarks/liddriven_pipeline/results"
+        end
+    ) * RESULTS_SUFFIX
 base_folder = get(ENV, "LIDDRIVEN_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -71,35 +78,28 @@ mkpath(TASKS_DIR)
 const BOX_SIZE = (1.0, 1.0)
 # Reynolds number per grid size: 1000 up to 2^10 nodes, 24000 on 2^11 (Kiffner & Jaksch, where 2^11 resolves the
 # Kolmogorov scale Re^(-3/4) = 5.2e-4 with h = 4.9e-4)
-const re_map = Dict(
-    (8, 8) => 1000,
-    (10, 10) => 1000,
-    (11, 11) => 24000,
-    (12, 12) => 1000
-)
+const re_map = Dict((8, 8) => 1000, (10, 10) => 1000, (11, 11) => 24000, (12, 12) => 1000)
 const U_LID = 1.0
 const STENCIL_ORDER = 2
 const WALL_FORMULA = :jensen
 
 # Four no-slip walls with ψ = 0, the top one moving in +x and, for two lids, the bottom one moving in -x.
 # DirichletBC logs at every construction: build the boundary conditions once
-const FACES = CAVITY_LIDS == 1 ? cavity_faces(U_LID) :
-    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(velocity=-U_LID), NoSlipWall(velocity=U_LID)))
+const FACES = if CAVITY_LIDS == 1
+    cavity_faces(U_LID)
+else
+    ((NoSlipWall(), NoSlipWall()), (NoSlipWall(; velocity=(-U_LID)), NoSlipWall(; velocity=U_LID)))
+end
 const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
 const dt_map = Dict(
     (8, 8) => 0.001,
     (10, 10) => 0.0002,
     (11, 11) => 0.0003, # RK4 limit at Re = 24000 is 6.9e-4 (advection)
-    (12, 12) => 0.00001
+    (12, 12) => 0.00001,
 )
 
-const n_steps_map = Dict(
-    (8, 8) => 1000,
-    (10, 10) => 500,
-    (11, 11) => 100,
-    (12, 12) => 100
-)
+const n_steps_map = Dict((8, 8) => 1000, (10, 10) => 500, (11, 11) => 100, (12, 12) => 100)
 
 # Overridable for fast verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -108,14 +108,14 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
 end
 
 const system_sizes = [(11, 11)]
-const cond_nodes  = [(11, 11)]
+const cond_nodes = [(11, 11)]
 # 2^11 x 2^11 at Re = 24000 (no condition numbers; the array has 1 + length(g_maxdims) = 10 tasks):
 # const system_sizes = [(11, 11)]
 # const cond_nodes  = Tuple{Int,Int}[]
 # const system_sizes = [(10, 10)]
 # const cond_nodes  = [(10, 10)]
 
-function should_compute_cond(nodes::Tuple{Int, Int}, use_nocond::Bool)::Bool
+function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
     return !use_nocond && nodes in cond_nodes
 end
 
@@ -124,41 +124,16 @@ const mu_values = [1e7]
 
 const g_maxdims = 2:10
 
-const maxdims_map = Dict(
-    (8, 8) => 100,
-    (10, 10) => 150,
-    (11, 11) => 200,
-    (12, 12) => 200
-)
+const maxdims_map = Dict((8, 8) => 100, (10, 10) => 150, (11, 11) => 200, (12, 12) => 200)
 
 # WARNING: MAKE SURE TO CHANGE THIS TO >0.0 IF RUNNING ALS -> OOM WILL HAPPEN
-const cutoff_map = Dict(
-    (8, 8) => 0.0,
-    (10, 10) => 0.0,
-    (11, 11) => 0.0,
-    (12, 12) => 0.0
-)
+const cutoff_map = Dict((8, 8) => 0.0, (10, 10) => 0.0, (11, 11) => 0.0, (12, 12) => 0.0)
 
-const nsweeps_map = Dict(
-    (8, 8) => 100,
-    (10, 10) => 100,
-    (11, 11) => 100,
-    (12, 12) => 100
-)
+const nsweeps_map = Dict((8, 8) => 100, (10, 10) => 100, (11, 11) => 100, (12, 12) => 100)
 
-const tol_map = Dict(
-    (8, 8) => 1e-4,
-    (10, 10) => 1e-4,
-    (11, 11) => 1e-4,
-    (12, 12) => 1e-4
-)
+const tol_map = Dict((8, 8) => 1e-4, (10, 10) => 1e-4, (11, 11) => 1e-4, (12, 12) => 1e-4)
 
-const fai_tol_map = Dict(
-    (8, 8) => 0.1,
-    (10, 10) => 0.1,
-    (11, 11) => 0.1,
-    (12, 12) => 0.2
-)
+const fai_tol_map = Dict((8, 8) => 0.1, (10, 10) => 0.1, (11, 11) => 0.1, (12, 12) => 0.2)
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -183,7 +158,7 @@ function build_task_list()
     return tasks
 end
 
-function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
+function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{Nothing,Vector{<:Index}}=nothing)
     # `siteinds` mints fresh, uniquely-tagged Index objects on every call. A throwaway warmup
     # grid built independently from the real grid would therefore carry *different* site
     # indices even with identical nodes — any MPO built against one (e.g. a FAI
@@ -199,8 +174,20 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
     omega_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
     psi_field = ScalarField(zeros_mps(sites), arch, CAVITY_BCS)
 
-    time_stepper = RK4(time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes])
-    experiment = INSVorticityExperiment(grid, omega_field, psi_field, re_map[nodes], FACES; wall_formula=WALL_FORMULA, stencil_order=STENCIL_ORDER, maxdim=maxdims_map[nodes], cutoff=1e-11)
+    time_stepper = RK4(;
+        time_evol_kwargs=TimeEvolArgs(0.0, dt_map[nodes]*max_steps, max_steps), cutoff=1e-11, maxdim=maxdims_map[nodes]
+    )
+    experiment = INSVorticityExperiment(
+        grid,
+        omega_field,
+        psi_field,
+        re_map[nodes],
+        FACES;
+        wall_formula=WALL_FORMULA,
+        stencil_order=STENCIL_ORDER,
+        maxdim=maxdims_map[nodes],
+        cutoff=1e-11,
+    )
     check_cfl(experiment, time_stepper; vmax=experiment.vmax)
 
     # The stream function operator A = -Δ (Dirichlet, ghost walls) is SPD: no pinning, no RHS corrections
@@ -209,17 +196,12 @@ function build_grid(nodes::NTuple{2, Int}, max_steps::Int; shared_sites::Union{N
 
     # Priming step: at rest ω = 0, so ψ = 0 and the first Poisson system is trivial. Advance one untimed step
     # with ψ = 0 (no solve) so that every timed step has a nonzero right-hand side.
-    omega_primed = DifferenTT.vorticity_transport(experiment, cache, last(experiment.omega_field), last(experiment.psi_field), time_stepper, 0.0)
+    omega_primed = DifferenTT.vorticity_transport(
+        experiment, cache, last(experiment.omega_field), last(experiment.psi_field), time_stepper, 0.0
+    )
     experiment.omega_field[length(experiment.omega_field)] = omega_primed
 
-    return (;
-        nodes=nodes,
-        A=A,
-        experiment=experiment,
-        time_stepper=time_stepper,
-        cache=cache,
-        sites=sites
-    )
+    return (; nodes=nodes, A=A, experiment=experiment, time_stepper=time_stepper, cache=cache, sites=sites)
 end
 
 function build_rhs(grid, omega)
@@ -251,22 +233,26 @@ function liddriven_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float6
     cond_store = compute_cond ? KrylovCondStats() : nothing
     pc_cond_store = compute_cond ? KrylovCondStats() : nothing
     updater_kwargs = LocalUpdaterArgs(;
-        ishermitian = true,
-        isposdef = true,
-        rtol = 0.1 * tol_val,
+        ishermitian=true,
+        isposdef=true,
+        rtol=0.1 * tol_val,
         krylovdim=1,
         maxiter=2000,
-        numiter_store = numiter_store,
-        cond_store = cond_store,
-        pc_cond_store = pc_cond_store
+        numiter_store=numiter_store,
+        cond_store=cond_store,
+        pc_cond_store=pc_cond_store,
     )
 
     # A and b are bound by linearsolve to the system grid.A * psi = rhs of this step
-    res_observer = ResidualObserver(rtol=tol_val)
-    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., observer! = res_observer)
-    resals_solver = ResidualALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val)
-    amen_solver = AMEn(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim = 3, enrichment_cutoff = 1e-10)
-    als_solver = ALS(sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
+    res_observer = ResidualObserver(; rtol=tol_val)
+    step_sweep_kwargs = SweepingArgs(; NamedTuple(sweep_kwargs)..., (observer!)=res_observer)
+    resals_solver = ResidualALS(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol_val
+    )
+    amen_solver = AMEn(;
+        sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs, enrichment_maxdim=3, enrichment_cutoff=1e-10
+    )
+    als_solver = ALS(; sweep_kwargs=step_sweep_kwargs, updater_kwargs=updater_kwargs)
 
     solver = resals_solver
 
@@ -321,8 +307,18 @@ function liddriven_step!(grid, sweep_kwargs, compute_cond::Bool, tol_val::Float6
     flush(stderr)
     iters_per_site = DifferenTT.positions_sum(numiter_store)
 
-    res_dict = (; t, compile_t = stats.compile_time, gc_t = stats.gctime, rel_res, sol_maxdim, omega_maxdim, iters_per_site,
-                  div_norm, div_scale, div_ratio)
+    res_dict = (;
+        t,
+        compile_t=stats.compile_time,
+        gc_t=stats.gctime,
+        rel_res,
+        sol_maxdim,
+        omega_maxdim,
+        iters_per_site,
+        div_norm,
+        div_scale,
+        div_ratio,
+    )
 
     if compute_cond
         local_conds = isnothing(precond) ? positions_mean_cond(cond_store) : positions_mean_cond(pc_cond_store)
@@ -344,7 +340,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
     tol_val = tol_map[task.nodes]
     faibuild_tol = fai_tol_map[task.nodes]
 
-    sweep_kwargs = SweepingArgs(nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
+    sweep_kwargs = SweepingArgs(; nsweeps=nsweep_val, maxdim=maxdim_val, cutoff=cutoff_val)
 
     if task.is_baseline
         @info "Running baseline for $(task.nodes)"
@@ -399,7 +395,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "baseline",
             "nodes" => task.nodes,
             "cavity_lids" => CAVITY_LIDS,
@@ -444,32 +440,17 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
         flush(stderr)
 
-        fai_sweep_kwargs = SweepingArgs(nsweeps=100, maxdim=gdim, cutoff=1e-12)
+        fai_sweep_kwargs = SweepingArgs(; nsweeps=100, maxdim=gdim, cutoff=1e-12)
 
-        fai_updater_kwargs = LocalUpdaterArgs(
-            ishermitian = true,
-            isposdef = true,
-            rtol = 1e-9,
-            krylovdim = 1,
-            maxiter = 3000
+        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=3000)
+
+        fai_resals_solver = ResidualALS(;
+            sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
         )
 
-        fai_resals_solver = ResidualALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            residual_tol = 1e-9
-        )
+        fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
-        fai_als_solver = ALS(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-        )
-
-        fai_amen_solver =  AMEn(
-            sweep_kwargs = fai_sweep_kwargs,
-            updater_kwargs = fai_updater_kwargs,
-            enrichment_maxdim = 1,
-        )
+        fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
         D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
@@ -479,7 +460,9 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol)
+            unscaledG, D = DifferenTT.fai_dg(
+                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol
+            )
             Gl = apply(D, unscaledG; maxdim=gdim)
             precond = FactorizedPreconditioner(Gl)
         end
@@ -533,7 +516,7 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
             GC.gc(true)
         end
 
-        result_dict = Dict{String, Any}(
+        result_dict = Dict{String,Any}(
             "key" => "mu_$(μ)_gdim_$(gdim)",
             "nodes" => task.nodes,
             "cavity_lids" => CAVITY_LIDS,
@@ -584,12 +567,18 @@ function warmup()
         dummy_grid = build_grid((8, 8), 1)
         dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
         dummy_als_solver = ALS(
-            sweep_kwargs = SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8),
-            updater_kwargs = dummy_updater_kwargs
+            sweep_kwargs=SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_updater_kwargs
         )
         # Pass residual_tol like the timed build does: it adds a ResidualObserver to the FAI solves,
         # a different code path that would otherwise be compiled inside the timed build.
-        unscaledG, D = DifferenTT.fai_dg(dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false, residual_tol=fai_tol_map[(8, 8)])
+        unscaledG, D = DifferenTT.fai_dg(
+            dummy_grid.A,
+            1.0,
+            dummy_als_solver,
+            (; cutoff=1e-11, oversample=2, maxdim=2);
+            preconditioning=false,
+            residual_tol=fai_tol_map[(8, 8)],
+        )
         dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         # When running with condition numbers, compute time does not really count, so it is better to avoid

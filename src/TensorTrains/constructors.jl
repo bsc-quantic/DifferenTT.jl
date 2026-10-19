@@ -1,7 +1,7 @@
 function make_identity_site(site::Index, link::Index, array_type)
     T = ITensor(Float64, site, site', link)
     for i in 1:dim(site)
-        T[site => i, site' => i, link => 1] = 1.0
+        T[site=>i, site'=>i, link=>1] = 1.0
     end
     return adapt(array_type, T)
 end
@@ -9,7 +9,7 @@ end
 function make_identity_site(site::Index, left_link::Index, right_link::Index, array_type)
     T = ITensor(Float64, site, site', left_link, right_link)
     for i in 1:dim(site)
-        T[site => i, site' => i, left_link => 1, right_link => 1] = 1.0
+        T[site=>i, site'=>i, left_link=>1, right_link=>1] = 1.0
     end
     return adapt(array_type, T)
 end
@@ -18,7 +18,7 @@ function make_pass_identity_site(site::Index, left_link::Index, right_link::Inde
     T = ITensor(Float64, site, site', left_link, right_link)
     for s in 1:dim(site)
         for d in 1:pass_dim
-            T[site => s, site' => s, left_link => d, right_link => d] = 1.0
+            T[site=>s, site'=>s, left_link=>d, right_link=>d] = 1.0
         end
     end
     return adapt(array_type, T)
@@ -33,7 +33,7 @@ function identity_mpo(site_inds::Vector{<:Index}, array_type::Type{<:AbstractArr
     tensor_list = ITensor[]
 
     push!(tensor_list, make_identity_site(site_inds[1], link_inds[1], array_type))
-    for i in 2:nsite-1
+    for i in 2:(nsite-1)
         push!(tensor_list, make_identity_site(site_inds[i], link_inds[i-1], link_inds[i], array_type))
     end
     push!(tensor_list, make_identity_site(site_inds[nsite], link_inds[nsite-1], array_type))
@@ -72,7 +72,6 @@ end
 function zeros_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
     return zeros_mpo(collect(Int, site_dims(arch)), array_type)
 end
-
 
 # TODO Test this function
 # TODO Should we bring to zero all the tensors, as done now, or only do 0.0 * mps (sets to zero the ortho center)
@@ -145,8 +144,12 @@ end
 
 ones_mps(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array) = ones_mps(site_dims, 1, array_type)
 
-ones_mps(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) = ones_mps(collect(Int, site_dims(arch)), bond_dim, array_type)
-ones_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array) = ones_mps(collect(Int, site_dims(arch)), 1, array_type)
+function ones_mps(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
+    ones_mps(collect(Int, site_dims(arch)), bond_dim, array_type)
+end
+function ones_mps(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
+    ones_mps(collect(Int, site_dims(arch)), 1, array_type)
+end
 
 # TODO Test these functions
 """
@@ -195,13 +198,17 @@ end
 
 ones_mpo(site_dims::Vector{Int}, array_type::Type{<:AbstractArray}=Array) = ones_mpo(site_dims, 1, array_type)
 
-ones_mpo(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array) = ones_mpo(collect(Int, site_dims(arch)), bond_dim, array_type)
-ones_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array) = ones_mpo(collect(Int, site_dims(arch)), 1, array_type)
+function ones_mpo(arch::Architecture, bond_dim::Int, array_type::Type{<:AbstractArray}=Array)
+    ones_mpo(collect(Int, site_dims(arch)), bond_dim, array_type)
+end
+function ones_mpo(arch::Architecture, array_type::Type{<:AbstractArray}=Array)
+    ones_mpo(collect(Int, site_dims(arch)), 1, array_type)
+end
 
 function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
     n = length(site_inds)
     mpo_itensors = ITensor[]
-    mpo_links = [Index(2, "Link,l=$l") for l in 1:n-1]
+    mpo_links = [Index(2, "Link,l=$l") for l in 1:(n-1)]
 
     # Site 1
     d1 = dim(site_inds[1])
@@ -216,7 +223,7 @@ function upper_triang_mpo(site_inds::Vector{<:Index}, include_diag::Bool=true; a
     push!(mpo_itensors, ITensor(l_arr, site_inds[1]', site_inds[1], mpo_links[1]))
 
     # Bulk sites
-    for k in 2:n-1
+    for k in 2:(n-1)
         dk = dim(site_inds[k])
         ik = Matrix{Float64}(I, dk, dk)
         jk = triu(ones(Float64, dk, dk), 1)
@@ -250,7 +257,13 @@ function lower_triang_mpo(sites::Vector{<:Index}, include_diag::Bool=true; array
     return transpose(upper_triang_mpo(sites, include_diag; array_type=array_type))
 end
 
-function triang_projector_mpo(sites::Vector{<:Index}, combiners::Vector{ITensor}, which_triang::Symbol=:upper, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+function triang_projector_mpo(
+    sites::Vector{<:Index},
+    combiners::Vector{ITensor},
+    which_triang::Symbol=:upper,
+    include_diag::Bool=true;
+    array_type::Type{<:AbstractArray}=Array,
+)
     length(sites) != length(combiners) && error("Number of sites and combiners do not match")
     n = length(sites)
 
@@ -273,7 +286,12 @@ function triang_projector_mpo(sites::Vector{<:Index}, combiners::Vector{ITensor}
     return operator
 end
 
-function triang_projector_mpo(sites::Vector{<:Index}, which_triang::Symbol=:upper, include_diag::Bool=true; array_type::Type{<:AbstractArray}=Array)
+function triang_projector_mpo(
+    sites::Vector{<:Index},
+    which_triang::Symbol=:upper,
+    include_diag::Bool=true;
+    array_type::Type{<:AbstractArray}=Array,
+)
     n = length(sites)
     combiners = [combiner(sites[i], sites[i]'; tags="csite=$i") for i in 1:n]
     triang_projector_mpo(sites, combiners, which_triang, include_diag; array_type=array_type)
@@ -285,9 +303,10 @@ end
 Construct an MPS from a list of arrays, using provided site and bond indices.
 
 # Arguments
-- `site_indices`: Vector of site indices for the MPS.
-- `bond_indices`: Vector of bond indices (links) between MPS tensors.
-- `mps_arrays`: Vector of arrays containing the tensor data.
+
+  - `site_indices`: Vector of site indices for the MPS.
+  - `bond_indices`: Vector of bond indices (links) between MPS tensors.
+  - `mps_arrays`: Vector of arrays containing the tensor data.
 """
 function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
     nsite = length(mps_arrays)
@@ -302,7 +321,7 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
 
     output[1] = ITensor(mps_arrays[1], s, l_right)
 
-    for n in 2:nsite-1
+    for n in 2:(nsite-1)
         @assert dim(bond_indices[n]) == size(mps_arrays[n], 3) == size(mps_arrays[n+1], 2) "bond dimension mismatch at site $n"
 
         s = site_indices[n]
@@ -326,8 +345,9 @@ end
 Construct an MPS from a list of arrays and site indices, automatically creating link indices.
 
 # Arguments
-- `site_indices`: Vector of site indices.
-- `mps_arrays`: Vector of arrays containing tensor data.
+
+  - `site_indices`: Vector of site indices.
+  - `mps_arrays`: Vector of arrays containing tensor data.
 """
 function arrays2mps(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
@@ -348,9 +368,10 @@ end
 Construct an MPO from a list of arrays, using provided site and bond indices.
 
 # Arguments
-- `site_indices`: Vector of site indices (will be primed for output, unprimed for input).
-- `bond_indices`: Vector of bond indices (links).
-- `mpo_arrays`: Vector of arrays containing the tensor data.
+
+  - `site_indices`: Vector of site indices (will be primed for output, unprimed for input).
+  - `bond_indices`: Vector of bond indices (links).
+  - `mpo_arrays`: Vector of arrays containing the tensor data.
 """
 function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
@@ -367,7 +388,7 @@ function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
 
     output[1] = ITensor(mpo_arrays[1], s_out, s_in, l_right)
 
-    for n in 2:nsite-1
+    for n in 2:(nsite-1)
         @assert dim(bond_indices[n]) == size(mpo_arrays[n], 4) == size(mpo_arrays[n+1], 3) "bond dimension mismatch at site $n"
         s_out = site_indices[n]'
         s_in = site_indices[n]
@@ -392,8 +413,9 @@ end
 Construct an MPO from a list of arrays and site indices, automatically creating link indices.
 
 # Arguments
-- `site_indices`: Vector of site indices.
-- `mpo_arrays`: Vector of arrays containing tensor data.
+
+  - `site_indices`: Vector of site indices.
+  - `mpo_arrays`: Vector of arrays containing tensor data.
 """
 function arrays2mpo(site_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
@@ -414,7 +436,8 @@ end
 Reshape a vector `v` into a high-dimensional tensor with dimensions given by leg_dims, suitable for TT/MPS operations.
 
 # Arguments
-- `v::AbstractVector`: Input vector to be reshaped.
+
+  - `v::AbstractVector`: Input vector to be reshaped.
 """
 function vec2tensor(v::AbstractVector, leg_dims::Vector{Int})
     n = length(leg_dims)
@@ -427,8 +450,9 @@ end
 Convert a vector `v` directly into an MPS using site indices `s`.
 
 # Arguments
-- `v::AbstractVector`: Input vector to be converted.
-- `s::Vector{<:Index}`: Site indices for the MPS.
+
+  - `v::AbstractVector`: Input vector to be converted.
+  - `s::Vector{<:Index}`: Site indices for the MPS.
 """
 function vec2mps(v::AbstractVector, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)
@@ -442,11 +466,12 @@ Reshape a matrix `m` into a high-dimensional tensor with dimensions given by leg
 is square, in the sense that the the input-output leg pairs will be set to have leg_dims.
 
 # Arguments
-- `m::AbstractMatrix`: Input matrix to be reshaped.
+
+  - `m::AbstractMatrix`: Input matrix to be reshaped.
 """
 function mat2tensor(m::AbstractMatrix, leg_dims::Vector{Int})
     n = length(leg_dims)
-    return permutedims(reshape(m, leg_dims..., leg_dims...), [n:-1:1;2n:-1:n+1])
+    return permutedims(reshape(m, leg_dims..., leg_dims...), [n:-1:1; 2n:-1:(n+1)])
 end
 
 """
@@ -455,8 +480,9 @@ end
 Convert a matrix `m` directly into an MPO using site indices `s` and `s'`.
 
 # Arguments
-- `v::AbstractVector`: Input vector to be converted.
-- `s::Vector{<:Index}`: Input site indices for the MPO.
+
+  - `v::AbstractVector`: Input vector to be converted.
+  - `s::Vector{<:Index}`: Input site indices for the MPO.
 """
 function mat2mpo(m::AbstractMatrix, s::Vector{<:Index}; kwargs...)
     site_dims = dim.(s)

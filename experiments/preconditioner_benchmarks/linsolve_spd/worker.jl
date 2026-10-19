@@ -45,15 +45,26 @@ ENV["JULIA_DEBUG"] = ""
 
 const T_START = time()
 
-"""Timestamped progress line on stdout, flushed so it shows up in the SLURM log right away."""
+"""
+Timestamped progress line on stdout, flushed so it shows up in the SLURM log right away.
+"""
 function progress(msg::AbstractString)
     elapsed = round(Int, time() - T_START)
-    @printf("[%s | +%02d:%02d:%02d] %s\n", Dates.format(now(), "HH:MM:SS"), elapsed ÷ 3600, (elapsed ÷ 60) % 60, elapsed % 60, msg)
+    @printf(
+        "[%s | +%02d:%02d:%02d] %s\n",
+        Dates.format(now(), "HH:MM:SS"),
+        elapsed ÷ 3600,
+        (elapsed ÷ 60) % 60,
+        elapsed % 60,
+        msg
+    )
     flush(stdout)
     flush(stderr)
 end
 
-progress("Runtime: blas_threads=$(LinearAlgebra.BLAS.get_num_threads()) julia_threads=$(Threads.nthreads()) host=$(gethostname())")
+progress(
+    "Runtime: blas_threads=$(LinearAlgebra.BLAS.get_num_threads()) julia_threads=$(Threads.nthreads()) host=$(gethostname())",
+)
 
 # ---- Configuration ----
 const BASE_FOLDER = "experiments/preconditioner_benchmarks/linsolve_spd"
@@ -108,13 +119,17 @@ const CHORIN_SPECTRAL_NSWEEPS = 10
 # ---- Results file ----
 mkpath(dirname(RESULTS_FILE))
 
-"""Whether `key` is already in the results file (the case is then skipped)."""
+"""
+Whether `key` is already in the results file (the case is then skipped).
+"""
 function has_result(key::AbstractString)
     isfile(RESULTS_FILE) || return false
     return jldopen(f -> haskey(f, key), RESULTS_FILE, "r")
 end
 
-"""Write one case to the results file right away, so that it survives a timeout."""
+"""
+Write one case to the results file right away, so that it survives a timeout.
+"""
 function save_result(key::AbstractString, result::AbstractDict)
     jldopen(RESULTS_FILE, "a+") do f
         f[key] = result
@@ -122,11 +137,13 @@ function save_result(key::AbstractString, result::AbstractDict)
     progress("Saved $key")
 end
 
-"""Run `f()` and save its result under `key`, unless `key` is already saved."""
+"""
+Run `f()` and save its result under `key`, unless `key` is already saved.
+"""
 function run_case(f, key::AbstractString)
     if has_result(key)
         progress("Skipping $key (already in $(RESULTS_FILE))")
-        return
+        return nothing
     end
     progress("Starting $key")
     GC.gc(true)
@@ -137,20 +154,24 @@ function run_case(f, key::AbstractString)
     save_result(key, result)
 end
 
-nodes_key(nodes::NTuple{2, Int}) = "nodes_$(nodes[1])x$(nodes[2])"
+nodes_key(nodes::NTuple{2,Int}) = "nodes_$(nodes[1])x$(nodes[2])"
 chi_key(χ::Int) = "chi_$(lpad(χ, 3, '0'))"
 
 # ---- Dense helpers ----
 
 operator_sites(A::MPO) = only.(siteinds(A; plev=0))
 
-"""Dense matrix of an MPO: rows on the primed (output) site indices, columns on the unprimed (input) ones."""
+"""
+Dense matrix of an MPO: rows on the primed (output) site indices, columns on the unprimed (input) ones.
+"""
 function dense_matrix(mpo::MPO, sites::Vector{<:Index})
     n = prod(dim.(sites))
     return reshape(Array(prod(mpo), prime.(sites)..., sites...), n, n)
 end
 
-"""Inverse of `dense_matrix`: an MPO from a dense matrix, by successive SVDs (lossless for `cutoff = 0`)."""
+"""
+Inverse of `dense_matrix`: an MPO from a dense matrix, by successive SVDs (lossless for `cutoff = 0`).
+"""
 function dense_to_mpo(M::AbstractMatrix, sites::Vector{<:Index}; cutoff::Float64=0.0)
     T = ITensor(reshape(M, (dim.(sites)..., dim.(sites)...)), prime.(sites)..., sites...)
     return MPO(T, sites; cutoff=cutoff)
@@ -162,13 +183,15 @@ relative_asymmetry(M::AbstractMatrix) = norm(M - transpose(M)) / norm(M)
 count_negative(λ) = count(<(-length(λ) * eps(Float64) * maximum(abs, λ)), λ)
 spectral_cond(λ) = maximum(abs, λ) / minimum(abs, λ)
 
-"""Spectral data of the dense operator A, shared by the dense analyses of its preconditioners."""
+"""
+Spectral data of the dense operator A, shared by the dense analyses of its preconditioners.
+"""
 function dense_operator_info(A::MPO)
     sites = operator_sites(A)
     Ad = dense_matrix(A, sites)
     λA = eigvals(symmetric_part(Ad))
     first(λA) > 0 || error("Operator A is not SPD (λ_min = $(first(λA)))")
-    return (; sites, Ad, chol = cholesky(symmetric_part(Ad)), λA, Ainv = inv(Ad))
+    return (; sites, Ad, chol=cholesky(symmetric_part(Ad)), λA, Ainv=inv(Ad))
 end
 
 """
@@ -205,7 +228,7 @@ function dense_analysis(P::AbstractMatrix, op)
     sylvester_residual = norm(W) / (2 * sqrt(n))
     W .= P .- op.Ainv
     inverse_rel_error = norm(W) / norm(op.Ainv)
-    return Dict{String, Any}(
+    return Dict{String,Any}(
         "n" => n,
         "asym_P" => asym_P,
         "eigs_S" => λS,
@@ -226,7 +249,7 @@ function dense_analysis(P::AbstractMatrix, op)
 end
 
 function operator_summary(op)
-    return Dict{String, Any}(
+    return Dict{String,Any}(
         "n" => length(op.λA),
         "eigs_A" => op.λA,
         "eigmin_A" => first(op.λA),
@@ -240,17 +263,21 @@ end
 
 # ---- TT helpers ----
 
-"""linsolve_preconditioner of `A` at bond dimension `χ`, with its build time."""
+"""
+linsolve_preconditioner of `A` at bond dimension `χ`, with its build time.
+"""
 function build_linsolve(A::MPO, χ::Int; nsweeps::Int, residual_tol::Float64, rtol::Float64=1e-9, maxiter::Int=3000)
-    updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=rtol, krylovdim=1, maxiter=maxiter)
-    solver = ALS(sweep_kwargs=SweepingArgs(nsweeps=nsweeps, maxdim=χ, cutoff=1e-12), updater_kwargs=updater_kwargs)
+    updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=rtol, krylovdim=1, maxiter=maxiter)
+    solver = ALS(; sweep_kwargs=SweepingArgs(; nsweeps=nsweeps, maxdim=χ, cutoff=1e-12), updater_kwargs=updater_kwargs)
     # linsolve_preconditioner draws a random initial guess
     Random.seed!(χ)
     stats = @timed linsolve_preconditioner(A, solver; residual_tol=residual_tol)
     return stats.value, stats.time
 end
 
-"""‖AX + XA - 2I‖_F / ‖2I‖_F in TT format, without dense matrices."""
+"""
+‖AX + XA - 2I‖_F / ‖2I‖_F in TT format, without dense matrices.
+"""
 function sylvester_residual_tt(A::MPO, X::MPO)
     sites = operator_sites(A)
     twoI = 2.0 * identity_mpo(sites)
@@ -261,15 +288,19 @@ function sylvester_residual_tt(A::MPO, X::MPO)
 end
 
 function mpo_info(P::MPO)
-    return Dict{String, Any}("linkdims" => collect(linkdims(P)), "maxlinkdim" => maxlinkdim(P))
+    return Dict{String,Any}("linkdims" => collect(linkdims(P)), "maxlinkdim" => maxlinkdim(P))
 end
 
 # ---- Problems ----
 
-const bcsp = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC()))
+const bcsp = BoundaryConditions(
+    BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())
+)
 
-"""Pressure Poisson operator A = -Δ of chorin_pipeline (it does not depend on the mask or on the velocity)."""
-function chorin_operator(nodes::NTuple{2, Int})
+"""
+Pressure Poisson operator A = -Δ of chorin_pipeline (it does not depend on the mask or on the velocity).
+"""
+function chorin_operator(nodes::NTuple{2,Int})
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
@@ -277,8 +308,10 @@ function chorin_operator(nodes::NTuple{2, Int})
     return -1.0 * symmetrized_laplacian(p_field, grid; stencil_order=STENCIL_ORDER)
 end
 
-"""Full Chorin setup of chorin_pipeline/worker.jl (copied from its `build_grid`), to build the first-step RHS."""
-function build_chorin_grid(nodes::NTuple{2, Int})
+"""
+Full Chorin setup of chorin_pipeline/worker.jl (copied from its `build_grid`), to build the first-step RHS.
+"""
+function build_chorin_grid(nodes::NTuple{2,Int})
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
     grid = Grid(arch, BOX_SIZE)
@@ -295,14 +328,20 @@ function build_chorin_grid(nodes::NTuple{2, Int})
     mps_vx = tt_mul(object_mask, ones_mps(sites))
     mps_vy = 0.0 * ones_mps(sites)
 
-    bcsvx = BoundaryConditions(BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC()))
-    bcsvy = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC()))
+    bcsvx = BoundaryConditions(
+        BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    )
+    bcsvy = BoundaryConditions(
+        BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    )
 
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
 
     maxdim = chorin_maxdims_map[nodes]
-    experiment = INSExperiment(grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdim, cutoff=1e-11)
+    experiment = INSExperiment(
+        grid, v_field, p_field, RE_NUM, object_mask; stencil_order=STENCIL_ORDER, maxdim=maxdim, cutoff=1e-11
+    )
 
     u_diff_ops = DifferentialOps(grid, experiment.u_fields; stencil_order=STENCIL_ORDER)
     u_boundary_null = BoundaryNull(experiment.u_fields; stencil_order=STENCIL_ORDER)
@@ -313,10 +352,12 @@ function build_chorin_grid(nodes::NTuple{2, Int})
     regularize && error("Benchmark operator A is not regularized; pressure BCs need a Dirichlet boundary")
     cache = ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, A, regularize)
 
-    return (; nodes, A, experiment, cache, object_mask, sites, dt = dt_map[nodes])
+    return (; nodes, A, experiment, cache, object_mask, sites, dt=dt_map[nodes])
 end
 
-"""RHS and initial guess of the first Chorin step, as in `chorin_step!` of chorin_pipeline/worker.jl."""
+"""
+RHS and initial guess of the first Chorin step, as in `chorin_step!` of chorin_pipeline/worker.jl.
+"""
 function chorin_first_step_system(cgrid)
     experiment = cgrid.experiment
     prev_u = last(experiment.u_fields)
@@ -339,19 +380,21 @@ function spectral_solve(A::MPO, rhs::MPS, x0::MPS, precond; maxdim::Int, nsweeps
     numiter_store = KrylovSweepStats()
     cond_store = KrylovCondStats()
     pc_cond_store = KrylovCondStats()
-    updater_kwargs = LocalUpdaterArgs(
-        ishermitian = true,
-        isposdef = true,
-        spd_tol = SPD_TOL,
-        rtol = 0.1 * tol,
-        krylovdim = 1,
-        maxiter = 2000,
-        numiter_store = numiter_store,
-        cond_store = cond_store,
-        pc_cond_store = pc_cond_store,
+    updater_kwargs = LocalUpdaterArgs(;
+        ishermitian=true,
+        isposdef=true,
+        spd_tol=SPD_TOL,
+        rtol=0.1 * tol,
+        krylovdim=1,
+        maxiter=2000,
+        numiter_store=numiter_store,
+        cond_store=cond_store,
+        pc_cond_store=pc_cond_store,
     )
-    sweep_kwargs = SweepingArgs(nsweeps=nsweeps, maxdim=maxdim, cutoff=cutoff, observer! = ResidualObserver(rtol=tol))
-    solver = ResidualALS(sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol)
+    sweep_kwargs = SweepingArgs(;
+        nsweeps=nsweeps, maxdim=maxdim, cutoff=cutoff, (observer!)=ResidualObserver(; rtol=tol)
+    )
+    solver = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=0.5 * tol)
 
     Random.seed!(0)
     not_spd = nothing
@@ -370,7 +413,7 @@ function spectral_solve(A::MPO, rhs::MPS, x0::MPS, precond; maxdim::Int, nsweeps
     end
 
     pc_conds = DifferenTT.krylov_conds(pc_cond_store)
-    result = Dict{String, Any}(
+    result = Dict{String,Any}(
         "solve_time" => t,
         "spd_tol" => SPD_TOL,
         "not_spd" => !isnothing(not_spd),
@@ -390,36 +433,71 @@ function spectral_solve(A::MPO, rhs::MPS, x0::MPS, precond; maxdim::Int, nsweeps
         result["not_spd_position"] = not_spd.lpos + 1
         result["not_spd_eigmin"] = not_spd.λmin
         result["not_spd_eigmin_rel"] = not_spd.λmin / not_spd.λmax_abs
-        progress(@sprintf("  NOT SPD: %s at position %d in sweep %d (%d blocks checked before), min Re λ / max|λ| = %.3e",
-                          not_spd.label, not_spd.lpos + 1, result["nsweeps_done"], result["nblocks_checked"],
-                          result["not_spd_eigmin_rel"]))
+        progress(
+            @sprintf(
+                "  NOT SPD: %s at position %d in sweep %d (%d blocks checked before), min Re λ / max|λ| = %.3e",
+                not_spd.label,
+                not_spd.lpos + 1,
+                result["nsweeps_done"],
+                result["nblocks_checked"],
+                result["not_spd_eigmin_rel"]
+            )
+        )
     elseif !isnothing(x)
         term1 = ITensorMPS.inner(A, x, A, x)
         term2 = 2 * real(ITensorMPS.inner(rhs', A, x))
         term3 = ITensorMPS.inner(rhs, rhs)
         result["rel_res"] = sqrt(max(0.0, term1 - term2 + term3)) / norm(rhs)
         result["solution_maxdim"] = maxlinkdim(x)
-        progress(@sprintf("  No local P⁻¹A found indefinite: %d blocks in %d sweeps, rel. residual %.3e",
-                          result["nblocks_checked"], result["nsweeps_done"], result["rel_res"]))
+        progress(
+            @sprintf(
+                "  No local P⁻¹A found indefinite: %d blocks in %d sweeps, rel. residual %.3e",
+                result["nblocks_checked"],
+                result["nsweeps_done"],
+                result["rel_res"]
+            )
+        )
     end
     return result
 end
 
 function log_dense(prefix::AbstractString, r::AbstractDict)
-    progress(@sprintf("  %s: λ_min(S) = %.3e, λ_max(S) = %.3e, #neg(S) = %d, λ_min(SA) = %.3e, #neg(SA) = %d, asym = %.1e, ‖S-A⁻¹‖₂ = %.3e vs λ_min(A⁻¹) = %.3e",
-                      prefix, r["eigmin_S"], r["eigmax_S"], r["nneg_S"], r["eigmin_SA"], r["nneg_SA"], r["asym_P"],
-                      r["sym_error_2norm"], r["eigmin_Ainv"]))
+    progress(
+        @sprintf(
+            "  %s: λ_min(S) = %.3e, λ_max(S) = %.3e, #neg(S) = %d, λ_min(SA) = %.3e, #neg(SA) = %d, asym = %.1e, ‖S-A⁻¹‖₂ = %.3e vs λ_min(A⁻¹) = %.3e",
+            prefix,
+            r["eigmin_S"],
+            r["eigmax_S"],
+            r["nneg_S"],
+            r["eigmin_SA"],
+            r["nneg_SA"],
+            r["asym_P"],
+            r["sym_error_2norm"],
+            r["eigmin_Ainv"]
+        )
+    )
 end
 
 # ---- Sections ----
 
-"""linsolve preconditioner at each χ, analyzed with dense matrices."""
+"""
+linsolve preconditioner at each χ, analyzed with dense matrices.
+"""
 function linsolve_dense_section(section::AbstractString, cases)
     for (case_key, build_A) in cases
         progress("[$section] $case_key: building operator")
         A = build_A()
         op = dense_operator_info(A)
-        progress(@sprintf("[%s] %s: %d rows, κ(A) = %.3e, asym(A) = %.1e", section, case_key, length(op.λA), last(op.λA) / first(op.λA), relative_asymmetry(op.Ad)))
+        progress(
+            @sprintf(
+                "[%s] %s: %d rows, κ(A) = %.3e, asym(A) = %.1e",
+                section,
+                case_key,
+                length(op.λA),
+                last(op.λA) / first(op.λA),
+                relative_asymmetry(op.Ad)
+            )
+        )
         run_case(() -> operator_summary(op), "$section/$case_key/operator")
 
         for χ in DENSE_MAXDIMS
@@ -438,7 +516,9 @@ function linsolve_dense_section(section::AbstractString, cases)
     end
 end
 
-"""Exact A⁻¹ as an MPO, SVD truncated to each χ and analyzed with dense matrices."""
+"""
+Exact A⁻¹ as an MPO, SVD truncated to each χ and analyzed with dense matrices.
+"""
 function truncinv_dense_section(section::AbstractString, cases)
     for (case_key, build_A) in cases
         progress("[$section] $case_key: building operator and exact inverse")
@@ -465,7 +545,9 @@ function truncinv_dense_section(section::AbstractString, cases)
 end
 
 chorin_dense_cases() = [nodes_key(nodes) => (() -> chorin_operator(nodes)) for nodes in CHORIN_DENSE_NODES]
-"""Bond dimensions of a large preconditioner and its Sylvester residual in TT format."""
+"""
+Bond dimensions of a large preconditioner and its Sylvester residual in TT format.
+"""
 function large_precond_info(A::MPO, P::MPO)
     result = mpo_info(P)
     result["sylvester_residual"] = sylvester_residual_tt(A, P)
@@ -496,17 +578,32 @@ function chorin_linsolve_large_section(section::AbstractString)
 
         for (μ, gdim) in CHORIN_FAI_CONTROL
             run_case("$section/$case_key/fai_gdim_$(lpad(gdim, 3, '0'))") do
-                fai_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=3000)
-                fai_solver = ALS(sweep_kwargs=SweepingArgs(nsweeps=PRECOND_NSWEEPS, maxdim=gdim, cutoff=1e-12), updater_kwargs=fai_updater_kwargs)
+                fai_updater_kwargs = LocalUpdaterArgs(;
+                    ishermitian=true, isposdef=true, rtol=1e-9, krylovdim=1, maxiter=3000
+                )
+                fai_solver = ALS(;
+                    sweep_kwargs=SweepingArgs(; nsweeps=PRECOND_NSWEEPS, maxdim=gdim, cutoff=1e-12),
+                    updater_kwargs=fai_updater_kwargs,
+                )
                 Random.seed!(nodes[1] + nodes[2])
                 t_build = @elapsed begin
-                    unscaledG, D = DifferenTT.fai_dg(cgrid.A, μ, fai_solver, (; cutoff=1e-11, oversample=10, maxdim=gdim); residual_tol=CHORIN_FAI_TOL)
+                    unscaledG, D = DifferenTT.fai_dg(
+                        cgrid.A,
+                        μ,
+                        fai_solver,
+                        (; cutoff=1e-11, oversample=10, maxdim=gdim);
+                        residual_tol=CHORIN_FAI_TOL,
+                    )
                     P = FactorizedPreconditioner(apply(D, unscaledG; maxdim=gdim))
                 end
                 progress(@sprintf("  FAI gdim = %d built in %.1f s", gdim, t_build))
                 progress("  first Chorin step with local SPD checks")
-                Dict{String, Any}("first_step" => spectral_solve(cgrid.A, rhs, x0, P; solve_kwargs...),
-                                  "mu" => μ, "G_maxdim" => gdim, "build_time" => t_build)
+                Dict{String,Any}(
+                    "first_step" => spectral_solve(cgrid.A, rhs, x0, P; solve_kwargs...),
+                    "mu" => μ,
+                    "G_maxdim" => gdim,
+                    "build_time" => t_build,
+                )
             end
         end
     end
@@ -516,11 +613,17 @@ function main()
     progress("Results file: $RESULTS_FILE")
     progress("Sections: $(join(SECTIONS, ", "))")
     run_case("meta/config") do
-        Dict{String, Any}(
-            "dense_maxdims" => DENSE_MAXDIMS, "trunc_maxdims" => TRUNC_MAXDIMS, "exact_inv_cutoff" => EXACT_INV_CUTOFF,
-            "precond_nsweeps" => PRECOND_NSWEEPS, "ls_residual_tol" => LS_RESIDUAL_TOL, "spd_tol" => SPD_TOL,
-            "chorin_dense_nodes" => CHORIN_DENSE_NODES, "chorin_large_nodes" => CHORIN_LARGE_NODES,
-            "chorin_large_maxdims" => CHORIN_LARGE_MAXDIMS, "chorin_fai_control" => CHORIN_FAI_CONTROL,
+        Dict{String,Any}(
+            "dense_maxdims" => DENSE_MAXDIMS,
+            "trunc_maxdims" => TRUNC_MAXDIMS,
+            "exact_inv_cutoff" => EXACT_INV_CUTOFF,
+            "precond_nsweeps" => PRECOND_NSWEEPS,
+            "ls_residual_tol" => LS_RESIDUAL_TOL,
+            "spd_tol" => SPD_TOL,
+            "chorin_dense_nodes" => CHORIN_DENSE_NODES,
+            "chorin_large_nodes" => CHORIN_LARGE_NODES,
+            "chorin_large_maxdims" => CHORIN_LARGE_MAXDIMS,
+            "chorin_fai_control" => CHORIN_FAI_CONTROL,
             "chorin_spectral_nsweeps" => CHORIN_SPECTRAL_NSWEEPS,
         )
     end

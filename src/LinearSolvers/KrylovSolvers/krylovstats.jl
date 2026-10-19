@@ -6,10 +6,11 @@ using ITensorMPS: operator, constant_term, contract
 Container to store Krylov local iteration counts during `alternating_update` sweeps.
 
 The stored layout is `position -> sweep -> visits`, where:
-- `position` is the 1-based local position in the MPS (`lpos + 1`)
-- `sweep` is the 1-based sweep index
-- `visits` contains one or more `numiter` values when a position is visited multiple
-  times within a sweep (for example forward and backward half-sweeps)
+
+  - `position` is the 1-based local position in the MPS (`lpos + 1`)
+  - `sweep` is the 1-based sweep index
+  - `visits` contains one or more `numiter` values when a position is visited multiple
+    times within a sweep (for example forward and backward half-sweeps)
 """
 mutable struct KrylovSweepStats
     numiters::Vector{Vector{Vector{Int}}}
@@ -74,7 +75,7 @@ _krylov_lpos(problem::ReducedFAIPrecondLinearProblem) = problem.linear_problem.r
 function positions_mean(stats::KrylovSweepStats)
     visits_sum = [sum.(v) for v in stats.numiters]
     visits_len = [length.(v) for v in stats.numiters]
-    
+
     means = Float64[]
     for i in 1:length(visits_sum)
         total_sum = sum(visits_sum[i])
@@ -86,7 +87,7 @@ end
 
 function positions_sum(stats::KrylovSweepStats)
     visits_sum = [sum.(v) for v in stats.numiters]
-    
+
     sums = Float64[]
     for i in 1:length(visits_sum)
         total_sum = sum(visits_sum[i])
@@ -161,7 +162,7 @@ end
 function positions_mean_cond(stats::KrylovCondStats)
     visits_sum = [sum.(v) for v in stats.conds]
     visits_len = [length.(v) for v in stats.conds]
-    
+
     means = Float64[]
     for i in 1:length(visits_sum)
         total_sum = sum(visits_sum[i])
@@ -206,8 +207,15 @@ function record_krylov_spectrum!(stats::KrylovSpectrumStats, lpos::Int, blockdim
     end
 
     spectrum = isnothing(spectrum) ? _EMPTY_LOCAL_SPECTRUM : spectrum
-    record = (; sweep = stats.current_sweep, position = lpos + 1, blockdim, numiter = Int(info.numiter),
-                converged = info.converged > 0, normres = Float64(info.normres), spectrum...)
+    record = (;
+        sweep=stats.current_sweep,
+        position=lpos + 1,
+        blockdim,
+        numiter=Int(info.numiter),
+        converged=(info.converged > 0),
+        normres=Float64(info.normres),
+        spectrum...,
+    )
     push!(stats.records, record)
 
     stats.last_lpos = lpos
@@ -220,6 +228,6 @@ end
 Column-wise copy of the records (one vector per field), which can be saved without DifferenTT types.
 """
 function spectrum_table(stats::KrylovSpectrumStats)
-    isempty(stats.records) && return Dict{String, Vector}()
-    return Dict{String, Vector}(String(k) => [r[k] for r in stats.records] for k in keys(first(stats.records)))
+    isempty(stats.records) && return Dict{String,Vector}()
+    return Dict{String,Vector}(String(k) => [r[k] for r in stats.records] for k in keys(first(stats.records)))
 end

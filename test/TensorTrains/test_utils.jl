@@ -16,14 +16,15 @@ using ITensorMPS
 
         # import, not using: runtests.jl includes every file into Main, and CUDA's exports (e.g. CG) would
         # clash with the KrylovKit names of the later test files
-        try import CUDA
+        try
+            using CUDA: CUDA
             if CUDA.functional()
                 gpu_array = CUDA.CuArray(rand(2, 2))
                 @test backend_type(gpu_array) == CUDA.CuArray
             else
                 @warn "CUDA not functional, skipping GPU tests for backend_type"
             end
-        catch e 
+        catch e
             @warn "CUDA not loaded, skipping GPU tests for backend_type"
         end
     end
@@ -70,7 +71,7 @@ using ITensorMPS
         @test DifferenTT.decimal_to_binary(5, 4) == [0, 1, 0, 1]
         @test DifferenTT.decimal_to_binary(0, 3) == [0, 0, 0]
         @test DifferenTT.decimal_to_binary(7, 3) == [1, 1, 1]
-        
+
         @test DifferenTT.binary_to_decimal([0, 1, 0, 1]) == 5
         @test DifferenTT.binary_to_decimal([0, 0, 0]) == 0
         @test DifferenTT.binary_to_decimal([1, 1, 1]) == 7
@@ -83,5 +84,4 @@ using ITensorMPS
         @test DifferenTT.decimal_to_base(123, 10, 4) == [0, 1, 2, 3]
         @test DifferenTT.base_to_decimal([0, 1, 2, 3], 10) == 123
     end
-
 end

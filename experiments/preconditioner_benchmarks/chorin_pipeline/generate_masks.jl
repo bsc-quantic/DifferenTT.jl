@@ -39,15 +39,22 @@ jldopen(mask_path, "w") do file
         initialpivot = optfirstpivot(Float64, mask_func, grid, arch)
 
         tci_mask, ranks_mask, error_mask = crossinterpolate2(
-            Float64, mask_func, grid, arch;
-            tolerance=1e-10, maxbonddim=50, initialpivots=[initialpivot]
+            Float64, mask_func, grid, arch; tolerance=1e-10, maxbonddim=50, initialpivots=[initialpivot]
         )
 
         @show ranks_mask
         @show error_mask
 
         object_mask = replace_siteinds!(MPS(tci_mask), sites)
-        visualize_scalar(object_mask, grid, arch, joinpath(maskplots_subfolder, "mask_$(nodes[1])_$(nodes[2])_buffer.png"); npoints=200, aspect_ratio=:equal, size=(1200,600))
+        visualize_scalar(
+            object_mask,
+            grid,
+            arch,
+            joinpath(maskplots_subfolder, "mask_$(nodes[1])_$(nodes[2])_buffer.png");
+            npoints=200,
+            aspect_ratio=:equal,
+            size=(1200, 600),
+        )
 
         key = "mask_$(nodes[1])_$(nodes[2])"
         file[key] = object_mask

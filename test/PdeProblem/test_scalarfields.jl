@@ -11,11 +11,11 @@ end
     # 2D BCs
     bcu1d = BoundaryCond1d(PeriodicBC(), PeriodicBC())
     bcu2d = BoundaryConditions(bcu1d, bcu1d)
-    
+
     @testset "ScalarField with QTTArchitecture (2D)" begin
         var_nsites = (3, 4)
         arch = QTTArchitecture(var_nsites)
-        
+
         n_sites = total_sites(arch)
         sites = [Index(2, "Site,n=$i") for i in 1:n_sites]
         u_init = random_mps(sites)
@@ -38,7 +38,7 @@ end
 
         bad_sites = [Index(2, "Site,n=$i") for i in 1:n_sites]
         u_bad = random_mps(bad_sites)
-        
+
         # siteinds check might fail if indices match by ID but not object. 
         # Typically siteinds creates new indices.
         @test_throws ArgumentError push!(field, u_bad)
@@ -62,7 +62,7 @@ end
     @testset "ScalarField with TTArchitecture (2D)" begin
         var_dims = (8, 16)
         arch = TTArchitecture(var_dims)
-        
+
         n_sites = total_sites(arch)
         sites = [Index(var_dims[i], "Site,n=$i") for i in 1:n_sites]
         u_init = random_mps(sites)
@@ -84,7 +84,7 @@ end
 
         bad_sites = [Index(var_dims[i], "Site,n=$i") for i in 1:n_sites]
         u_bad = random_mps(bad_sites)
-        
+
         @test_throws ArgumentError push!(field, u_bad)
 
         @test length(field) == 2

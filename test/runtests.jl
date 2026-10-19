@@ -35,7 +35,7 @@ using Test
         include("LinearSolvers/test_exactupdaters.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/test_projectedproblem.jl")
         include("LinearSolvers/test_residualals.jl")
-        
+
         include("LinearSolvers/KrylovSolvers/test_cg.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/KrylovSolvers/test_gmres.jl") # TODO: expand minimalist test in a future PR
         include("LinearSolvers/KrylovSolvers/test_krylovstats.jl")

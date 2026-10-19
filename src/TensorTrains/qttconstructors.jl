@@ -4,12 +4,18 @@
 Create an MPO representing a Toeplitz matrix with either 3 or 9 diagonals (for order 2 and 4 finite difference stencils).
 
 # Arguments
-- `site_indices`: Site indices to use for the mpo.
-- `coeffs`: Dictionary mapping offset to coefficient (e.g., 0 => 2.0, 1 => -1.0).
-- `boundary_conditions`: Boundary conditions to apply at edges.
-- `array_type`: Backend array type.
+
+  - `site_indices`: Site indices to use for the mpo.
+  - `coeffs`: Dictionary mapping offset to coefficient (e.g., 0 => 2.0, 1 => -1.0).
+  - `boundary_conditions`: Boundary conditions to apply at edges.
+  - `array_type`: Backend array type.
 """
-function toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array)
+function toeplitz_mpo(
+    site_indices::Vector{<:Index},
+    coeffs::Dict{Int,Float64},
+    boundary_conditions::BoundaryCond1d,
+    array_type::Type{<:AbstractArray}=Array,
+)
     nsite = length(site_indices)
     if length(coeffs) == 9 && nsite < 4
         error("nsite must be >= 4 in order to build the toeplitz mpo if length(coeffs)=9")
@@ -36,15 +42,11 @@ function toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, 
     leftmost = reshape(leftmost_mat, 2, 2, 3)
     push!(tensors, leftmost)
 
-    bulk_mat = vcat(
-        hcat(eye, J', J),
-        hcat(Z, J, Z),
-        hcat(Z, Z, J')
-    )
+    bulk_mat = vcat(hcat(eye, J', J), hcat(Z, J, Z), hcat(Z, Z, J'))
     # Reshape to (PhysRow, BlockRow, PhysCol, BlockCol) -> Permute to (PhysRow, PhysCol, BlockRow, BlockCol)
     bulk = permutedims(reshape(bulk_mat, 2, 3, 2, 3), (1, 3, 2, 4))
 
-    for _ in 2:nsite-2
+    for _ in 2:(nsite-2)
         push!(tensors, bulk)
     end
 
@@ -72,19 +74,13 @@ function toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, 
         push!(tensors, rightmost)
 
     elseif length(coeffs) == 3
-        penultimate_mat = vcat(
-            hcat(eye, J', J),
-            hcat(Z, J, Z),
-            hcat(Z, Z, J')
-        )
+        penultimate_mat = vcat(hcat(eye, J', J), hcat(Z, J, Z), hcat(Z, Z, J'))
         # Reshape to (PhysRow, BlockRow, PhysCol, BlockCol) -> Permute to (PhysRow, PhysCol, BlockRow, BlockCol)
         penultimate = permutedims(reshape(bulk_mat, 2, 3, 2, 3), (1, 3, 2, 4))
         push!(tensors, penultimate)
 
         rightmost = vcat(
-            hcat(coeffs[0] * eye + coeffs[1] * J + coeffs[-1] * J'),
-            hcat(coeffs[-1] * J),
-            hcat(coeffs[1] * J'),
+            hcat(coeffs[0] * eye + coeffs[1] * J + coeffs[-1] * J'), hcat(coeffs[-1] * J), hcat(coeffs[1] * J')
         )
         rightmost = permutedims(reshape(rightmost, 2, 3, 2), (1, 3, 2))
         push!(tensors, rightmost)
@@ -95,7 +91,9 @@ function toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, 
     return arrays2mpo(site_indices, tensors)
 end
 
-function toeplitz_mpo(nsite::Int, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array)
+function toeplitz_mpo(
+    nsite::Int, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array
+)
     site_indices = siteinds(2, nsite)
     return toeplitz_mpo(site_indices, coeffs, boundary_conditions, array_type)
 end
@@ -107,9 +105,10 @@ end
 Construct an MPO that projects onto one or more basis vectors (columns).
 
 # Arguments
-- `site_inds::Vector{<:Index}`: Site indices.
-- `column_index`: Integer index or vector of indices of the column(s) to pick.
-- `array_type::Type{<:AbstractArray}`: Backend array type.
+
+  - `site_inds::Vector{<:Index}`: Site indices.
+  - `column_index`: Integer index or vector of indices of the column(s) to pick.
+  - `array_type::Type{<:AbstractArray}`: Backend array type.
 """
 function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
@@ -119,7 +118,7 @@ function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_
     # Move to backend once
     matrix0 = adapt(array_type, [1.0 0.0; 1.0 0.0])
     matrix1 = adapt(array_type, [0.0 1.0; 0.0 1.0])
-    
+
     matrices = (matrix0, matrix1)
 
     column_index < 1 && error("MPO index must be >= 1")
@@ -135,7 +134,9 @@ function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_
 end
 
 # TODO Test this function
-function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
+function column_pick_mpo(
+    site_inds::Vector{<:Index}, column_index::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array
+)
     sum(column_pick_mpo(site_inds, single_column_index, array_type) for single_column_index in column_index)
 end
 
@@ -146,9 +147,10 @@ end
 Construct an MPO that projects onto one or more basis vectors (rows) (transpose of column pick).
 
 # Arguments
-- `site_inds::Vector{<:Index}`: Site indices.
-- `row_index`: Integer index or vector of indices of the row(s) to pick.
-- `array_type::Type{<:AbstractArray}`: Backend array type.
+
+  - `site_inds::Vector{<:Index}`: Site indices.
+  - `row_index`: Integer index or vector of indices of the row(s) to pick.
+  - `array_type::Type{<:AbstractArray}`: Backend array type.
 """
 function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     column_mpo = column_pick_mpo(site_inds, row_index, array_type)
@@ -169,12 +171,15 @@ value at `column_index` of a 1D vector to `row_index`. Built as the elementwise 
 [`row_pick_mpo`](@ref) and [`column_pick_mpo`](@ref).
 
 # Arguments
-- `site_inds::Vector{<:Index}`: Site indices.
-- `row_index::Int`: Row of the nonzero entry (1-based).
-- `column_index::Int`: Column of the nonzero entry (1-based).
-- `array_type::Type{<:AbstractArray}`: Backend array type.
+
+  - `site_inds::Vector{<:Index}`: Site indices.
+  - `row_index::Int`: Row of the nonzero entry (1-based).
+  - `column_index::Int`: Column of the nonzero entry (1-based).
+  - `array_type::Type{<:AbstractArray}`: Backend array type.
 """
-function entry_mpo(site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array)
+function entry_mpo(
+    site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array
+)
     return tt_mul(row_pick_mpo(site_inds, row_index, array_type), column_pick_mpo(site_inds, column_index, array_type))
 end
 
@@ -185,7 +190,12 @@ end
 
 Construct an MPO that acts on a "corner" of the full domain, usually for handling boundary conditions in high-dimensional stencils.
 """
-function corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vector{<:Index}, flag::Symbol=:upper, array_type::Type{<:AbstractArray}=Array)
+function corner_pick_mpo(
+    coefficients::Vector{<:AbstractFloat},
+    site_inds::Vector{<:Index},
+    flag::Symbol=:upper,
+    array_type::Type{<:AbstractArray}=Array,
+)
     corner_tensors = AbstractArray[]
     dummy_sites = siteinds(2, 2)
 
@@ -209,7 +219,7 @@ function corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vecto
     term2 = coefficients[3] * eye + coefficients[2] * J' + coefficients[4] * J
 
     block2 = vcat(term1, term2)
-    tensor = permutedims(reshape(block2, 2, 2, 2), (1, 3, 2)) 
+    tensor = permutedims(reshape(block2, 2, 2, 2), (1, 3, 2))
 
     push!(corner_tensors, tensor)
     corner_mpo = arrays2mpo(dummy_sites, corner_tensors)

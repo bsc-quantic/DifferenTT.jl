@@ -51,7 +51,7 @@ end
 function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
     contractedGL = contract(P.reduced_op)
     transpose_itensor_map = _itensor_map(P.reduced_op)
-    
+
     # We move the output to primelevel=2 to avoid computing the trace over the whole thing. otherwise
     # the output unprimed legs of GlT would be contracted with the input ones from Gl, non primed.
     transpose_itensor_map = [swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
@@ -64,7 +64,7 @@ function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
     for it in transpose_itensor_map
         GlTGl *= it
     end
-    
+
     # To finish things off, once the joined primelevel=1 legs have been contracted, we 
     # move the primelevel=2 output to primelevel=1 to follow the usual convention for matrices/operators
     swapprime!(GlTGl, 2, 1)
@@ -89,7 +89,6 @@ function product(P::ReducedFactorizedPreconditioner, v::ITensor)::ITensor
 end
 
 (P::ReducedFactorizedPreconditioner)(v::ITensor) = product(P, v)
-
 
 """
     ITensors.contract(P::AbstractProjMPO) -> ITensor

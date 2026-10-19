@@ -24,7 +24,8 @@ using Test
 
     @testset "Steppers store TimeEvolArgs" begin
         t = TimeEvolArgs(0.0, 1.0, 10)
-        for stepper in (ExplicitEuler(time_evol_kwargs=t, cutoff=1e-8, maxdim=10), RK4(time_evol_kwargs=t, cutoff=1e-8, maxdim=10))
+        for stepper in
+            (ExplicitEuler(time_evol_kwargs=t, cutoff=1e-8, maxdim=10), RK4(time_evol_kwargs=t, cutoff=1e-8, maxdim=10))
             @test stepper isa AbstractTimeStepper
             @test stepper.time_evol_kwargs === t
             @test stepper.tt_kwargs == (cutoff=1e-8, maxdim=10)

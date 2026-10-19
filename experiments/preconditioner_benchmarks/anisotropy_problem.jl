@@ -11,10 +11,14 @@ preconditioner built on the separable L0 = -Δ (e.g. sinc quadrature), so every 
 equal difficulty. See benchmark_rotated_anisotropy.md.
 """
 
-"""ρ such that the analytic floor (1+(N-1)ρ)/(1-ρ) equals F."""
+"""
+ρ such that the analytic floor (1+(N-1)ρ)/(1-ρ) equals F.
+"""
 rho_from_floor(F::Real, N::Int) = (F - 1) / (F + N - 1)
 
-"""Analytic floor κ(L0⁻¹ L) bound for a given ρ ≥ 0."""
+"""
+Analytic floor κ(L0⁻¹ L) bound for a given ρ ≥ 0.
+"""
 floor_from_rho(ρ::Real, N::Int) = (1 + (N - 1) * ρ) / (1 - ρ)
 
 """
@@ -49,13 +53,13 @@ end
 Right-hand side of the benchmark. Returns `(rhs, sol)`, where `sol` is `nothing` unless the exact
 discrete solution is known.
 
-- `:ones` (default): f ≡ 1. u = L⁻¹𝟏 is (twice) the mean exit time from the unit box of a Brownian
-  motion with covariance K, e.g. the expected life of a multi-asset corridor contract on N
-  equicorrelated assets. Rank 1 and deterministic.
-- `:random`: normalized random MPS of bond dimension 5, which excites the transverse modes that set
-  λ_min(K) and that the smooth, permutation-symmetric f ≡ 1 barely excites.
-- `:manufactured`: Coulomb-like TCI solution of `tt_poisson`, with the discrete rhs A * sol, so the
-  solve error can be measured.
+  - `:ones` (default): f ≡ 1. u = L⁻¹𝟏 is (twice) the mean exit time from the unit box of a Brownian
+    motion with covariance K, e.g. the expected life of a multi-asset corridor contract on N
+    equicorrelated assets. Rank 1 and deterministic.
+  - `:random`: normalized random MPS of bond dimension 5, which excites the transverse modes that set
+    λ_min(K) and that the smooth, permutation-symmetric f ≡ 1 barely excites.
+  - `:manufactured`: Coulomb-like TCI solution of `tt_poisson`, with the discrete rhs A * sol, so the
+    solve error can be measured.
 """
 function build_rhs(kind::Symbol, A::MPO, sites, grid, arch; sol_maxdim::Int)
     N = length(sites)
@@ -71,7 +75,9 @@ function build_rhs(kind::Symbol, A::MPO, sites, grid, arch; sol_maxdim::Int)
         sol_func = get_coulomb_sol(N, 0.2)
         sol_initialpivot = optfirstpivot(Float64, sol_func, grid, arch)
         # Cap ttcross by sol_maxdim to avoid OOM
-        sol_tci, _ = crossinterpolate2(Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=sol_maxdim, tolerance=1e-12)
+        sol_tci, _ = crossinterpolate2(
+            Float64, sol_func, grid, arch; initialpivots=[sol_initialpivot], maxbonddim=sol_maxdim, tolerance=1e-12
+        )
         sol_mps = MPS(sol_tci)
         replace_siteinds!(sol_mps, sites)
         # Discrete RHS A * sol_mps so FD truncation error does not dominate the solve error.
@@ -86,9 +92,10 @@ end
     build_problem(N, F; nodes_per_dim, rhs_kind, sol_maxdim)
 
 Build the benchmark problem for dimension `N` and floor `F`. Returns a NamedTuple with
-- `A`: -∇⋅(K∇) as a rank-3 MPO (rank 2 for F = 1),
-- `A0`: -Δ, the separable operator sinc approximates (used by the FAI-on-L0 control),
-- `rhs`, `sol` (see `build_rhs`), `A_list` (1D factors of A0 for sinc), `grid`, `arch`, `ρ`.
+
+  - `A`: -∇⋅(K∇) as a rank-3 MPO (rank 2 for F = 1),
+  - `A0`: -Δ, the separable operator sinc approximates (used by the FAI-on-L0 control),
+  - `rhs`, `sol` (see `build_rhs`), `A_list` (1D factors of A0 for sinc), `grid`, `arch`, `ρ`.
 """
 function build_problem(N::Int, F::Real; nodes_per_dim::Int, rhs_kind::Symbol, sol_maxdim::Int)
     ρ = rho_from_floor(F, N)
@@ -118,7 +125,9 @@ function build_problem(N::Int, F::Real; nodes_per_dim::Int, rhs_kind::Symbol, so
     return (; A, A0, rhs, sol, A_list, grid, arch, ρ)
 end
 
-"""Relative 2-norm distance between two MPS, computed with inner products to save memory."""
+"""
+Relative 2-norm distance between two MPS, computed with inner products to save memory.
+"""
 function relative_distance(x::MPS, y::MPS)
     d2 = inner(x, x) - 2 * real(inner(y, x)) + inner(y, y)
     return sqrt(max(0.0, d2)) / norm(y)

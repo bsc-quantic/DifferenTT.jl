@@ -26,7 +26,7 @@ function clean_kappa(xs)::Vector{Float64}
     return [c isa Number && isfinite(Float64(c)) && c > 0 ? Float64(c) : NaN for c in xs]
 end
 
-function kappa_pc(d::AbstractDict)::Union{Nothing, Vector{Float64}}
+function kappa_pc(d::AbstractDict)::Union{Nothing,Vector{Float64}}
     v = get(d, "pc_conds_per_site", nothing)
     nonempty_numeric_vec(v) || return nothing
     return clean_kappa(v)
@@ -55,7 +55,12 @@ function avg_site_speedup(base_per_site, v_per_site)::Float64
     ratios = Float64[]
     for i in 1:n
         b, s = base_per_site[i], v_per_site[i]
-        if b isa Number && s isa Number && isfinite(Float64(b)) && isfinite(Float64(s)) && Float64(b) > 0 && Float64(s) > 0
+        if b isa Number &&
+            s isa Number &&
+            isfinite(Float64(b)) &&
+            isfinite(Float64(s)) &&
+            Float64(b) > 0 &&
+            Float64(s) > 0
             push!(ratios, Float64(b) / Float64(s))
         end
     end
@@ -87,7 +92,12 @@ function site_speedup_over_time(base_matrix, v_matrix)::Vector{Float64}
         ratios = Float64[]
         for t in 1:n_steps
             b, v = base_matrix[t][s], v_matrix[t][s]
-            if b isa Number && v isa Number && isfinite(Float64(b)) && isfinite(Float64(v)) && Float64(b) > 0 && Float64(v) > 0
+            if b isa Number &&
+                v isa Number &&
+                isfinite(Float64(b)) &&
+                isfinite(Float64(v)) &&
+                Float64(b) > 0 &&
+                Float64(v) > 0
                 push!(ratios, Float64(b) / Float64(v))
             end
         end
@@ -110,7 +120,12 @@ function site_speedup_ratio(base_per_site, v_per_site)::Vector{Float64}
     result = fill(NaN, n)
     for i in 1:n
         b, s = base_per_site[i], v_per_site[i]
-        if b isa Number && s isa Number && isfinite(Float64(b)) && isfinite(Float64(s)) && Float64(b) > 0 && Float64(s) > 0
+        if b isa Number &&
+            s isa Number &&
+            isfinite(Float64(b)) &&
+            isfinite(Float64(s)) &&
+            Float64(b) > 0 &&
+            Float64(s) > 0
             result[i] = Float64(b) / Float64(s)
         end
     end
@@ -130,7 +145,9 @@ function match_cond(grid_data_cond::AbstractDict, v::AbstractDict)
             cv_method == method || continue
             if method == "sinc" && get(cv, "M", 0) == get(v, "M", 0)
                 return cv
-            elseif method != "sinc" && get(cv, "mu", NaN) == get(v, "mu", NaN) && get(cv, "G_maxdim", 0) == get(v, "G_maxdim", 0)
+            elseif method != "sinc" &&
+                get(cv, "mu", NaN) == get(v, "mu", NaN) &&
+                get(cv, "G_maxdim", 0) == get(v, "G_maxdim", 0)
                 return cv
             end
         elseif get(cv, "mu", NaN) == get(v, "mu", NaN) && get(cv, "G_maxdim", 0) == get(v, "G_maxdim", 0)
@@ -151,11 +168,19 @@ before the metric existed) are skipped; returns `nothing` when none has any.
 function step_profile_plot(series; title, ylabel, yaxis=:log10)
     series = [s for s in series if nonempty_numeric_vec(s.values)]
     isempty(series) && return nothing
-    p = plot(title=title, xlabel="Chorin Time Step", ylabel=ylabel, yaxis=yaxis,
-        legend=:outertopright, size=(1050, 600), legendfont=font(8, "Computer Modern"))
+    p = plot(;
+        title=title,
+        xlabel="Chorin Time Step",
+        ylabel=ylabel,
+        yaxis=yaxis,
+        legend=:outertopright,
+        size=(1050, 600),
+        legendfont=font(8, "Computer Modern"),
+    )
     for s in series
-        plot!(p, 1:length(s.values), clean_kappa(s.values);
-            label=s.label, color=s.color, lw=s.lw, ls=get(s, :ls, :solid))
+        plot!(
+            p, 1:length(s.values), clean_kappa(s.values); label=s.label, color=s.color, lw=s.lw, ls=get(s, :ls, :solid)
+        )
     end
     return p
 end
@@ -165,7 +190,9 @@ end
 # the only suffix whose results exist. `has_results(suffix)` tells whether the results of that suffix exist.
 # Single-lid results may carry the "_singlelid" suffix or none (the workers' default folders).
 function cavity_results_suffix(has_results::Function)
-    candidates = Dict("1" => ["_singlelid", ""], "single" => ["_singlelid", ""], "2" => ["_doublelid"], "double" => ["_doublelid"])
+    candidates = Dict(
+        "1" => ["_singlelid", ""], "single" => ["_singlelid", ""], "2" => ["_doublelid"], "double" => ["_doublelid"]
+    )
     spec = lowercase(length(ARGS) > 0 ? ARGS[1] : get(ENV, "CAVITY_LIDS", ""))
     if !isempty(spec)
         haskey(candidates, spec) || error("Lid count must be 1/single or 2/double, got \"$spec\"")
@@ -174,6 +201,11 @@ function cavity_results_suffix(has_results::Function)
     end
     found = filter(has_results, ["_singlelid", "", "_doublelid"])
     length(found) == 1 && return only(found)
-    error(isempty(found) ? "No lid-driven cavity results found: pass 1/single or 2/double to pick the folder" :
-          "Results found for several suffixes $(found): pass 1/single or 2/double to pick one")
+    error(
+        if isempty(found)
+            "No lid-driven cavity results found: pass 1/single or 2/double to pick the folder"
+        else
+            "Results found for several suffixes $(found): pass 1/single or 2/double to pick one"
+        end,
+    )
 end

@@ -29,9 +29,11 @@ end
 function linearsolve(solver::ExpandedALS, A, b, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
-    updater_kwargs = (; coefficients = (false, true), NamedTuple(solver.updater_kwargs)...)
+    updater_kwargs = (; coefficients=(false, true), NamedTuple(solver.updater_kwargs)...)
     sweep_kwargs = linearsolve_sweep_kwargs(solver, A, b, kwargs)
-    return alternating_update(reduced_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...)
+    return alternating_update(
+        reduced_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...
+    )
 end
 
 # TODO Check if this works
@@ -39,7 +41,9 @@ function linearsolve(solver::ExpandedALS, A, b, M⁻¹, x0; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
     updater_kwargs, sweep_kwargs = precond_linearsolve_kwargs(solver, A, b, kwargs)
-    return alternating_update(reduced_precond_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...)
+    return alternating_update(
+        reduced_precond_problem, init, solver.expander_func; solver.updater, updater_kwargs, sweep_kwargs...
+    )
 end
 
 """
@@ -115,7 +119,7 @@ end
 
 function (expander::ResidualExpansion)(state::MPS)
     residual = expander.b - apply(expander.A, state)
-    
+
     truncate!(residual; cutoff=expander.cutoff, maxdim=expander.maxdim)
 
     # zero-shift condition
@@ -128,23 +132,23 @@ function ITensorMPS.alternating_update(
     init::MPS,
     expander_func::AbstractALSExpansion;
     updater,
-    updater_kwargs = (;),
-    nsweeps = ITensorMPS.default_nsweeps(),
-    checkdone = ITensorMPS.default_checkdone(),
-    write_when_maxdim_exceeds = ITensorMPS.default_write_when_maxdim_exceeds(),
-    nsite = ITensorMPS.default_nsite(),
-    reverse_step = ITensorMPS.default_reverse_step(),
-    time_start = ITensorMPS.default_time_start(),
-    time_step = ITensorMPS.default_time_step(),
-    order = ITensorMPS.default_order(),
-    (observer!) = ITensorMPS.default_observer(),
-    (sweep_observer!) = ITensorMPS.default_sweep_observer(),
-    outputlevel = ITensorMPS.default_outputlevel(),
-    normalize = ITensorMPS.default_normalize(),
-    maxdim = ITensorMPS.default_maxdim(),
-    mindim = ITensorMPS.default_mindim(),
-    cutoff = ITensorMPS.default_cutoff(ITensors.scalartype(init)),
-    noise = ITensorMPS.default_noise(),
+    updater_kwargs=(;),
+    nsweeps=ITensorMPS.default_nsweeps(),
+    checkdone=ITensorMPS.default_checkdone(),
+    write_when_maxdim_exceeds=ITensorMPS.default_write_when_maxdim_exceeds(),
+    nsite=ITensorMPS.default_nsite(),
+    reverse_step=ITensorMPS.default_reverse_step(),
+    time_start=ITensorMPS.default_time_start(),
+    time_step=ITensorMPS.default_time_step(),
+    order=ITensorMPS.default_order(),
+    (observer!)=ITensorMPS.default_observer(),
+    (sweep_observer!)=ITensorMPS.default_sweep_observer(),
+    outputlevel=ITensorMPS.default_outputlevel(),
+    normalize=ITensorMPS.default_normalize(),
+    maxdim=ITensorMPS.default_maxdim(),
+    mindim=ITensorMPS.default_mindim(),
+    cutoff=ITensorMPS.default_cutoff(ITensors.scalartype(init)),
+    noise=ITensorMPS.default_noise(),
 )
     nsite != 1 && error("Expanded als currently only developed for 1-site variant.")
     if isnothing(nsweeps)
@@ -153,7 +157,7 @@ function ITensorMPS.alternating_update(
     maxdim, mindim, cutoff, noise = ITensorMPS.process_sweeps(; nsweeps, maxdim, mindim, cutoff, noise)
     forward_order = ITensorMPS.TDVPOrder(order, Base.Forward)
     state = copy(init)
-    
+
     current_time = time_start
     info = nothing
     sites = siteinds(init)
@@ -191,38 +195,33 @@ function ITensorMPS.alternating_update(
                 observer!,
                 normalize,
                 outputlevel,
-                maxdim = maxdim[sweep],
-                mindim = mindim[sweep],
-                cutoff = cutoff[sweep],
-                noise = noise[sweep],
+                maxdim=maxdim[sweep],
+                mindim=mindim[sweep],
+                cutoff=cutoff[sweep],
+                noise=noise[sweep],
             )
         end
 
         if !isnothing(time_step)
             current_time += time_step
         end
-        
-        ITensorMPS.update_observer!(
-            sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time
-        )
-        
+
+        ITensorMPS.update_observer!(sweep_observer!; state, reduced_operator, sweep, outputlevel, current_time)
+
         if outputlevel >= 1
             print("After sweep ", sweep, ":")
             print(" maxlinkdim=", maxlinkdim(state))
             @printf(" maxerr=%.2E", info.maxtruncerr)
             if !isnothing(current_time)
-                print(" current_time=", round(current_time; digits = 3))
+                print(" current_time=", round(current_time; digits=3))
             end
-            print(" time=", round(sweep_elapsed_time; digits = 3))
+            print(" time=", round(sweep_elapsed_time; digits=3))
             println()
             flush(stdout)
         end
-        
-        isdone = checkdone(;
-            state, sweep, outputlevel, observer = (observer!), sweep_observer = (sweep_observer!)
-        )
+
+        isdone = checkdone(; state, sweep, outputlevel, observer=(observer!), sweep_observer=(sweep_observer!))
         isdone && break
     end
     return state
 end
-
