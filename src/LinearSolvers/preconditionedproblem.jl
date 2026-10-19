@@ -47,7 +47,9 @@ function _itensor_map(P::AbstractProjMPO)
     return itensor_map
 end
 
-ITensors.swapprime(tens::OneITensor, args::Vararg{Any}) = tens
+# swapprime that also accepts the OneITensor placeholders of an empty environment, which have no indices
+_swapprime(tens::ITensor, args...) = swapprime(tens, args...)
+_swapprime(tens::OneITensor, args...) = tens
 
 function ITensors.contract(P::ReducedFactorizedPreconditioner, v::ITensor)::ITensor
     Glv = contract(P.reduced_op, v)
@@ -66,7 +68,7 @@ function ITensors.contract(P::ReducedFactorizedPreconditioner)::ITensor
     contractedGL = contract(P.reduced_op)
     transpose_itensor_map = _itensor_map(P.reduced_op)
 
-    transpose_itensor_map = [swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
+    transpose_itensor_map = [_swapprime(tensor, 0, 2) for tensor in transpose_itensor_map]
 
     if dim(first(transpose_itensor_map)) == 1
         reverse!(transpose_itensor_map)
