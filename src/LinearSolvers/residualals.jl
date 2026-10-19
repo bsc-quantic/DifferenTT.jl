@@ -7,8 +7,8 @@ Base.@kwdef struct ResidualALS <: AbstractDMRGSolver
     sweep_kwargs::SweepingArgs = SweepingArgs()
     updater_kwargs::LocalUpdaterArgs = LocalUpdaterArgs()
     updater::AbstractUpdater = KrylovUpdater()
-    residual_tol::Real = 1e-12
-    residual_damp::Real = 1.1
+    residual_tol::Float64 = 1e-12
+    residual_damp::Float64 = 1.1
 end
 
 function linearsolve(solver::ResidualALS, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)

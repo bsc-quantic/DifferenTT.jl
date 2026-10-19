@@ -73,9 +73,7 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, x0::Union{MPS,Nothing}; k
     )
 
     x, info = KrylovKit.linsolve(A, b, init, alg)
-    if !isnothing(merged_kwargs.numiter_store)
-        merged_kwargs.numiter_store[] = info.numiter
-    end
+    record_global_krylov_info!(merged_kwargs.numiter_store, merged_kwargs.converged_store, info)
     return x
 end
 
@@ -95,9 +93,7 @@ function linearsolve(solver::GlobalCG, A::MPO, b::MPS, M⁻¹::AbstractPrecondit
     )
 
     x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
-    if !isnothing(merged_kwargs.numiter_store)
-        merged_kwargs.numiter_store[] = info.numiter
-    end
+    record_global_krylov_info!(merged_kwargs.numiter_store, merged_kwargs.converged_store, info)
     return x
 end
 
@@ -145,9 +141,7 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS,Nothing}
     )
 
     x, info = KrylovKit.linsolve(A, b, init, alg)
-    if !isnothing(merged_kwargs.numiter_store)
-        merged_kwargs.numiter_store[] = info.numiter
-    end
+    record_global_krylov_info!(merged_kwargs.numiter_store, merged_kwargs.converged_store, info)
     return x
 end
 
@@ -170,9 +164,7 @@ function linearsolve(
     )
 
     x, info = KrylovKit.linsolve(A, b, init, M⁻¹, alg)
-    if !isnothing(merged_kwargs.numiter_store)
-        merged_kwargs.numiter_store[] = info.numiter
-    end
+    record_global_krylov_info!(merged_kwargs.numiter_store, merged_kwargs.converged_store, info)
     return x
 end
 

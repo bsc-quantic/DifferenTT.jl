@@ -424,7 +424,7 @@ sufficient for the zero fields the pipeline builds explicitly, unlike a full `no
 iszero_tt(M::AbstractMPS) = any(t -> iszero(norm(t)), M)
 
 # Number of times `tt_mul` had to fall back from the randomized cross to the direct product.
-const TT_MUL_FALLBACKS = Ref(0)
+const TT_MUL_FALLBACKS = Threads.Atomic{Int}(0)
 
 """
     tt_mul_fallbacks()
@@ -686,7 +686,7 @@ function tt_mul(
     # otherwise a NaN from an inverted tiny pivot propagates into the fields silently.
     if isnothing(G) || !allfinite(G)
         isnothing(G) || @debug "RSI tt_mul returned a non-finite result; using slow tt_mul"
-        TT_MUL_FALLBACKS[] += 1
+        Threads.atomic_add!(TT_MUL_FALLBACKS, 1)
         return _direct_tt_mul(mps1, mps2; cutoff=cutoff, maxdim=maxdim)
     end
 

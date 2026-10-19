@@ -33,3 +33,43 @@ end
     solver_gmres = DifferenTT.GlobalGMRES(DifferenTT.GlobalUpdaterArgs(maxiter=2, krylovdim=2))
     x_g = DifferenTT.linearsolve(solver_gmres, A, b, x0)
 end
+
+include(joinpath(@__DIR__, "..", "..", "testutils.jl"))
+using .TestUtils
+
+# The global solvers record the iteration count and the convergence flag in the optional stores, and warn when they
+# stop without converging
+@testset "Global solvers record their Krylov info" begin
+    A, sites, _, _ = tt_laplacian((4, 4))
+    b = random_mps(rng(1), sites; linkdims=2)
+    @testset "$name" for (name, make, M⁻¹) in (
+        ("GlobalCG", args -> GlobalCG(; updater_kwargs=args), nothing),
+        ("GlobalCG, preconditioned", args -> GlobalCG(; updater_kwargs=args), Preconditioner(identity_mpo(sites))),
+        ("GlobalGMRES", args -> GlobalGMRES(; updater_kwargs=args), nothing),
+        (
+            "GlobalGMRES, preconditioned",
+            args -> GlobalGMRES(; updater_kwargs=args),
+            Preconditioner(identity_mpo(sites)),
+        ),
+    )
+        solve(solver) = isnothing(M⁻¹) ? linearsolve(solver, A, b, nothing) : linearsolve(solver, A, b, M⁻¹, nothing)
+        numiter, converged = Ref(-1), Ref(false)
+        args = GlobalUpdaterArgs(;
+            ishermitian=true, isposdef=true, rtol=1e-10, cutoff=1e-14, numiter_store=numiter, converged_store=converged
+        )
+        x = solve(make(args))
+        @test converged[]
+        @test numiter[] > 0
+        @test relres(A, x, b) < 1e-7
+
+        stalled = GlobalUpdaterArgs(;
+            ishermitian=true, isposdef=true, rtol=1e-14, maxiter=1, krylovdim=2, converged_store=converged
+        )
+        @test_logs (:warn, r"without converging") match_mode=:any solve(make(stalled))
+        @test !converged[]
+
+        @test_throws ArgumentError solve(
+            make(GlobalUpdaterArgs(; ishermitian=true, isposdef=true, numiter_store=1, maxiter=2))
+        )
+    end
+end
