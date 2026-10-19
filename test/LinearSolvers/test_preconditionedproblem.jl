@@ -113,3 +113,62 @@ using LinearAlgebra
         @test norm(noprime(out_dense_applied) - out_product2) ≈ 0.0 atol=1e-12
     end
 end
+
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
+# The local preconditioners against their definitions (Sec. 4 of Torrente et al.): with U the basis of the projection
+# built from the other tensors of the state, a Preconditioner applies Uᵀ M⁻¹ U, and a FactorizedPreconditioner the
+# two-layer (UᵀGᵀU)(UᵀGU) of Fig. 8, which is not Uᵀ GᵀG U
+@testset "Local preconditioners against the dense projections" begin
+    sites = siteinds(2, 4)
+    A = MPO(sites, "Id")
+    b = random_mps(rng(1), sites; linkdims=2)
+    x = random_mps(rng(2), sites; linkdims=3)
+    M = random_mpo(rng(3), sites) + random_mpo(rng(4), sites)
+    Mfull = prod(M)
+
+    # U v and Uᵀ w for the 2-site projection at sites 2 and 3
+    embed(v) = x[1] * v * x[4]
+    project(w) = w * x[1] * x[4]
+    apply_full(Op, v) = project(noprime(Op * embed(v)))
+    v = random_itensor(rng(5), inds(x[2] * x[3]))
+
+    P = DifferenTT.initialize_reducedprecondlinearproblem(A, b, Preconditioner(M))
+    ITensorMPS.position!(P, x, 2)
+    @test ITensorMPS.product(P.preconditioner, v) ≈ apply_full(Mfull, v) rtol = 1e-12
+
+    F = DifferenTT.initialize_reducedprecondlinearproblem(A, b, FactorizedPreconditioner(M))
+    ITensorMPS.position!(F, x, 2)
+    two_layer = apply_full(swapprime(Mfull, 0, 1), apply_full(Mfull, v))
+    @test ITensorMPS.product(F.preconditioner, v) ≈ two_layer rtol = 1e-12
+    # The dense local factorized preconditioner is the same operator
+    @test noprime(ITensors.contract(F.preconditioner) * v) ≈ two_layer rtol = 1e-12
+    # It differs from the projection of the full GᵀG, since UUᵀ ≠ I in between
+    @test !isapprox(two_layer, project(noprime(swapprime(Mfull, 0, 1) * noprime(Mfull * embed(v)))); rtol=1e-3)
+end
+
+@testset "makeL!, makeR! and copy of the preconditioned problems" begin
+    sites = siteinds(2, 4)
+    A = MPO(sites, "Id")
+    b = random_mps(rng(1), sites; linkdims=2)
+    x = random_mps(rng(2), sites; linkdims=3)
+    M = random_mpo(rng(3), sites)
+    for P in (Preconditioner(M), FactorizedPreconditioner(M))
+        problem = DifferenTT.initialize_reducedprecondlinearproblem(A, b, P)
+        ITensorMPS.makeL!(problem, x, 2)
+        ITensorMPS.makeR!(problem, x, 3)
+        @test problem.linear_problem.reduced_operator.lpos == 2
+        @test problem.preconditioner.reduced_op.lpos == 2
+        @test problem.linear_problem.reduced_operator.rpos == 3
+        @test problem.preconditioner.reduced_op.rpos == 3
+        copied = copy(problem)
+        @test copied isa typeof(problem)
+        @test copied.preconditioner !== problem.preconditioner
+
+        P_copy = copy(P)
+        @test P_copy isa typeof(P)
+        @test P_copy.operator !== P.operator
+        @test todense(P_copy.operator) == todense(P.operator)
+    end
+end
