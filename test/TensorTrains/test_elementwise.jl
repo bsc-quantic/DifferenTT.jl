@@ -207,12 +207,33 @@ using StableRNGs
             end
         @test_broken all(succeeds, 1:10)
 
-        # Known issue (pre-existing, reported in WP2): nsite = 3 fails in the finalizer (`only(sites[v])` on an Index)
-        @test_broken try
-            elementwise_function(x -> inv(sqrt(x)), P, true; nsite=3, cutoff=1e-12, rng=StableRNG(1)) isa MPS
-        catch
-            false
+        # Regression test: nsite > 2 failed in the finalizer (`only(sites[v])` on an Index), here and in _rsi_tt_mul
+        for nsite in (3, 4)
+            F = elementwise_function(x -> inv(sqrt(x)), P, true; nsite, cutoff=1e-12, rng=StableRNG(1))
+            @test norm(contract_mps(F) - inv.(sqrt.(A))) <= 1e-8 * norm(inv.(sqrt.(A)))
+            Q2 = random_mps(StableRNG(3), qs; linkdims=3)
+            G = DifferenTT._rsi_tt_mul(P, Q2; nsite, rng=StableRNG(2))
+            @test contract_mps(G) ≈ A .* contract_mps(Q2)
         end
+    end
+
+    # Regression test: with fewer sites than `nsite` (e.g. a single site) the sweep did not run, and both functions
+    # returned their (first) input unchanged
+    @testset "MPS shorter than one region" begin
+        s1 = siteinds(3, 1)
+        x = MPS([ITensor([1.0, 4.0, 9.0], s1[1])])
+        @test contract_mps(elementwise_function(sqrt, x)) ≈ [1.0, 2.0, 3.0]
+        DifferenTT.reset_tt_mul_fallbacks!()
+        @test contract_mps(tt_mul(x, x)) ≈ [1.0, 16.0, 81.0]
+        @test DifferenTT.tt_mul_fallbacks() == 0
+        qs2 = siteinds("Qubit", 2)
+        P2 = random_mps(StableRNG(1), qs2; linkdims=2)
+        Q2 = random_mps(StableRNG(2), qs2; linkdims=2)
+        for i in 1:2
+            P2[i] = ITensor(abs.(array(P2[i])) .+ 0.1, inds(P2[i]))
+        end
+        @test contract_mps(elementwise_function(sqrt, P2; nsite=3)) ≈ sqrt.(contract_mps(P2))
+        @test contract_mps(DifferenTT._rsi_tt_mul(P2, Q2; nsite=3)) ≈ contract_mps(P2) .* contract_mps(Q2)
     end
 
     @testset "elementwise_function" begin

@@ -572,6 +572,8 @@ function _rsi_tt_mul(
 
     N = length(mps1)
     sites = siteinds(mps1)
+    # With fewer sites than one region, the sweep below would not run; the full tensors are small, so multiply them
+    N < nsite && return MPS(hadamard_product(prod(mps1), prod(mps2)), sites)
 
     max_χ = max(maxlinkdim(mps1), maxlinkdim(mps2), target_rank)
     nsketch = oversample+max_χ
@@ -620,7 +622,7 @@ function _rsi_tt_mul(
         # Some finalizer code
         if last(region) == N
             for v in region[2:(end-1)]
-                row_inds = [x, only(sites[v])]
+                row_inds = [x, sites[v]]
                 R, X, err = interpolative(R, row_inds, v; cutoff=pivot_cutoff(R, pivot_rtol))
                 x = commonind(X, R)
                 push!(ranks, dim(x))
@@ -819,6 +821,8 @@ function elementwise_function(
 
     N = length(mps1)
     sites = siteinds(mps1)
+    # With fewer sites than one region, the sweep below would not run; the full tensor is small, so map it directly
+    N < nsite && return MPS(map(func, prod(mps1)), sites; maxdim)
 
     max_χ = maxlinkdim(mps1)
     nsketch = oversample+max_χ
@@ -862,7 +866,7 @@ function elementwise_function(
         # Some finalizer code
         if last(region) == N
             for v in region[2:(end-1)]
-                row_inds = [x, only(sites[v])]
+                row_inds = [x, sites[v]]
                 R, X, err = interpolative(R, row_inds, v; maxdim, cutoff)
                 x = commonind(X, R)
                 push!(ranks, dim(x))
