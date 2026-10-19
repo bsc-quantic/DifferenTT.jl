@@ -102,8 +102,8 @@ The value of k is determined dynamically such that `k <= maxdim`
 and `abs(d[k]) < cutoff`.
 """
 function prrldu(M_::Matrix; cutoff::Real=0.0, maxdim::Int=typemax(Int), mindim::Int=1)
-    @assert maxdim > 0
-    @assert mindim > 0
+    maxdim > 0 || throw(ArgumentError("`maxdim` must be positive"))
+    mindim > 0 || throw(ArgumentError("`mindim` must be positive"))
     mindim = min(maxdim, mindim)
     Elt = eltype(M_)
     M = copy(M_)
@@ -480,8 +480,8 @@ Exact up to that compression, but `O(χ1^3 χ2^3)`, so roughly 10x slower than t
 of [`_rsi_tt_mul`](@ref). It is the fallback of [`tt_mul`](@ref).
 """
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert siteinds(mps1) == siteinds(mps2) "Site indices between the two MPS must match"
-    @assert backend_type(mps1) == backend_type(mps2) "Array backend mismatch between multiplied MPSs"
+    siteinds(mps1) == siteinds(mps2) || throw(ArgumentError("Site indices between the two MPS must match"))
+    backend_type(mps1) == backend_type(mps2) || throw(ArgumentError("Array backend mismatch between multiplied MPSs"))
 
     array_type = backend_type(mps1)
 
@@ -676,8 +676,10 @@ function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax
 end
 
 function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert siteinds(mpo1; plev=0) == siteinds(mpo2; plev=0) && siteinds(mpo1; plev=1) == siteinds(mpo2; plev=1) "Site indices between the two MPO must match"
-    @assert backend_type(mpo1) == backend_type(mpo2) "Array backend mismatch between multiplied MPSs"
+    (siteinds(mpo1; plev=0) == siteinds(mpo2; plev=0) && siteinds(mpo1; plev=1) == siteinds(mpo2; plev=1)) ||
+        throw(ArgumentError("Site indices between the two MPO must match"))
+    backend_type(mpo1) == backend_type(mpo2) ||
+        throw(ArgumentError("Array backend mismatch between the multiplied MPOs"))
 
     array_type = backend_type(mpo1)
 
@@ -714,8 +716,9 @@ function tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax
 end
 
 function tt_mul(mps::MPS, mpo::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
-    @assert all(siteinds(mps) .== first.(siteinds(mpo; plev=0))) "Site indices between the MPS and the MPO must match"
-    @assert backend_type(mps) == backend_type(mpo) "Array backend mismatch between multiplied MPSs"
+    all(siteinds(mps) .== first.(siteinds(mpo; plev=0))) ||
+        throw(ArgumentError("Site indices between the MPS and the MPO must match"))
+    backend_type(mps) == backend_type(mpo) || throw(ArgumentError("Array backend mismatch between the MPS and the MPO"))
 
     array_type = backend_type(mps)
 

@@ -7,7 +7,7 @@ TT truncation leaves a nearly singular local tensor.
 """
 function _regularized_inv(mat::AbstractMatrix; rtol::Float64=eps(Float64))
     n = size(mat, 1)
-    @assert size(mat, 1) == size(mat, 2) "Local rank-1 tensor must be square"
+    size(mat, 1) == size(mat, 2) || throw(DimensionMismatch("Local rank-1 tensor must be square"))
     ε = rtol * max(opnorm(mat), 1.0)
     return inv(mat + ε * I(n))
 end
@@ -299,9 +299,11 @@ function sincquadrature_preconditioner(
     normalize_spectrum::Bool=true,
 ) where {N}
     d = length(A_list)
-    @assert all(size(mat, 1) == size(mat, 2) for mat in A_list) "Only square matrices/operators are currently supported"
-    @assert N == d "Number of local operators does not match architecture dimensions"
-    @assert all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) "Arch var dims fo not match matrix dimensions"
+    all(size(mat, 1) == size(mat, 2) for mat in A_list) ||
+        throw(DimensionMismatch("Only square matrices/operators are currently supported"))
+    N == d || throw(DimensionMismatch("Number of local operators does not match architecture dimensions"))
+    all(arch.var_dims[i] == size(A_list[i], 1) for i in 1:d) ||
+        throw(DimensionMismatch("Arch var dims do not match matrix dimensions"))
     h = pi / sqrt(M)
 
     # Eigenvalues of a Kronecker sum are sums of the eigenvalues of its terms
@@ -354,7 +356,8 @@ function _dd_exact_inverse_laplacian(
     bc::BoundaryConditions,
     array_type::Type{<:AbstractArray}=Array,
 )
-    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC) "Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."
+    (isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, DirichletBC)) ||
+        throw(ArgumentError("Only Dirichlet boundary conditions are supported for the exact QTT inverse Laplacian."))
 
     L = abs(arch.var_nsites[1])
 
@@ -439,7 +442,9 @@ function _dn_exact_inverse_laplacian(
     bc::BoundaryConditions,
     array_type::Type{<:AbstractArray}=Array,
 )
-    @assert isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC) "Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."
+    (isa(bc.conditions[1].left, DirichletBC) && isa(bc.conditions[1].right, NeumannBC)) || throw(
+        ArgumentError("Only Dirichlet-Neumann boundary conditions are supported for this exact QTT inverse Laplacian."),
+    )
 
     L = abs(arch.var_nsites[1])
 

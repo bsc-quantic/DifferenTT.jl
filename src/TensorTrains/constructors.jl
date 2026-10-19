@@ -104,7 +104,11 @@ end
 Construct an MPS whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
 """
 function ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
-    @assert length(site_inds) == length(bond_inds) + 1 "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds)))."
+    length(site_inds) == length(bond_inds) + 1 || throw(
+        DimensionMismatch(
+            "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds))).",
+        ),
+    )
     N = length(site_inds)
     M = MPS(N)
     N == 1 && return MPS([ITensor(1.0, site_inds[1])])
@@ -158,7 +162,11 @@ end
 Construct an MPO whose every tensor entry is 1.0, with per-bond dimensions given by `bond_dims`.
 """
 function ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_type::Type{<:AbstractArray}=Array)
-    @assert length(site_inds) == length(bond_inds) + 1 "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds)))."
+    length(site_inds) == length(bond_inds) + 1 || throw(
+        DimensionMismatch(
+            "Site indices length should be +1 longer than bond indices length, got $((length(site_inds), length(bond_inds))).",
+        ),
+    )
     N = length(site_inds)
     M = MPO(N)
     N == 1 && return MPO([ITensor(1.0, site_inds[1], site_inds[1]')])
@@ -311,8 +319,10 @@ Construct an MPS from a list of arrays, using provided site and bond indices.
 function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mps_arrays::Vector{<:AbstractArray})
     nsite = length(mps_arrays)
 
-    @assert length(site_indices) == length(mps_arrays) && length(bond_indices) == length(mps_arrays) - 1 "Index set length do not match with array set length"
-    @assert dim(bond_indices[1]) == size(mps_arrays[1], 2) == size(mps_arrays[2], 2) "bond dimension mismatch at site 1"
+    (length(site_indices) == length(mps_arrays) && length(bond_indices) == length(mps_arrays) - 1) ||
+        throw(DimensionMismatch("Index set length do not match with array set length"))
+    dim(bond_indices[1]) == size(mps_arrays[1], 2) == size(mps_arrays[2], 2) ||
+        throw(DimensionMismatch("bond dimension mismatch at site 1"))
 
     output = MPS(nsite)
 
@@ -322,7 +332,8 @@ function arrays2mps(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     output[1] = ITensor(mps_arrays[1], s, l_right)
 
     for n in 2:(nsite-1)
-        @assert dim(bond_indices[n]) == size(mps_arrays[n], 3) == size(mps_arrays[n+1], 2) "bond dimension mismatch at site $n"
+        dim(bond_indices[n]) == size(mps_arrays[n], 3) == size(mps_arrays[n+1], 2) ||
+            throw(DimensionMismatch("bond dimension mismatch at site $n"))
 
         s = site_indices[n]
         l_left = bond_indices[n-1]
@@ -376,11 +387,13 @@ Construct an MPO from a list of arrays, using provided site and bond indices.
 function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}, mpo_arrays::Vector{<:AbstractArray})
     nsite = length(mpo_arrays)
 
-    @assert length(site_indices) == length(mpo_arrays) && length(bond_indices) == length(mpo_arrays) - 1 "Index set length do not match with array set length"
+    (length(site_indices) == length(mpo_arrays) && length(bond_indices) == length(mpo_arrays) - 1) ||
+        throw(DimensionMismatch("Index set length do not match with array set length"))
 
     output = MPO(nsite)
 
-    @assert dim(bond_indices[1]) == size(mpo_arrays[1], 3) == size(mpo_arrays[2], 3) "bond dimension mismatch at site 1"
+    dim(bond_indices[1]) == size(mpo_arrays[1], 3) == size(mpo_arrays[2], 3) ||
+        throw(DimensionMismatch("bond dimension mismatch at site 1"))
 
     s_out = site_indices[1]'
     s_in = site_indices[1]
@@ -389,7 +402,8 @@ function arrays2mpo(site_indices::Vector{<:Index}, bond_indices::Vector{<:Index}
     output[1] = ITensor(mpo_arrays[1], s_out, s_in, l_right)
 
     for n in 2:(nsite-1)
-        @assert dim(bond_indices[n]) == size(mpo_arrays[n], 4) == size(mpo_arrays[n+1], 3) "bond dimension mismatch at site $n"
+        dim(bond_indices[n]) == size(mpo_arrays[n], 4) == size(mpo_arrays[n+1], 3) ||
+            throw(DimensionMismatch("bond dimension mismatch at site $n"))
         s_out = site_indices[n]'
         s_in = site_indices[n]
         l_left = bond_indices[n-1]

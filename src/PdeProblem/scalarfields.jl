@@ -43,7 +43,8 @@ function ScalarField(
 ) where {N}
     dims = variable_dims(arch)
     total_site_count = total_sites(arch)
-    @assert length(init_u) == total_site_count "Mismatch between init MPS length and arch: ($(length(init_u)) != $total_site_count)"
+    length(init_u) == total_site_count ||
+        throw(DimensionMismatch("Mismatch between init MPS length and arch: ($(length(init_u)) != $total_site_count)"))
 
     usites = siteinds(init_u)
 
@@ -82,7 +83,8 @@ end
 function ScalarField(
     usites::Vector{<:Index}, arch::Architecture, bcu::BoundaryConditions{N}, array_type::Type{<:AbstractArray}=Array
 ) where {N}
-    @assert all(site_dims(arch) .== dim.(usites)) "Site dimensions do not match with architecture properties"
+    all(site_dims(arch) .== dim.(usites)) ||
+        throw(DimensionMismatch("Site dimensions do not match with architecture properties"))
     dims = variable_dims(arch)
     u = MPS[]
     return ScalarField{N,array_type,typeof(usites),typeof(bcu),typeof(arch)}(u, usites, arch, dims, bcu, array_type)

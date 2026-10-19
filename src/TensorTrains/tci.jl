@@ -100,8 +100,12 @@ function TensorCrossInterpolation.crossinterpolate2(
     verbosity::Int=0,
     kwargs...,
 ) where {N}
-    @assert !isempty(initialpivots) "At least one initial pivot is required."
-    @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+    !isempty(initialpivots) || throw(ArgumentError("At least one initial pivot is required."))
+    all(length(pivot) == length(arch.site_map) for pivot in initialpivots) || throw(
+        DimensionMismatch(
+            "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+        ),
+    )
 
     local_dims = collect(Int, site_dims(arch))
 
@@ -143,8 +147,12 @@ function TensorCrossInterpolation.crossinterpolate1(
     verbosity::Int=0,
     kwargs...,
 ) where {N}
-    @assert !isempty(initialpivots) "At least one initial pivot is required."
-    @assert all(length(pivot) == length(arch.site_map) for pivot in initialpivots) "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+    !isempty(initialpivots) || throw(ArgumentError("At least one initial pivot is required."))
+    all(length(pivot) == length(arch.site_map) for pivot in initialpivots) || throw(
+        DimensionMismatch(
+            "Initial pivots must all have $(length(arch.site_map)) entries, got lengths $(length.(initialpivots))."
+        ),
+    )
 
     first_pivot = initialpivots[1]
     additionalpivots = initialpivots[2:end]
@@ -280,7 +288,11 @@ Evaluate an MPS at a specific physical point by converting the point to a sequen
   - `Number`: The scalar value of the MPS at the given point.
 """
 function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Architecture) where {N}
-    @assert length(mps) == length(arch.site_map) "MPS and architecture must have the same number of sites, got $(length(mps)) and $(length(arch.site_map))."
+    length(mps) == length(arch.site_map) || throw(
+        DimensionMismatch(
+            "MPS and architecture must have the same number of sites, got $(length(mps)) and $(length(arch.site_map)).",
+        ),
+    )
 
     sequence = point_sequence(point, grid, arch)
     state_vals = sequence .+ 1

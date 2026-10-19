@@ -37,9 +37,9 @@ function QTTArchitecture(
         var_map = Dict(i => i for i in 1:N)
     end
 
-    @assert length(var_map) == N "Variable map must have length $N"
-    @assert Set(keys(var_map)) == Set(1:N) "Variable map keys must be 1:$N"
-    @assert Set(values(var_map)) == Set(1:N) "Variable map values must be 1:$N"
+    length(var_map) == N || throw(ArgumentError("Variable map must have length $N"))
+    Set(keys(var_map)) == Set(1:N) || throw(ArgumentError("Variable map keys must be 1:$N"))
+    Set(values(var_map)) == Set(1:N) || throw(ArgumentError("Variable map values must be 1:$N"))
 
     total_sites = sum(abs, var_nsites)
     site_map = zeros(Int, total_sites)
@@ -103,8 +103,8 @@ struct TTArchitecture{N} <: Architecture
         if isnothing(var_map)
             var_map = Dict(i=>i for i in 1:N)
         else
-            @assert Set(keys(var_map)) == Set(1:N) "Variable map keys must be 1:$N"
-            @assert Set(values(var_map)) == Set(1:N) "Variable map values must be 1:$N"
+            Set(keys(var_map)) == Set(1:N) || throw(ArgumentError("Variable map keys must be 1:$N"))
+            Set(values(var_map)) == Set(1:N) || throw(ArgumentError("Variable map values must be 1:$N"))
         end
 
         site_map = zeros(Int, N)

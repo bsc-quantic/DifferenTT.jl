@@ -125,8 +125,8 @@ using .TestUtils
 
         wrong_arch1 = DifferenTT.TTArchitecture((4, 4, 4))
         wrong_arch2 = DifferenTT.TTArchitecture((5, 4))
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch1, sites, A_list, M)
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(wrong_arch2, sites, A_list, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(wrong_arch1, sites, A_list, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(wrong_arch2, sites, A_list, M)
 
         A3 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0]
         A4 = [2.0 -1.0 0.0; -1.0 2.0 -1.0; 0.0 -1.0 2.0]
@@ -134,8 +134,8 @@ using .TestUtils
         wrong_A_list1 = [A1, A3]
         wrong_A_list2 = [A1, A4]
 
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
-        @test_throws AssertionError DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list1, M)
+        @test_throws DimensionMismatch DifferenTT.sincquadrature_preconditioner(arch, sites, wrong_A_list2, M)
         @test_throws ArgumentError DifferenTT.sincquadrature_preconditioner(arch, sites, [-A1, -A2], M)
     end
 

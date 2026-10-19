@@ -40,9 +40,9 @@ import DifferenTT: QTTArchitecture, TTArchitecture
         @test arch_neg.site_map == [1, 1, 1, 2, 2] # Same mapping, sign used elsewhere
 
         # Errors
-        @test_throws AssertionError QTTArchitecture((2, 2), Dict(1=>1))
-        @test_throws AssertionError QTTArchitecture((2, 2), Dict(1=>1, 3=>2))
-        @test_throws AssertionError QTTArchitecture((2, 2), Dict(1=>1, 2=>3))
+        @test_throws ArgumentError QTTArchitecture((2, 2), Dict(1=>1))
+        @test_throws ArgumentError QTTArchitecture((2, 2), Dict(1=>1, 3=>2))
+        @test_throws ArgumentError QTTArchitecture((2, 2), Dict(1=>1, 2=>3))
     end
 
     @testset "TTArchitecture" begin
@@ -62,9 +62,9 @@ import DifferenTT: QTTArchitecture, TTArchitecture
         @test arch_custom.site_map == [2, 3, 1]
 
         # Errors
-        @test_throws AssertionError TTArchitecture((10, 10), Dict(1=>1))
-        @test_throws AssertionError TTArchitecture((10, 10), Dict(1=>1, 3=>2))
-        @test_throws AssertionError TTArchitecture((10, 10), Dict(1=>1, 2=>3))
+        @test_throws ArgumentError TTArchitecture((10, 10), Dict(1=>1))
+        @test_throws ArgumentError TTArchitecture((10, 10), Dict(1=>1, 3=>2))
+        @test_throws ArgumentError TTArchitecture((10, 10), Dict(1=>1, 2=>3))
     end
 
     # Regression test for B4: the export list named the misspelt sited_dim instead of site_dim

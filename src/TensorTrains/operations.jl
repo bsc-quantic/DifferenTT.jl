@@ -153,7 +153,9 @@ function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     total_len = sum(length, mpos)
     array_type = backend_type(first(mpos))
 
-    @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
+    length(site_inds) == total_len || throw(
+        DimensionMismatch("Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."),
+    )
 
     combined_tensors = ITensor[]
     current_site_offset = 0
@@ -203,7 +205,9 @@ function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     total_len = sum(length, mpss)
     array_type = backend_type(first(mpss))
 
-    @assert length(site_inds) == total_len "Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."
+    length(site_inds) == total_len || throw(
+        DimensionMismatch("Number of new site indices $(length(site_inds)) must match total MPO length ($total_len)."),
+    )
 
     combined_tensors = ITensor[]
     current_site_offset = 0
@@ -297,7 +301,8 @@ Identities are placed on all other sites.
 function ndim_operator_mpo(
     onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}
 ) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
@@ -366,7 +371,8 @@ function ndim_operator_sum_mpo(
     arch::TTArchitecture{N};
     pair_ops::Union{Nothing,Tuple{NTuple{N,AbstractMatrix},NTuple{N,AbstractMatrix}}}=nothing,
 ) where {N}
-    @assert length(site_inds) == length(arch.site_map) "Length of site_inds must match length of site_map"
+    length(site_inds) == length(arch.site_map) ||
+        throw(DimensionMismatch("Length of site_inds must match length of site_map"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
