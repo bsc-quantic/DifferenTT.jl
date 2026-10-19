@@ -2,7 +2,6 @@ module DifferenTT
 
 using Adapt
 using ITensors
-using Statistics
 using Printf
 using Random
 using ITensorMPS
@@ -117,5 +116,10 @@ export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timi
 
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity
+
+function __init__()
+    _register_plots_error_hint()
+    return nothing
+end
 
 end
