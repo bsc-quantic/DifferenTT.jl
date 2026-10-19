@@ -31,6 +31,13 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - User input is validated with `ArgumentError` or `DimensionMismatch` instead of `@assert`, so the exception types of
   invalid architectures, array sets, `tt_mul` operands, initial pivots, sinc and exact inverse-Laplacian inputs and
   field constructors change from `AssertionError`.
+- Invalid arguments that used to throw an `ErrorException` throw `ArgumentError` or `DimensionMismatch`:
+  `toeplitz_mpo` with too few sites for its stencil, `column_pick_mpo`, `row_pick_mpo` and `entry_mpo` with an index
+  outside `1:2^N` (an index above `2^N` threw a `DimensionMismatch` from `arrays2mpo`), `triang_projector_mpo` with a
+  number of combiners different from the number of sites, `TensorCrossInterpolation.optfirstpivot` when every value it
+  tries is zero, `_rsi_tt_mul` and `elementwise_function` with `nsite < 2` (`tt_mul` still falls back to the direct
+  product), `backsolveL`/`backsolveU` on a non-square matrix, and `interpolative` with prescribed `cols` for the
+  `"prrldu"` algorithm.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
   docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
@@ -90,6 +97,21 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `enable_debug_timings!` and `disable_debug_timings!` are now defined.
 - Since the paper data were produced: the forward-Euler CFL bound no longer carries a dimension factor.
 - `disable_debug_timings!` had no effect when called in the same world as `enable_debug_timings!`.
+- `tt_mul` (MPS-MPS) and `elementwise_function` returned their (first) input unchanged, with no error, for an MPS with
+  fewer sites than `nsite` (e.g. a single site); the product or map is now computed on the full tensor. Any
+  `nsite > 2` threw.
+- `site_dims(::TTArchitecture)` returned the dimensions in variable order instead of site order, so for a `var_map`
+  that permutes variables of different sizes, `siteinds(arch)` built sites of the wrong dimension (and the TCI
+  wrappers sampled with the wrong local dimensions).
+- `ndim_operator_mpo` on a `TTArchitecture` returned the identity, with no error, for an `axis` outside `1:N`; it
+  throws `ArgumentError`.
+- `ndim_operator_mpo` on a `QTTArchitecture` threw a `BoundsError` for a variable with a single site.
+- `zeros_padding` transposed the operator it pads when its tensors store the site indices as `(s, s')`. Its callers
+  (`corner_pick_mpo` and the QTT Neumann corrections) store `(s', s)`, so their operators are unchanged.
+- `upper_triang_mpo` and `lower_triang_mpo` threw a `BoundsError` on a single site, and so did `arrays2mps` and
+  `arrays2mpo`.
+- `toeplitz_mpo` accepted two sites with three coefficients but threw a `DimensionMismatch`; it now returns the
+  4 × 4 Toeplitz (or circulant) matrix.
 - `vec2mps` and `mat2mpo` scrambled the entries of the vector or matrix whenever the site dimensions were not a
   palindrome (e.g. sites of dimensions `[2, 3]`), with no error. QTT sites all have dimension 2, so their QTT uses were
   correct.
