@@ -354,7 +354,10 @@ function sincquadrature_preconditioner(
     return Preconditioner(precond_mpo)
 end
 
-# Implementation following the tt_toolbox, not the paper
+# Implementation following the QTT inverse Laplacian of TT-Toolbox (https://github.com/oseledets/TT-Toolbox, MIT
+# license, Copyright (C) 2009-2012 Ivan Oseledets, Sergey Dolgov, Vladimir Kazeev, Thomas Mach, Olga Lebedeva, Dmitry
+# Savostyanov, Pavel Zhlobich, Le Song) rather than the formulas of Kazeev & Khoromskij (2012); see
+# THIRD_PARTY_NOTICES.md.
 function _dd_exact_inverse_laplacian(
     sites::Vector{<:Index},
     arch::QTTArchitecture{1},

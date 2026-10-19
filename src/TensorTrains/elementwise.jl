@@ -100,6 +100,10 @@ norm(L[pr,:]*Diagonal(d)*U[:,pc]-M,Inf) <= abs(d[k])
 where k=length(d). (Note that this inequality uses the infinity norm.)
 The value of k is determined dynamically such that `k <= maxdim`
 and `abs(d[k]) < cutoff`.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function prrldu(M_::Matrix; cutoff::Real=0.0, maxdim::Int=typemax(Int), mindim::Int=1)
     maxdim > 0 || throw(ArgumentError("`maxdim` must be positive"))
@@ -174,6 +178,10 @@ the array `piv_cols`. The number of columns of
 C is controlled by the approximate (SVD) rank of M,
 which is controlled by the parameters `cutoff`
 and `maxdim`.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(::Algorithm"prrldu", M::Matrix; cols=nothing, kws...)
     if !isnothing(cols)
@@ -238,6 +246,10 @@ Optional keyword arguments:
   - mindim::Int - minimum number of columns to keep in factorization
   - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
   - tags="Link" - tags to use for the Index connecting `C` to `Z`
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(M::Matrix; algorithm="prrldu", kws...)
     return interpolative(Algorithm(algorithm), M; kws...)
@@ -264,6 +276,10 @@ Optional keyword arguments:
   - mindim::Int - minimum number of columns to keep in factorization
   - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
   - tags="Link" - tags to use for the Index connecting `C` to `Z`
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Nothing,Index}=nothing, tags="Link", kws...)
     cols = nothing
@@ -535,6 +551,10 @@ raw rank stays bounded by the sketch size anyway.
     decomposed (see [`pivot_cutoff`](@ref)).
   - `nsite::Int=2`: number of sites decomposed at a time.
   - `rng::AbstractRNG=Random.default_rng()`: random number generator of the Gaussian sketches.
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
 """
 function _rsi_tt_mul(
     mps1::MPS,
@@ -662,6 +682,10 @@ non-finite result; such fallbacks are counted by [`tt_mul_fallbacks`](@ref).
 
   - `MPS` for MPS-MPS products.
   - `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
 """
 function tt_mul(
     mps1::MPS,
@@ -767,6 +791,17 @@ function tt_mul(mpo::MPO, mps::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(I
     return tt_mul(mps, mpo; cutoff=cutoff, maxdim=maxdim)
 end
 
+"""
+    elementwise_function(func::Function, mps::MPS, positive_domain::Bool=true; cutoff=0.0, nsite=2, maxdim=typemax(Int), oversample=15, outputlevel=0, rng=Random.default_rng()) -> MPS
+
+Return an MPS approximation of the element-wise map `func.(mps)`, built by a randomized sketch of `mps` followed by a
+cross (interpolative decomposition) of the mapped sketch. With `positive_domain = true` the sketches have uniform,
+positive entries, so that a sketch of an entrywise-positive MPS stays in the domain of `func` (e.g. `x -> x^(-1/2)`).
+
+The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+Our implementation started from a rough implementation that its authors shared with us by private communication, and
+that they agreed to have published.
+"""
 function elementwise_function(
     func::Function,
     mps::MPS,
