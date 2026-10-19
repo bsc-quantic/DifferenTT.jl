@@ -375,17 +375,18 @@ function sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.
 end
 
 """
-    suffix_sketches(M::AbstractMPS, k::Index; rng=Random.default_rng())
+    suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng=Random.default_rng())
 
 Random sketches of every suffix of `M`, accumulated in a single right-to-left pass.
 
-`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds,
-and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
-`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same (Gaussian) sketch
-distribution. The cross in `_rsi_tt_mul` only ever rewrites tensors at or to the left of its
-current region, so the suffixes it needs are always the ones of the untouched input MPS.
+`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds (or
+`positive_sketch(M, v:length(M), k)` with `positive = true`, which draws uniform, positive sketch vectors instead of
+Gaussian ones), and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
+`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same sketch distribution for every suffix.
+The crosses of `_rsi_tt_mul` and `elementwise_function` only ever rewrite tensors at or to the left of their current
+region, so the suffixes they need are always the ones of the untouched input MPS.
 """
-function suffix_sketches(M::AbstractMPS, k::Index; rng::AbstractRNG=Random.default_rng())
+function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::AbstractRNG=Random.default_rng())
     N = length(M)
     sites = siteinds(M)
     S = Vector{ITensor}(undef, N + 1)
@@ -395,7 +396,8 @@ function suffix_sketches(M::AbstractMPS, k::Index; rng::AbstractRNG=Random.defau
     for v in N:-1:1
         Sv = ITensor()
         for p in 1:dim(k)
-            cols[p] = random_itensor(rng, sites[v]) * M[v] * cols[p]
+            r = positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v])
+            cols[p] = r * M[v] * cols[p]
             Sv += cols[p] * onehot(k => p)
         end
         S[v] = Sv
@@ -793,6 +795,8 @@ end
 Return an MPS approximation of the element-wise map `func.(mps)`, built by a randomized sketch of `mps` followed by a
 cross (interpolative decomposition) of the mapped sketch. With `positive_domain = true` the sketches have uniform,
 positive entries, so that a sketch of an entrywise-positive MPS stays in the domain of `func` (e.g. `x -> x^(-1/2)`).
+The sketches of every suffix of `mps` are built once, in one right-to-left pass, as in [`_rsi_tt_mul`](@ref), so
+sketching costs ``\\mathcal{O}(N k \\chi^2)`` for a sketch of `k = oversample + χ` columns.
 
 The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
@@ -825,6 +829,12 @@ function elementwise_function(
     # TODO Check if the QR inverse fails due to using Uniformly sampled sketches instead of Gaussian sketches
     use_pinv = positive_domain
 
+    # One sketch index for the whole sweep, and one right-to-left pass to build every suffix sketch of the input, as
+    # in `_rsi_tt_mul`: the sweep only rewrites sites at or to the left of `last(region)`, so the suffix
+    # `last(region)+1:N` it sketches at every bond is always a suffix of the untouched input.
+    k = Index(nsketch, "sketch")
+    sketches = suffix_sketches(mps1, k; positive=positive_domain, rng)
+
     ranks = Int[]
     for j in 1:(N-nsite+1)
         region = j:(j+nsite-1)
@@ -832,13 +842,7 @@ function elementwise_function(
         v_second = region[2]
         s_first = sites[v_first]
 
-        k = Index(nsketch, "sketch,j=$j")
-
-        S1 = if positive_domain
-            positive_sketch(mps1, (last(region)+1):N, k; rng)
-        else
-            sketch(mps1, (last(region)+1):N, k; rng)
-        end
+        S1 = sketches[last(region)+1]
         T1 = prod([mps1[v] for v in region])
 
         #
