@@ -1,6 +1,7 @@
 using DifferenTT
 using Test
 using Logging
+using StableRNGs
 using ITensors
 using ITensorMPS
 using LinearAlgebra
@@ -101,16 +102,22 @@ using .TestUtils
         solver = ALS(sweep_kwargs=DifferenTT.SweepingArgs(nsweeps=1, maxdim=2, cutoff=1e-8))
         D_kwargs = (; maxdim=2, cutoff=1e-8)
 
-        M⁻¹ = fai_preconditioner(A, 0.5, solver, D_kwargs)
+        M⁻¹ = fai_preconditioner(A; μ=0.5, solver, D_cutoff=1e-8, D_maxdim=2)
         @test M⁻¹ isa FactorizedPreconditioner
         @test M⁻¹.operator isa MPO
         @test length(M⁻¹.operator) == n
 
         # The residual of the projected system is computed and logged only on request
-        @test_logs min_level=Logging.Info fai_preconditioner(A, 0.5, solver, D_kwargs)
+        @test_logs min_level=Logging.Info fai_preconditioner(A; μ=0.5, solver)
         @test_logs (:info, r"rel residual") min_level=Logging.Info fai_preconditioner(
-            A, 0.5, solver, D_kwargs; compute_residual=true
+            A; μ=0.5, solver, compute_residual=true
         )
+
+        # The positional form is deprecated and forwards to the keyword form, with D_kwargs mapped to D_cutoff,
+        # D_maxdim and D_oversample
+        M_old = @test_deprecated fai_preconditioner(A, 0.5, solver, D_kwargs; rng=StableRNG(1))
+        M_new = fai_preconditioner(A; μ=0.5, solver, D_cutoff=1e-8, D_maxdim=2, rng=StableRNG(1))
+        @test contract_mpo(M_old.operator) == contract_mpo(M_new.operator)
     end
 
     @testset "SincQuadraturePreconditioner construction" begin

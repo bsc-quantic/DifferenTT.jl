@@ -11,6 +11,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `elementwise_function`, `sketch`, `positive_sketch`, `suffix_sketches`, `fai_preconditioner`, `fai_dg`,
   `linsolve_preconditioner`, `TensorCrossInterpolation.optfirstpivot` and `_tci_random_pivot`;
   `RandomSPSDexpansion(; rng)` and `RandomLTexpansion(; rng)` store it. Without `rng` the results are unchanged.
+- Keyword form `fai_preconditioner(A; μ, solver, totalmaxdim=5, D_cutoff=1e-15, D_maxdim=typemax(Int),
+  D_oversample=10, preconditioning=false, residual_tol=nothing, compute_residual=false, rng, kwargs...)`, with the
+  defaults the positional form used. `fai_dg` stays internal.
 - `fai_dg(...; compute_residual=false)`: see Changed.
 - `GlobalUpdaterArgs(; converged_store)`: a `Ref{Bool}` that receives whether the global Krylov solve converged.
 - `enable_debug_timings!()` and `disable_debug_timings!()` (they were exported but undefined).
@@ -81,7 +84,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
 
 ### Deprecated
 
-- None yet.
+- The positional `fai_preconditioner(A, μ, solver, D_kwargs; kwargs...)`: use the keyword form, with the `cutoff`,
+  `maxdim` and `oversample` of `D_kwargs` passed as `D_cutoff`, `D_maxdim` and `D_oversample`. The positional form
+  forwards to it with a deprecation warning, and gives the same result.
 
 ### Known limitations
 

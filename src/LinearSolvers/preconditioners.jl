@@ -153,6 +153,13 @@ function linsolve_preconditioner(
 end
 
 # TODO Test also densitymatrix summing and zipup contraction -> Pass also maxdim and cutoff if needed
+"""
+    fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning=false, residual_tol=nothing, compute_residual=false, rng=Random.default_rng(), kwargs...) -> (G̃_L::MPO, D::MPO)
+
+Internal. Return the lower-triangular approximate inverse ``\\tilde{G}_L`` (the solution of Eq. (22)) and the diagonal
+rescaling ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` that [`fai_preconditioner`](@ref) combines into ``G_L``.
+`D_kwargs` may hold the `cutoff`, `maxdim` and `oversample` of the element-wise map that computes ``D``.
+"""
 function fai_dg(
     operator::MPO,
     μ::Real,
@@ -255,22 +262,94 @@ function fai_dg(
     return unscaledG, MPO([D_mps...])
 end
 
+"""
+    fai_preconditioner(A::MPO; μ::Real, solver::AbstractLinearSolver, totalmaxdim::Int=5, D_cutoff::Real=1e-15, D_maxdim::Int=typemax(Int), D_oversample::Int=10, preconditioning::Bool=false, residual_tol=nothing, compute_residual::Bool=false, rng::AbstractRNG=Random.default_rng(), kwargs...) -> FactorizedPreconditioner
+
+Build a factorized approximate inverse (FAI) preconditioner ``M^{-1} = G_L^\\top G_L \\approx A^{-1}`` of the SPD
+operator `A` in the TT format.
+
+Truncated TT approximate inverses control the norm error but not the sign of their eigenvalues, so they can become
+indefinite and break CG (Sec. 3 and Fig. 3 of Torrente et al., *Factorized approximate inverse preconditioners in the
+tensor train format*). We therefore build the inverse in factorized form, which is positive semidefinite by
+construction, and definite whenever ``G_L`` is non-singular. To do this, we first compute the lower-triangular
+approximate inverse ``\\tilde{G}_L`` by solving the projected system of Eq. (22) with `solver`, and then set
+``G_L = D \\tilde{G}_L``, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is evaluated element-wise by
+the randomized sketch of [`elementwise_function`](@ref) (Sec. 3.2). Note that this shortcut for ``D`` holds only if
+``\\tilde{G}_L`` solves its system exactly, which an approximate solver does not guarantee (Lemma 1). The cost is
+dominated by the solve for ``\\tilde{G}_L``, whose sites have dimension ``d^2``.
+
+# Arguments
+
+  - `A::MPO`: SPD operator, with site indices at prime levels 0 (input) and 1 (output).
+
+# Keywords
+
+  - `μ::Real`: weight of the complement of the lower-triangular mask in the projected operator of Eq. (22), e.g.
+    `1e7`.
+  - `solver::AbstractLinearSolver`: solver of the projected system for ``\\tilde{G}_L`` (e.g. `ALS` or
+    `ResidualALS`).
+  - `totalmaxdim::Int=5`: maximum bond dimension of ``G_L = D \\tilde{G}_L``.
+  - `D_cutoff::Real=1e-15`, `D_maxdim::Int=typemax(Int)`, `D_oversample::Int=10`: truncation cutoff, maximum bond
+    dimension and sketch oversampling of the element-wise map that computes ``D``.
+  - `preconditioning::Bool=false`: precondition the solve for ``\\tilde{G}_L`` with [`rank1_preconditioner`](@ref).
+  - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps of `solver` once the relative residual of
+    the projected system is below it (through a [`ResidualObserver`](@ref)).
+  - `compute_residual::Bool=false`: compute and log the relative residual of the projected system after the solve.
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the sketches of ``D``.
+  - `kwargs...`: passed to [`linearsolve`](@ref) for the projected system.
+
+# Returns
+
+  - `FactorizedPreconditioner`: wraps ``G_L``; pass it to [`linearsolve`](@ref).
+
+# Examples
+
+```julia
+A, sites = …
+M⁻¹ = fai_preconditioner(A; μ=1e7, solver=ALS(), totalmaxdim=8)
+x = linearsolve(ResidualALS(), A, b, M⁻¹, nothing)
+```
+
+See also [`FactorizedPreconditioner`](@ref), [`Preconditioner`](@ref).
+"""
 function fai_preconditioner(
-    operator::MPO,
+    operator::MPO;
     μ::Real,
-    g_solver::AbstractLinearSolver,
-    D_kwargs;
+    solver::AbstractLinearSolver,
     totalmaxdim::Int=5,
+    D_cutoff::Real=1e-15,
+    D_maxdim::Int=typemax(Int),
+    D_oversample::Int=10,
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    compute_residual::Bool=false,
     rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
+    D_kwargs = (; cutoff=D_cutoff, maxdim=D_maxdim, oversample=D_oversample)
     unscaledG, D = fai_dg(
-        operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, rng=rng, kwargs...
+        operator, μ, solver, D_kwargs; preconditioning, residual_tol, compute_residual, rng, kwargs...
     )
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
+end
+
+# Deprecated positional form, kept so that existing scripts keep running
+function fai_preconditioner(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; kwargs...)
+    Base.depwarn(
+        "`fai_preconditioner(A, μ, solver, D_kwargs; kwargs...)` is deprecated, use " *
+        "`fai_preconditioner(A; μ, solver, D_cutoff, D_maxdim, D_oversample, kwargs...)` instead.",
+        :fai_preconditioner,
+    )
+    return fai_preconditioner(
+        operator;
+        μ=μ,
+        solver=g_solver,
+        D_cutoff=get(D_kwargs, :cutoff, 1e-15),
+        D_maxdim=get(D_kwargs, :maxdim, typemax(Int)),
+        D_oversample=get(D_kwargs, :oversample, 10),
+        kwargs...,
+    )
 end
 
 """

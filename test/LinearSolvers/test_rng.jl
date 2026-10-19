@@ -12,7 +12,7 @@ using .TestUtils
     A, sites, _, _ = tt_laplacian((4, 4))
     als = ALS(; sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=4, cutoff=1e-12))
 
-    fai(seed) = fai_preconditioner(A, 1e7, als, (; cutoff=1e-15); totalmaxdim=4, rng=StableRNG(seed))
+    fai(seed) = fai_preconditioner(A; μ=1e7, solver=als, totalmaxdim=4, rng=StableRNG(seed))
     @test todense(fai(1).operator) == todense(fai(1).operator)
 
     lsp(seed) = linsolve_preconditioner(A, als; rng=StableRNG(seed))
