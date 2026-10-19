@@ -17,12 +17,13 @@ abstract type AbstractLinearSolver end
 Supertype of the solvers that proceed in an alternating fashion along the tensor train: [`ALS`](@ref),
 [`ResidualALS`](@ref), [`AMEn`](@ref) and [`ExpandedALS`](@ref).
 
-At each step, we use the current solution guess, orthogonalized so that its orthogonality center lies on the sites
-being optimized, to project the global system onto a local problem ``A_{\\text{loc}} \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}`` on one or two sites (Sec. 2.1, Fig. 2 of the paper). The local problem is solved by an
-[`AbstractUpdater`](@ref), and the TT format is then recovered by an SVD that also sets the new bond dimension. Since
-the local solve is exact within the current subspace, its convergence is not affected by truncation errors, which is
-what makes these solvers robust for CG. Every concrete subtype has the fields `sweep_kwargs::SweepingArgs`,
-`updater_kwargs::LocalUpdaterArgs` and `updater::AbstractUpdater`.
+At each step, we use the current solution guess, orthogonalized so that its orthogonality center lies on the sites being
+optimized, to project the global system onto a local problem
+``A_{\\text{loc}} \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}`` on one or two sites (Sec. 2.1, Fig. 2 of the
+paper). The local problem is solved by an [`AbstractUpdater`](@ref), and the TT format is then recovered by an SVD that
+also sets the new bond dimension. Since the local solve is exact within the current subspace, its convergence is not
+affected by truncation errors, which is what makes these solvers robust for CG. Every concrete subtype has the fields
+`sweep_kwargs::SweepingArgs`, `updater_kwargs::LocalUpdaterArgs` and `updater::AbstractUpdater`.
 """
 abstract type AbstractDMRGSolver <: AbstractLinearSolver end
 
@@ -41,7 +42,8 @@ abstract type AbstractGlobalSolver <: AbstractLinearSolver end
 
 """
     linearsolve(solver::AbstractLinearSolver, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...) -> MPS
-    linearsolve(solver::AbstractLinearSolver, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...) -> MPS
+    linearsolve(solver::AbstractLinearSolver, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing};
+                kwargs...) -> MPS
 
 Solve ``A \\mathbf{x} = \\mathbf{b}`` with `solver`, optionally preconditioned by `M⁻¹`, starting from `x0`.
 
@@ -125,7 +127,8 @@ solve, or recorded by `spectrum_store`.
   - `spectrum_store=nothing`: a [`KrylovSpectrumStats`](@ref) that records the sign-aware spectra of the local
     operator and preconditioner.
   - `spd_tol::Union{Nothing,Float64}=nothing`: if set, a local ``A_{\\text{loc}}`` or
-    ``M^{-1}_{\\text{loc}} A_{\\text{loc}}`` with an eigenvalue whose real part is below ``-\\texttt{spd\\_tol} \\max|\\lambda|`` throws a [`NotSPDError`](@ref). It requires CG.
+    ``M^{-1}_{\\text{loc}} A_{\\text{loc}}`` with an eigenvalue whose real part is below
+    ``-\\texttt{spd\\_tol} \\max|\\lambda|`` throws a [`NotSPDError`](@ref). It requires CG.
 
 The condition numbers are ``\\kappa = \\max|\\lambda| / \\min|\\lambda|`` of the dense local operator, which is the
 spectral condition number that bounds the convergence of CG and PCG. For GMRES it is only a heuristic indicator,
@@ -205,7 +208,9 @@ are the price paid for running a Krylov method on the whole tensor train (see [`
     `true`; [`GlobalGMRES`](@ref) does not read them.
   - `krylovdim::Int=30`: Krylov dimension of TT-GMRES before a restart (not read by TT-CG).
   - `maxiter::Int=100`: maximum number of TT-CG iterations, or of TT-GMRES restart cycles.
-  - `rtol::Float64=1e-8`: relative tolerance; the solve stops at ``\\|\\mathbf{b} - A\\mathbf{x}\\| \\le \\texttt{rtol}\\, \\|\\mathbf{b}\\|``, where the residual is the truncated one of the recurrence.
+  - `rtol::Float64=1e-8`: relative tolerance; the solve stops at
+    ``\\|\\mathbf{b} - A\\mathbf{x}\\| \\le \\texttt{rtol}\\, \\|\\mathbf{b}\\|``, where the residual is the truncated
+    one of the recurrence.
   - `verbosity::Int=0`: KrylovKit verbosity levels (1: warn on no convergence, 2: start and end, 3: every iteration).
   - `maxdim::Int=typemax(Int)`, `cutoff::Float64=1e-8`: truncation of the operator applications and of the updates of
     ``\\mathbf{x}`` and of the residual.
@@ -395,10 +400,19 @@ Observer that stops the sweeps of a DMRG-type solver once the global relative re
 ``\\|A\\mathbf{x} - \\mathbf{b}\\| / \\|\\mathbf{b}\\|`` falls below `rtol`. Pass it as `observer!` in
 [`SweepingArgs`](@ref).
 
-The local problems are solved to their own tolerance, but nothing in the sweeps controls the global residual, so
-without an observer [`ALS`](@ref) and [`ResidualALS`](@ref) always run `nsweeps` sweeps. We evaluate the residual at
-the end of every sweep, from the expansion ``\\|A\\mathbf{x} - \\mathbf{b}\\|^2 = \\langle A\\mathbf{x}, A\\mathbf{x}\\rangle - 2\\,\\mathrm{Re} \\langle \\mathbf{b}, A\\mathbf{x}\\rangle + \\langle \\mathbf{b}, \\mathbf{b}\\rangle``, which costs three TT inner products and never forms ``A\\mathbf{x}``. Note that this expansion
-suffers from cancellation: its rounding error is of order ``\\sqrt{\\epsilon}\\, \\|\\mathbf{b}\\| \\approx 1.5 \\cdot 10^{-8} \\|\\mathbf{b}\\|``, so a tolerance below about ``10^{-8}`` is checked against rounding noise.
+The local problems are solved to their own tolerance, but nothing in the sweeps controls the global residual, so without
+an observer [`ALS`](@ref) and [`ResidualALS`](@ref) always run `nsweeps` sweeps. We evaluate the residual at the end of
+every sweep, from the expansion
+
+```math
+\\|A\\mathbf{x} - \\mathbf{b}\\|^2 = \\langle A\\mathbf{x}, A\\mathbf{x}\\rangle
+    - 2\\,\\mathrm{Re} \\langle \\mathbf{b}, A\\mathbf{x}\\rangle + \\langle \\mathbf{b}, \\mathbf{b}\\rangle,
+```
+
+which costs three TT inner products and never forms ``A\\mathbf{x}``. Note that this expansion suffers from
+cancellation: its rounding error is of order
+``\\sqrt{\\epsilon}\\, \\|\\mathbf{b}\\| \\approx 1.5 \\cdot 10^{-8} \\|\\mathbf{b}\\|``, so a tolerance below about
+``10^{-8}`` is checked against rounding noise.
 
 `A` and `b` can be left as `nothing`: the DMRG-type [`linearsolve`](@ref) methods then bind them to the operator and
 right-hand side of each call (always the unpreconditioned ones, never `M⁻¹`), so that one observer stored in
@@ -501,8 +515,9 @@ end
 """
     ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...) -> Bool
 
-Return whether the relative residual ``\\|A\\mathbf{x} - \\mathbf{b}\\| / \\|\\mathbf{b}\\|`` of `state` is below `o.rtol`
-(the absolute residual if ``\\mathbf{b} = 0``). Throws an `ArgumentError` if `o` has no operator or right-hand side.
+Return whether the relative residual ``\\|A\\mathbf{x} - \\mathbf{b}\\| / \\|\\mathbf{b}\\|`` of `state` is below
+`o.rtol` (the absolute residual if ``\\mathbf{b} = 0``). Throws an `ArgumentError` if `o` has no operator or right-hand
+side.
 """
 function ITensorMPS.checkdone!(o::ResidualObserver; state, kwargs...)
     (isnothing(o.A) || isnothing(o.b)) && throw(

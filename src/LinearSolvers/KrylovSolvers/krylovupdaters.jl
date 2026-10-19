@@ -5,9 +5,11 @@ Local solver that solves each local problem by a Krylov method, the default of e
 
 We pass the local problem to `KrylovKit.linsolve` with the fields of [`LocalUpdaterArgs`](@ref), so that KrylovKit
 selects CG when `ishermitian && isposdef` and restarted GMRES otherwise. The local operator is never formed: each
-iteration contracts it with the current local tensor, at a cost of ``\\mathcal{O}(\\chi^3 \\chi_A d^2 + \\chi^2 \\chi_A^2 d^3)`` for a 2-site problem, where ``\\chi`` and ``\\chi_A`` are the bond dimensions of the solution and
-of `A`. A preconditioned local problem is solved instead by [`preconditioned_linsolve`](@ref), which runs PCG or
-left-preconditioned GMRES with the projected preconditioner (Sec. 4 of Torrente et al.).
+iteration contracts it with the current local tensor, at a cost of
+``\\mathcal{O}(\\chi^3 \\chi_A d^2 + \\chi^2 \\chi_A^2 d^3)`` for a 2-site problem, where ``\\chi`` and ``\\chi_A`` are
+the bond dimensions of the solution and of `A`. A preconditioned local problem is solved instead by
+[`preconditioned_linsolve`](@ref), which runs PCG or left-preconditioned GMRES with the projected preconditioner (Sec. 4
+of Torrente et al.).
 
 The local diagnostics of [`LocalUpdaterArgs`](@ref) (`numiter_store`, `cond_store`, `pc_cond_store`,
 `spectrum_store`, `spd_tol`) are recorded or checked after each local solve.
@@ -188,10 +190,10 @@ function _compute_and_record_cond!(
 end
 
 # ---------------------------------------------------------------------------
-# Sign-aware local spectra (`spectrum_store`, see `KrylovSpectrumStats`). The local blocks are congruences VᵀAV, VᵀM⁻¹V of the global
-# operators (V the basis of the current projection), so by Sylvester's law of inertia a negative eigenvalue of the
-# symmetric part of the local M⁻¹ certifies that the global M⁻¹ is not positive definite. The converse does not
-# hold: a positive local block only says that M⁻¹ is positive on the span of V.
+# Sign-aware local spectra (`spectrum_store`, see `KrylovSpectrumStats`). The local blocks are congruences VᵀAV,
+# VᵀM⁻¹V of the global operators (V the basis of the current projection), so by Sylvester's law of inertia a negative
+# eigenvalue of the symmetric part of the local M⁻¹ certifies that the global M⁻¹ is not positive definite. The
+# converse does not hold: a positive local block only says that M⁻¹ is positive on the span of V.
 # ---------------------------------------------------------------------------
 
 const _EMPTY_LOCAL_SPECTRUM = (;
@@ -285,7 +287,8 @@ end
 """
     (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...) -> (x, (; info))
     (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, init;
-                        internal_kwargs, coefficients, preconditioner_sites=nothing, kwargs...) -> (x, (; info, residual))
+                        internal_kwargs, coefficients, preconditioner_sites=nothing,
+                        kwargs...) -> (x, (; info, residual))
 
 Solve the local problem ``(a_0 + a_1 A_{\\text{loc}}) \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}``, with
 `coefficients = (a₀, a₁)`, from the initial guess `init`. The `kwargs` are the fields of [`LocalUpdaterArgs`](@ref).
@@ -297,11 +300,12 @@ left-preconditioned GMRES, except at the local problems whose first site (`lpos 
 problem is recorded in both `cond_store` and `pc_cond_store`.
 
 After the solve, we record the iteration count in `numiter_store`, the spectra in `spectrum_store`, and, only if
-`cond_store`, `pc_cond_store` or `spd_tol` is set, the condition numbers ``\\kappa = \\max|\\lambda| / \\min|\\lambda|`` of the dense local ``A_{\\text{loc}}`` and ``M^{-1}_{\\text{loc}} A_{\\text{loc}}``. This is the
-spectral condition number that bounds the convergence of CG and PCG; for GMRES it is only a heuristic indicator,
-since it is a lower bound on ``\\kappa_2`` for non-normal operators and GMRES also depends on the eigenvector
-conditioning. With `spd_tol` set and CG selected, a local operator with an eigenvalue whose real part is below
-`-spd_tol * max|λ|` throws a [`NotSPDError`](@ref). With `verbosity > 0`, the computed condition numbers are logged.
+`cond_store`, `pc_cond_store` or `spd_tol` is set, the condition numbers ``\\kappa = \\max|\\lambda| / \\min|\\lambda|``
+of the dense local ``A_{\\text{loc}}`` and ``M^{-1}_{\\text{loc}} A_{\\text{loc}}``. This is the spectral condition
+number that bounds the convergence of CG and PCG; for GMRES it is only a heuristic indicator, since it is a lower bound
+on ``\\kappa_2`` for non-normal operators and GMRES also depends on the eigenvector conditioning. With `spd_tol` set and
+CG selected, a local operator with an eigenvalue whose real part is below `-spd_tol * max|λ|` throws a
+[`NotSPDError`](@ref). With `verbosity > 0`, the computed condition numbers are logged.
 
 Returns the new local tensor and a `NamedTuple` with the KrylovKit convergence `info` (and its `residual` for a
 preconditioned problem).

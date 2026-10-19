@@ -28,8 +28,8 @@
 """
     preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg) -> (x, info)
 
-Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by preconditioned CG (PCG) from `x₀`, where both the shifted operator and
-`M⁻¹` must be SPD. Any vector type that KrylovKit supports works; `operator` and `M⁻¹` are applied with
+Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by preconditioned CG (PCG) from `x₀`, where both the shifted operator
+and `M⁻¹` must be SPD. Any vector type that KrylovKit supports works; `operator` and `M⁻¹` are applied with
 `KrylovKit.apply`, so they can be matrices, functions or the projected operators of a local problem.
 
 The iteration is that of KrylovKit's CG, adapted from KrylovKit.jl (MIT license, see the header of this file and

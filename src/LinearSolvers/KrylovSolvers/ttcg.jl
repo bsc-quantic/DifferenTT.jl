@@ -67,7 +67,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     end
     α = ρ / denom
 
-    # TODO Evaluate the cost of recomputing the residual at each step in order to mitigate truncation-related errors
+    # TODO(release): evaluate the cost of recomputing the residual at each step in order to mitigate the
+    # truncation errors
     # killing the A-conjugate property
     x = +(x, α * p; kwargs_tt...)
     r = +(r, -α * q; kwargs_tt...)

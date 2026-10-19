@@ -26,16 +26,17 @@
 # See also THIRD_PARTY_NOTICES.md.
 
 """
-    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.GMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg) -> (x, info)
+    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.GMRES, a₀::Number=0, a₁::Number=1;
+                            alg_rrule=alg) -> (x, info)
 
 Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by left-preconditioned restarted GMRES from `x₀`. `operator` and `M⁻¹`
 are applied with `KrylovKit.apply`, so they can be matrices, functions or the projected operators of a local problem.
 
 The iteration is that of KrylovKit's GMRES, adapted from KrylovKit.jl (MIT license, see the header of this file and
 `THIRD_PARTY_NOTICES.md`), applied to ``M^{-1}(a_0 + a_1 A)`` with the right-hand side ``M^{-1}\\mathbf{r}_0``: each
-cycle of at most `alg.krylovdim` steps minimizes the preconditioned residual ``\\|M^{-1}\\mathbf{r}\\|``. At the end of a
-cycle we recompute the true residual, and stop when ``\\|\\mathbf{r}\\|`` is below `alg.tol`, an absolute tolerance as in
-KrylovKit; `alg.maxiter` bounds the number of cycles. Note that a solve that stops without converging returns the
+cycle of at most `alg.krylovdim` steps minimizes the preconditioned residual ``\\|M^{-1}\\mathbf{r}\\|``. At the end of
+a cycle we recompute the true residual, and stop when ``\\|\\mathbf{r}\\|`` is below `alg.tol`, an absolute tolerance as
+in KrylovKit; `alg.maxiter` bounds the number of cycles. Note that a solve that stops without converging returns the
 norm of ``M^{-1}\\mathbf{r}`` as `normres`. `alg_rrule` is accepted for compatibility and ignored.
 
 Returns the solution and a `KrylovKit.ConvergenceInfo`, as `KrylovKit.linsolve` does.

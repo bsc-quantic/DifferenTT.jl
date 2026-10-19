@@ -7,10 +7,10 @@ as proposed by Oseledets & Dolgov (2012). This is the solver called MALS in Torr
 inverse preconditioners in the tensor train format* (Sec. 5), where it proved more robust than [`ALS`](@ref) in
 meeting the prescribed residual bounds.
 
-A truncation by singular values controls the error in ``\\mathbf{x}``, but not its effect on the residual, which is
-what the solve has to bring below a tolerance. We therefore choose the rank of each new pair of cores as follows.
-After the local solve, we compute the full SVD of the two-site tensor ``\\phi = U S V^\\top`` and the relative local
-residual ``\\varepsilon_{\\text{exact}} = \\|A_{\\text{loc}}\\phi - \\mathbf{b}_{\\text{loc}}\\| / \\|\\mathbf{b}_{\\text{loc}}\\|`` of the untruncated tensor. We then keep the smallest rank ``r`` whose truncation
+A truncation by singular values controls the error in ``\\mathbf{x}``, but not its effect on the residual, which is what
+the solve has to bring below a tolerance. We therefore choose the rank of each new pair of cores as follows. After the
+local solve, we compute the full SVD of the two-site tensor ``\\phi = U S V^\\top`` and the relative local residual
+``\\varepsilon_{\\text{exact}}`` of the untruncated tensor. We then keep the smallest rank ``r`` whose truncation
 ``\\phi_r`` satisfies
 
 ```math
@@ -19,15 +19,15 @@ residual ``\\varepsilon_{\\text{exact}} = \\|A_{\\text{loc}}\\phi - \\mathbf{b}_
 ```
 
 where ``\\varepsilon`` is `residual_tol`, ``\\delta`` is `residual_damp` and ``N`` is the number of sites, found by a
-bisection over ``r`` that assumes the residual decreases with the rank. The scaling by ``1/\\sqrt{N}`` follows
-Dolgov's implementations, so that the ``N`` local errors of a sweep add up to about ``\\varepsilon``. The rank is
-then clamped to `[mindim, maxdim]`, and a Frobenius floor keeps at least the rank whose discarded relative weight
+bisection over ``r`` that assumes the residual decreases with the rank. The scaling by ``1/\\sqrt{N}`` follows Dolgov's
+implementations, so that the ``N`` local errors of a sweep add up to about ``\\varepsilon``. The rank is then clamped to
+`[mindim, maxdim]`, and a Frobenius floor keeps at least the rank whose discarded relative weight
 ``\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2`` is at most `cutoff^2` (`cutoff` from [`SweepingArgs`](@ref)). Note
-that this floor compares the weight with `cutoff^2`, whereas ITensors and [`AMEn`](@ref) compare it with `cutoff`,
-so it keeps every singular value above about `cutoff` times the largest one. For small cutoffs the floor therefore
-dominates the residual criterion: on a ``2^4 \\times 2^4`` QTT Laplacian with `residual_tol = 1e-4`, the residual
-alone selects rank 13 at the central bond, but `cutoff = 1e-10` or `1e-13` raises it back to the full rank 16, while
-`cutoff = 1e-6` leaves it at 13. Set `cutoff = 0` to truncate by the residual alone. In a preconditioned solve, the local residual is
+that this floor compares the weight with `cutoff^2`, whereas ITensors and [`AMEn`](@ref) compare it with `cutoff`, so it
+keeps every singular value above about `cutoff` times the largest one. For small cutoffs the floor therefore dominates
+the residual criterion: on a ``2^4 \\times 2^4`` QTT Laplacian with `residual_tol = 1e-4`, the residual alone selects
+rank 13 at the central bond, but `cutoff = 1e-10` or `1e-13` raises it back to the full rank 16, while `cutoff = 1e-6`
+leaves it at 13. Set `cutoff = 0` to truncate by the residual alone. In a preconditioned solve, the local residual is
 always that of the unpreconditioned ``A_{\\text{loc}}``.
 
 The residual-based truncation applies only to `nsite = 2`. With `nsite = 1`, the sweep falls back to the truncation

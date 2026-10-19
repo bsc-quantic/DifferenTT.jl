@@ -53,7 +53,8 @@ severe (Sec. 2.1 of Torrente et al.).
 # Fields
 
   - `maxiter::Int=100`: maximum number of iterations.
-  - `tol::Float64=1e-8`: tolerance relative to ``\\|\\mathbf{b}\\|``: the solve stops at ``\\|\\mathbf{r}\\| \\le \\texttt{tol}\\, \\|\\mathbf{b}\\|``.
+  - `tol::Float64=1e-8`: tolerance relative to ``\\|\\mathbf{b}\\|``: the solve stops at
+    ``\\|\\mathbf{r}\\| \\le \\texttt{tol}\\, \\|\\mathbf{b}\\|``.
   - `verbosity::Int=0`: KrylovKit verbosity (1: warn on no convergence, 2: start and end, 3: every iteration).
   - `maxdim::Int=typemax(Int)`, `cutoff::Float64=1e-8`: truncation of the applications of `A` and `M⁻¹` and of the
     updates of ``\\mathbf{x}`` and ``\\mathbf{r}``.
@@ -74,8 +75,8 @@ end
     GlobalCG(; updater_kwargs=GlobalUpdaterArgs(isposdef=true, ishermitian=true)) <: AbstractGlobalSolver
     GlobalCG(updater_kwargs::GlobalUpdaterArgs)
 
-Global CG solver for an SPD ``A \\mathbf{x} = \\mathbf{b}`` in the TT format: [`linearsolve`](@ref) runs a [`TTCG`](@ref)
-built from `updater_kwargs` on the whole tensor train.
+Global CG solver for an SPD ``A \\mathbf{x} = \\mathbf{b}`` in the TT format: [`linearsolve`](@ref) runs a
+[`TTCG`](@ref) built from `updater_kwargs` on the whole tensor train.
 
 A global solver needs no sweeps and no local problems, but every iteration increases the bond dimensions of its
 iterates, which we have to truncate, so its cost and its convergence both depend on how compressible the Krylov
@@ -254,7 +255,8 @@ function linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, x0::Union{MPS,Nothing}
 end
 
 """
-    linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...) -> MPS
+    linearsolve(solver::GlobalGMRES, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing};
+                kwargs...) -> MPS
 
 Solve ``A \\mathbf{x} = \\mathbf{b}`` by left-preconditioned restarted TT-GMRES from `x0`. The keywords override the
 fields of `solver.updater_kwargs`; other keywords, including `preconditioner_sites`, are ignored.
@@ -303,9 +305,10 @@ end
     inner(v::MPS, P::Preconditioner, w::MPS)
     inner(v::MPS, P::FactorizedPreconditioner, w::MPS)
 
-Return ``\\langle \\mathbf{v}, M^{-1} \\mathbf{w} \\rangle`` without truncation. For a [`FactorizedPreconditioner`](@ref)
-we evaluate ``\\langle G_L \\mathbf{v}, G_L \\mathbf{w} \\rangle``, which is non-negative for ``\\mathbf{v} = \\mathbf{w}``. Unlike `ITensorMPS.inner(v', A, w)`, `v` is passed unprimed. Methods are defined for both
-`ITensors.inner` and `KrylovKit.inner`.
+Return ``\\langle \\mathbf{v}, M^{-1} \\mathbf{w} \\rangle`` without truncation. For a
+[`FactorizedPreconditioner`](@ref) we evaluate ``\\langle G_L \\mathbf{v}, G_L \\mathbf{w} \\rangle``, which is
+non-negative for ``\\mathbf{v} = \\mathbf{w}``. Unlike `ITensorMPS.inner(v', A, w)`, `v` is passed unprimed. Methods are
+defined for both `ITensors.inner` and `KrylovKit.inner`.
 """
 function ITensors.inner(v::MPS, P::Preconditioner, w::MPS)
     return ITensorMPS.inner(v', P.operator, w)
