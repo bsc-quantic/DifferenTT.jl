@@ -1,0 +1,38 @@
+# Stub created by WP1; WP4 adds docs/ and completes this workflow.
+name: Documentation
+on:
+  push:
+    branches:
+      - master
+    tags: ['*']
+  pull_request:
+  workflow_dispatch:
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+      statuses: write
+    env:
+      GKSwstype: "100"
+    steps:
+      - uses: actions/checkout@v6
+      - name: Check for docs/
+        id: has_docs
+        run: echo "present=$([ -f docs/make.jl ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+      - uses: julia-actions/setup-julia@v3
+        if: steps.has_docs.outputs.present == 'true'
+        with:
+          version: '1'
+      - uses: julia-actions/cache@v3
+        if: steps.has_docs.outputs.present == 'true'
+      - name: Instantiate docs environment
+        if: steps.has_docs.outputs.present == 'true'
+        run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+      - name: Build and deploy
+        if: steps.has_docs.outputs.present == 'true'
+        run: julia --project=docs docs/make.jl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}

@@ -1,0 +1,24 @@
+name: Format
+on:
+  pull_request:
+  workflow_dispatch:
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: julia-actions/setup-julia@v3
+        with:
+          version: '1'
+      - name: Install JuliaFormatter
+        run: julia -e 'using Pkg; Pkg.add(name="JuliaFormatter", version="2")'
+      - name: Check formatting
+        run: |
+          julia -e '
+            using JuliaFormatter
+            dirs = filter(isdir, ["src", "test", "ext", "docs", "examples", "experiments"])
+            if !format(dirs)
+                run(`git diff --stat`)
+                @error "Some files are not formatted; run `using JuliaFormatter; format(\".\")` locally."
+                exit(1)
+            end'
