@@ -351,19 +351,19 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     return C, Z, error
 end
 
-function sketch(M::AbstractMPS, region_verts, k::Index)
+function sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([random_itensor(sites[v])*M[v] for v in reverse(region_verts)])
+        P = prod([random_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
         S += P*onehot(k=>p)
     end
     return S
 end
 
 """
-    suffix_sketches(M::AbstractMPS, k::Index)
+    suffix_sketches(M::AbstractMPS, k::Index; rng=Random.default_rng())
 
 Random sketches of every suffix of `M`, accumulated in a single right-to-left pass.
 
@@ -373,7 +373,7 @@ and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independ
 distribution. The cross in `_rsi_tt_mul` only ever rewrites tensors at or to the left of its
 current region, so the suffixes it needs are always the ones of the untouched input MPS.
 """
-function suffix_sketches(M::AbstractMPS, k::Index)
+function suffix_sketches(M::AbstractMPS, k::Index; rng::AbstractRNG=Random.default_rng())
     N = length(M)
     sites = siteinds(M)
     S = Vector{ITensor}(undef, N + 1)
@@ -383,7 +383,7 @@ function suffix_sketches(M::AbstractMPS, k::Index)
     for v in N:-1:1
         Sv = ITensor()
         for p in 1:dim(k)
-            cols[p] = random_itensor(sites[v]) * M[v] * cols[p]
+            cols[p] = random_itensor(rng, sites[v]) * M[v] * cols[p]
             Sv += cols[p] * onehot(k => p)
         end
         S[v] = Sv
@@ -460,12 +460,12 @@ Return a dense ITensor with indices `inds` and independent entries uniform in [0
 uniform_itensor(rng::AbstractRNG, inds::Index...) = _rand_uniform!(rng, ITensor(undef, inds))
 uniform_itensor(inds::Index...) = uniform_itensor(Random.default_rng(), inds...)
 
-function positive_sketch(M::AbstractMPS, region_verts, k::Index)
+function positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([uniform_itensor(sites[v])*M[v] for v in reverse(region_verts)])
+        P = prod([uniform_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
         S += P*onehot(k=>p)
     end
     return S
@@ -534,9 +534,18 @@ raw rank stays bounded by the sketch size anyway.
   - `pivot_rtol::Real=1e-10`: pivot threshold of the cross, relative to the block being
     decomposed (see [`pivot_cutoff`](@ref)).
   - `nsite::Int=2`: number of sites decomposed at a time.
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the Gaussian sketches.
 """
 function _rsi_tt_mul(
-    mps1::MPS, mps2::MPS; nsite=2, oversample=25, target_rank::Int=0, pivot_rtol::Real=1e-10, outputlevel=0, kws...
+    mps1::MPS,
+    mps2::MPS;
+    nsite=2,
+    oversample=25,
+    target_rank::Int=0,
+    pivot_rtol::Real=1e-10,
+    outputlevel=0,
+    rng::AbstractRNG=Random.default_rng(),
+    kws...,
 )
     nsite ≥ 2 || error("nsite must be ≥ 2 in multiply")
     mps1, mps2 = copy(mps1), copy(mps2)
@@ -552,8 +561,8 @@ function _rsi_tt_mul(
     # One sketch index for the whole sweep, and one right-to-left pass to build every suffix
     # sketch of both inputs, instead of rebuilding each suffix from scratch at every bond.
     k = Index(nsketch, "sketch")
-    sketches1 = suffix_sketches(mps1, k)
-    sketches2 = suffix_sketches(mps2, k)
+    sketches1 = suffix_sketches(mps1, k; rng)
+    sketches2 = suffix_sketches(mps2, k; rng)
 
     G = copy(mps1)
     # `copy` carries over the orthogonality limits of mps1, but none of its tensors survive.
@@ -624,7 +633,7 @@ function _rsi_tt_mul(
 end
 
 """
-    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rsi_kwargs...)
+    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rng=Random.default_rng(), rsi_kwargs...)
     tt_mul(mpo1::MPO, mpo2::MPO; cutoff=1e-15, maxdim=typemax(Int))
     tt_mul(mps::MPS, mpo::MPO; cutoff=1e-15, maxdim=typemax(Int))
     tt_mul(mpo::MPO, mps::MPS; cutoff=1e-15, maxdim=typemax(Int))
@@ -647,20 +656,28 @@ non-finite result; such fallbacks are counted by [`tt_mul_fallbacks`](@ref).
   - `maxdim::Int=typemax(Int64)`: maximum allowed bond dimension of the result.
   - `rsi_kwargs...` (MPS-MPS only): forwarded to [`_rsi_tt_mul`](@ref), e.g. `oversample`,
     `target_rank` and `pivot_rtol`.
+  - `rng::AbstractRNG=Random.default_rng()` (MPS-MPS only): random number generator of the sketches.
 
 # Returns
 
   - `MPS` for MPS-MPS products.
   - `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
 """
-function tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64), rsi_kwargs...)
+function tt_mul(
+    mps1::MPS,
+    mps2::MPS;
+    cutoff::Float64=1e-15,
+    maxdim::Int=typemax(Int64),
+    rng::AbstractRNG=Random.default_rng(),
+    rsi_kwargs...,
+)
     # A zero operand makes the product zero, and the relative pivot cutoff of the cross carries
     # no information on it, so short-circuit instead of sketching noise.
     (iszero_tt(mps1) || iszero_tt(mps2)) && return zeros_mps(siteinds(mps1), backend_type(mps1))
 
     G = nothing
     try
-        G = _rsi_tt_mul(mps1, mps2; rsi_kwargs...)
+        G = _rsi_tt_mul(mps1, mps2; rng, rsi_kwargs...)
     catch e # In case ID fails, when masking for example
         @debug "RSI tt_mul threw; using slow tt_mul" exception=e
     end
@@ -759,6 +776,7 @@ function elementwise_function(
     maxdim=typemax(Int),
     oversample=15,
     outputlevel=0,
+    rng::AbstractRNG=Random.default_rng(),
     kws...,
 )
     nsite ≥ 2 || error("nsite must be ≥ 2 in order to apply elementwise functions")
@@ -785,7 +803,11 @@ function elementwise_function(
 
         k = Index(nsketch, "sketch,j=$j")
 
-        S1 = positive_domain ? positive_sketch(mps1, (last(region)+1):N, k) : sketch(mps1, (last(region)+1):N, k)
+        S1 = if positive_domain
+            positive_sketch(mps1, (last(region)+1):N, k; rng)
+        else
+            sketch(mps1, (last(region)+1):N, k; rng)
+        end
         T1 = prod([mps1[v] for v in region])
 
         #

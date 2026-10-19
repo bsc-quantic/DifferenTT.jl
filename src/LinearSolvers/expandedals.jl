@@ -54,16 +54,20 @@ struct NullExpansion <: AbstractALSExpansion end
 (expander::NullExpansion)(state::MPS) = state
 
 """
-    RandomSPSDexpansion <: AbstractALSExpansion
+    RandomSPSDexpansion(; rng::AbstractRNG=Random.default_rng()) <: AbstractALSExpansion
 
-An expansion strategy that expn with a random symmetric positive semi-definite (SPSD) tensor train.
+An expansion strategy that expands the tensor train with a random symmetric positive semi-definite (SPSD) tensor
+train, drawn from `rng`.
 """
-struct RandomSPSDexpansion <: AbstractALSExpansion end
+struct RandomSPSDexpansion{R<:AbstractRNG} <: AbstractALSExpansion
+    rng::R
+end
+RandomSPSDexpansion(; rng::AbstractRNG=Random.default_rng()) = RandomSPSDexpansion(rng)
 function (expander::RandomSPSDexpansion)(state::MPS)
     sites = siteinds(state)
     helper_sites = siteinds(2, length(sites))
 
-    rand = random_mpo(helper_sites)
+    rand = random_mpo(expander.rng, helper_sites)
     rand_dagger = transpose_mpo(conj(rand)) # conj performs the element-wise operation
     randSPSD = apply(rand, rand_dagger; alg="naive") # A @ A^† is always symmetric positive semi-definite!
 
@@ -79,16 +83,19 @@ function (expander::RandomSPSDexpansion)(state::MPS)
 end
 
 """
-    RandomLTexpansion <: AbstractALSExpansion
+    RandomLTexpansion(; rng::AbstractRNG=Random.default_rng()) <: AbstractALSExpansion
 
-An expansion strategy that expands the tensor train with a random lower triangular tensor train.
+An expansion strategy that expands the tensor train with a random lower triangular tensor train, drawn from `rng`.
 """
-struct RandomLTexpansion <: AbstractALSExpansion end
+struct RandomLTexpansion{R<:AbstractRNG} <: AbstractALSExpansion
+    rng::R
+end
+RandomLTexpansion(; rng::AbstractRNG=Random.default_rng()) = RandomLTexpansion(rng)
 function (expander::RandomLTexpansion)(state::MPS)
     sites = siteinds(state)
     helper_sites = siteinds(2, length(sites))
 
-    rand_mpo = random_mpo(helper_sites)
+    rand_mpo = random_mpo(expander.rng, helper_sites)
     lower_mpo = lower_triang_mpo(helper_sites)
     randLT_mpo = tt_mul(rand_mpo, lower_mpo)
 

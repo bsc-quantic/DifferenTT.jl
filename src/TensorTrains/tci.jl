@@ -199,9 +199,9 @@ Random 1-based multi-index. When `d ≥ 3`, samples only the interior indices
 discoverable (uniform sampling over the full grid has success probability that
 decays as `((d-2)/d)^N`).
 """
-function _tci_random_pivot(local_dims::AbstractVector{Int})::Vector{Int}
+function _tci_random_pivot(local_dims::AbstractVector{Int}; rng::AbstractRNG=Random.default_rng())::Vector{Int}
     return map(local_dims) do d
-        d >= 3 ? rand(2:(d-1)) : rand(1:d)
+        d >= 3 ? rand(rng, 2:(d-1)) : rand(rng, 1:d)
     end
 end
 
@@ -216,7 +216,12 @@ refines by random search over interior sites. This avoids the
 vanish on the domain boundary.
 """
 function TensorCrossInterpolation.optfirstpivot(
-    func_type::Type{<:Number}, func::Function, grid::Grid{N}, arch::Architecture; iters::Int=1000
+    func_type::Type{<:Number},
+    func::Function,
+    grid::Grid{N},
+    arch::Architecture;
+    iters::Int=1000,
+    rng::AbstractRNG=Random.default_rng(),
 ) where {N}
     local_dims = collect(Int, site_dims(arch))
 
@@ -230,7 +235,7 @@ function TensorCrossInterpolation.optfirstpivot(
     valf = abs(eval_func(pivot))
 
     for _ in 1:iters
-        random_pivot = _tci_random_pivot(local_dims)
+        random_pivot = _tci_random_pivot(local_dims; rng)
         newval = abs(eval_func(random_pivot))
         if newval > valf
             valf = newval

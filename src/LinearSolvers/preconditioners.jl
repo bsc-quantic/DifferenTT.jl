@@ -80,6 +80,7 @@ function linsolve_preconditioner(
     linsolve_x0=nothing,
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     op1 = deepcopy(operator) # To construct AX
@@ -117,7 +118,7 @@ function linsolve_preconditioner(
     linsolve_b = MPS([linsolve_b...]) # Convert the still MPO object into an MPS
 
     if isnothing(linsolve_x0)
-        _linsolve_x0 = MPS([1e-12 * adapt(backend_type(operator), random_mpo(sites, 1))...])
+        _linsolve_x0 = MPS([1e-12 * adapt(backend_type(operator), random_mpo(rng, sites, 1))...])
         for i in 1:N
             replaceind!(_linsolve_x0[i], sites[i]' => helper_sites[i])
             _linsolve_x0[i] = _linsolve_x0[i] * combiners[i]
@@ -160,6 +161,7 @@ function fai_dg(
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
     compute_residual::Bool=false,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     A = transpose_mpo(operator) # To construct XA
@@ -242,7 +244,7 @@ function fai_dg(
     oversample = get(D_kwargs, :oversample, 10)
 
     D_mps = elementwise_function(
-        f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0
+        f, unscaledGdiag_mps, true; cutoff=cutoff, nsite=2, maxdim=maxdim, oversample=oversample, outputlevel=0, rng=rng
     )
 
     placeholder_sites = sim.(sites)
@@ -261,10 +263,11 @@ function fai_preconditioner(
     totalmaxdim::Int=5,
     preconditioning::Bool=false,
     residual_tol::Union{Float64,Nothing}=nothing,
+    rng::AbstractRNG=Random.default_rng(),
     kwargs...,
 )
     unscaledG, D = fai_dg(
-        operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, kwargs...
+        operator, μ, g_solver, D_kwargs; preconditioning=preconditioning, residual_tol=residual_tol, rng=rng, kwargs...
     )
     Gl = apply(D, unscaledG; maxdim=totalmaxdim)
     return FactorizedPreconditioner(Gl)
