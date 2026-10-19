@@ -72,6 +72,8 @@ using TensorCrossInterpolation
         pivot = DifferenTT.optfirstpivot(Float64, func, grid, arch; iters=10)
         @test length(pivot) == length(arch.site_map)
         @test all(1 .<= pivot .<= 8)
+        # A function that vanishes on every multi-index tried has no usable pivot (was an ErrorException)
+        @test_throws ArgumentError DifferenTT.optfirstpivot(Float64, x -> 0.0, grid, arch; iters=10)
 
         tt2, err2 = DifferenTT.crossinterpolate2(
             Float64, func, grid, arch; initialpivots=[pivot], maxbonddim=10, tolerance=1e-2
