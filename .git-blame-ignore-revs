@@ -1,0 +1,5 @@
+# One-off formatting commits; ignore them in `git blame` with
+#   git config blame.ignoreRevsFile .git-blame-ignore-revs
+
+# Format src, test and experiments with JuliaFormatter (blue style)
+1ab2ed157564b777b8053f2be7ba5bdf2aa34e6d
