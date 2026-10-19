@@ -217,6 +217,15 @@ using StableRNGs
         end
     end
 
+    @testset "argument errors" begin
+        @test_throws DimensionMismatch DifferenTT.backsolveL(ones(2, 3))
+        @test_throws ArgumentError DifferenTT.interpolative(ones(3, 3); cols=[1])
+        P = random_mps(StableRNG(1), siteinds("Qubit", 3); linkdims=2)
+        @test_throws ArgumentError elementwise_function(abs, P; nsite=1)
+        @test_throws ArgumentError DifferenTT._rsi_tt_mul(P, P; nsite=1)
+        @test_throws ArgumentError DifferenTT._rsi_tt_mul(P, random_mps(StableRNG(2), siteinds("Qubit", 3)))
+    end
+
     # Regression test: with fewer sites than `nsite` (e.g. a single site) the sweep did not run, and both functions
     # returned their (first) input unchanged
     @testset "MPS shorter than one region" begin
