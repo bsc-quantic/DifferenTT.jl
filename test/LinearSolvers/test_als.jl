@@ -89,3 +89,31 @@ using DifferenTT: ALS
     linearsolve(skip_solver, spd_A, b, nothing; nsweeps=1)
     @test all(isnan, DifferenTT.spectrum_table(skip_store)["eigmin_A"])
 end
+
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+using LinearAlgebra: norm
+
+# Plain ALS (E5): the 2-site and the 1-site variants solve an SPD system to the dense solution
+@testset "ALS solves an SPD system" begin
+    A, sites, _, _ = qtt_laplacian((5,))
+    b = random_mps(rng(1), sites; linkdims=2)
+    x_ref = todense(A) \ todense(b)
+    local_args = DifferenTT.LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-12)
+    x2 = linearsolve(
+        ALS(; sweep_kwargs=DifferenTT.SweepingArgs(; nsweeps=4, maxdim=16, cutoff=1e-14), updater_kwargs=local_args),
+        A,
+        b,
+        nothing,
+    )
+    @test relres(A, x2, b) < 1e-9
+    @test norm(todense(x2) - x_ref) < 1e-8 * norm(x_ref)
+
+    # The 1-site variant keeps the bond dimension of its initial guess, so it needs one with enough rank
+    x0 = random_mps(rng(2), sites; linkdims=8)
+    x1 = linearsolve(
+        ALS(; sweep_kwargs=DifferenTT.SweepingArgs(; nsweeps=6, nsite=1), updater_kwargs=local_args), A, b, x0
+    )
+    @test all(linkdims(x1) .<= linkdims(x0))
+    @test relres(A, x1, b) < 1e-9
+end
