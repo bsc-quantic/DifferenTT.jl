@@ -303,6 +303,7 @@ function ndim_operator_mpo(
 ) where {N}
     length(site_inds) == length(arch.site_map) ||
         throw(DimensionMismatch("Length of site_inds must match length of site_map"))
+    1 <= axis <= N || throw(ArgumentError("axis must lie in 1:$N, got $axis"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
@@ -339,7 +340,7 @@ function ndim_operator_mpo(
                     mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], links[i], array_type)
                 end
             else
-                error("Cannot have total_sites == 1 and axis not equal to site_map[1]")
+                throw(ArgumentError("Cannot have total_sites == 1 and axis not equal to site_map[1]"))
             end
         end
     end

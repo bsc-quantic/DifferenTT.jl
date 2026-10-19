@@ -85,4 +85,14 @@ using ITensorMPS
         AB = DifferenTT._nothing_apply_handler(A, nothing, B)
         @test contract_mpo(AB) ≈ contract_mpo(A) * contract_mpo(B)
     end
+
+    # Regression test: an axis outside 1:N gave the identity instead of an error
+    @testset "ndim_operator_mpo (TT) validates the axis" begin
+        arch = TTArchitecture((2, 3))
+        sites = siteinds(arch)
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 3, sites, arch)
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 0, sites, arch)
+        arch1 = TTArchitecture((2,))
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 2, siteinds(arch1), arch1)
+    end
 end
