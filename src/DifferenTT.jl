@@ -75,7 +75,7 @@ export ExplicitEuler, RK4, timestep
 
 # Export types and functions from TensorTrains
 export QTTArchitecture, TTArchitecture
-export nsites_per_variable, total_sites, sited_dim, site_dims, variable_dims
+export nsites_per_variable, total_sites, site_dim, site_dims, variable_dims
 export backend_type
 export ndim_operator_mpo, diagmpo, diagmps
 export identity_mpo, zeros_mpo, zeros_mps, ones_mpo, ones_mps, vec2tensor, vec2mps, mat2tensor, mat2mpo
@@ -112,7 +112,7 @@ export KrylovSpectrumStats, spectrum_table, NotSPDError
 
 # Include and Export Logging
 
-export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timings!
+export Logger, SimpleLogger, init_logger, log_data, timeit_to, enable_debug_timings!, disable_debug_timings!
 
 # Include and Export Visualization
 export visualize_scalar, visualize_vector, visualize_vorticity

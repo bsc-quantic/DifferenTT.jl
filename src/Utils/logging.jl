@@ -1,4 +1,36 @@
+"""
+    timeit_to::TimerOutput
+
+Global timer of DifferenTT. The solvers and the Navier–Stokes steppers time their main phases with
+`TimerOutputs.@timeit_debug timeit_to "…"`, which costs nothing unless the debug timings are enabled with
+[`enable_debug_timings!`](@ref). Print the collected timings with `show(timeit_to)`, and clear them with
+`TimerOutputs.reset_timer!(timeit_to)`.
+"""
 const timeit_to = TimerOutput()
+
+"""
+    enable_debug_timings!() -> nothing
+
+Turn on the `@timeit_debug` sections of DifferenTT, which then record their timings in [`timeit_to`](@ref).
+
+This calls `TimerOutputs.enable_debug_timings(DifferenTT)`, which redefines a function inside the package, so the
+timed methods are recompiled at their next call. Call it once, before the run to be profiled, and turn the timings off
+again with [`disable_debug_timings!`](@ref).
+"""
+function enable_debug_timings!()
+    TimerOutputs.enable_debug_timings(@__MODULE__)
+    return nothing
+end
+
+"""
+    disable_debug_timings!() -> nothing
+
+Turn off the `@timeit_debug` sections of DifferenTT that [`enable_debug_timings!`](@ref) turned on.
+"""
+function disable_debug_timings!()
+    TimerOutputs.disable_debug_timings(@__MODULE__)
+    return nothing
+end
 
 abstract type Logger end
 
