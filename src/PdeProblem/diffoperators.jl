@@ -204,6 +204,15 @@ end
 # DifferentialOps Structs
 # -------------------------------------------------------------------------------------------------
 
+# Grid spacing of the operator that `onedim_differential_operator` builds with `n_eyepad` padded sites or nodes. In
+# QTT the identity pads the last `n_eyepad` bits, so the operator acts on the coarse grid of 2^(n - n_eyepad) nodes
+# that spans the same box (with nodes at both ends, as `Grid`). In TT the identity pads the last `n_eyepad` nodes, so
+# the operator acts on the first n - n_eyepad nodes at the original spacing.
+function _eyepad_step_size(grid::Grid, arch::QTTArchitecture, dim::Int, n_eyepad::Int)
+    return grid.box_size[dim] / (2^(abs(arch.var_nsites[dim]) - n_eyepad) - 1)
+end
+_eyepad_step_size(grid::Grid, arch::TTArchitecture, dim::Int, n_eyepad::Int) = grid.dx[dim]
+
 """
     struct DifferentialOpsScalar{N}
 
@@ -263,13 +272,7 @@ function DifferentialOpsScalar(
     function make_ops(order::Int)
         ntuple(
             i -> begin
-                # calculate effective steps
-                noneye_nsites = if fields.arch isa QTTArchitecture
-                    abs(fields.arch.var_nsites[i]) - n_eyepad[i]
-                else
-                    Int(log2(fields.arch.var_dims[i])) - n_eyepad[i]
-                end
-                effective_step_size = grid.lengths[i] / (2 ^ noneye_nsites)
+                effective_step_size = _eyepad_step_size(grid, fields.arch, i, n_eyepad[i])
 
                 onedim_op = onedim_differential_operator(
                     order,
