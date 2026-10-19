@@ -156,6 +156,48 @@ using StableRNGs
         end
     end
 
+    @testset "elementwise_function against the dense map" begin
+        N = 8
+        qs = siteinds("Qubit", N)
+        # Positive domain: x^(-1/2) on an entrywise-positive MPS, with uniform sketches
+        P = random_mps(StableRNG(7), qs; linkdims=3)
+        for i in 1:N
+            P[i] = ITensor(abs.(array(P[i])) .+ 0.1, inds(P[i]))
+        end
+        A = contract_mps(P)
+        for seed in 1:3
+            F = elementwise_function(x -> inv(sqrt(x)), P, true; cutoff=1e-12, rng=StableRNG(seed))
+            @test norm(contract_mps(F) - inv.(sqrt.(A))) <= 1e-8 * norm(inv.(sqrt.(A)))
+        end
+
+        # Signed domain: exp of a smooth signed function, with Gaussian sketches. The seed is one for which the cross
+        # succeeds; see the @test_broken below.
+        t = (0:(2^N-1)) ./ 2^N
+        v = sin.(2π .* t) .+ 0.2 .* cos.(6π .* t)
+        Q = DifferenTT.vec2mps(v, qs; cutoff=1e-14)
+        E = elementwise_function(exp, Q, false; cutoff=1e-12, rng=StableRNG(3))
+        @test norm(contract_mps(E) - exp.(v)) <= 1e-8 * norm(exp.(v))
+
+        # Known issue (pre-existing, reported in WP2): with positive_domain = false the cross solves with the pivot
+        # columns by LU (use_pinv = false) and throws a SingularException for roughly half of the sketches.
+        succeeds(seed) =
+            try
+                elementwise_function(exp, Q, false; cutoff=1e-12, rng=StableRNG(seed))
+                true
+            catch e
+                e isa LinearAlgebra.SingularException || rethrow()
+                false
+            end
+        @test_broken all(succeeds, 1:10)
+
+        # Known issue (pre-existing, reported in WP2): nsite = 3 fails in the finalizer (`only(sites[v])` on an Index)
+        @test_broken try
+            elementwise_function(x -> inv(sqrt(x)), P, true; nsite=3, cutoff=1e-12, rng=StableRNG(1)) isa MPS
+        catch
+            false
+        end
+    end
+
     @testset "elementwise_function" begin
         Random.seed!(1234)
         mps = random_mps(sites; linkdims=2)
