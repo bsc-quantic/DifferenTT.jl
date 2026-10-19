@@ -1,3 +1,19 @@
+"""
+    KrylovKit.linsolve(operator::MPO, b::MPS, x₀::MPS, alg::TTGMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg) -> (x, info)
+    KrylovKit.linsolve(operator::MPO, b::MPS, x₀::MPS, M⁻¹::AbstractPreconditioner, alg::TTGMRES, a₀::Number=0,
+                       a₁::Number=1; alg_rrule=alg) -> (x, info)
+
+Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by restarted GMRES on tensor trains, from `x₀`, optionally
+left-preconditioned by `M⁻¹`. See [`TTGMRES`](@ref) for the algorithm and its truncation parameters.
+
+With `M⁻¹`, we build the Arnoldi basis of ``M^{-1}(a_0 + a_1 A)``, so each cycle minimizes the preconditioned
+residual ``\\|M^{-1}\\mathbf{r}\\|``; the solve still stops on the unpreconditioned residual,
+``\\|\\mathbf{r}\\| \\le \\texttt{tol}\\, \\|\\mathbf{b}\\|``, recomputed at the end of every cycle. Note that when the
+solve stops without converging, the `normres` it returns is that of ``M^{-1}\\mathbf{r}``, while a converged solve
+returns ``\\|\\mathbf{r}\\|``. `alg_rrule` is accepted for compatibility with KrylovKit and ignored.
+
+Returns the solution and a `KrylovKit.ConvergenceInfo`, whose `numiter` is the number of restart cycles.
+"""
 function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number=0, a₁::Number=1; alg_rrule=alg)
     kwargs_tt = (; maxdim=alg.maxdim, cutoff=alg.cutoff)
     kwargs_orth = (; maxdim=alg.orth_maxdim, cutoff=alg.orth_cutoff)
