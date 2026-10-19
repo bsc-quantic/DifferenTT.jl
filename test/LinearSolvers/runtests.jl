@@ -3,6 +3,9 @@ using SafeTestsets
 @safetestset "linearsolvers" begin
     include("test_linearsolvers.jl")
 end
+@safetestset "solver matrix" begin
+    include("test_solver_matrix.jl")
+end
 @safetestset "expandedals" begin
     include("test_expandedals.jl")
 end
