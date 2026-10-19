@@ -1,14 +1,45 @@
 """
-    toeplitz_mpo(nsite::Int, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array)
+    toeplitz_mpo(site_indices::Vector{<:Index}, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d,
+                 array_type::Type{<:AbstractArray}=Array) -> MPO
+    toeplitz_mpo(nsite::Int, coeffs::Dict{Int,Float64}, boundary_conditions::BoundaryCond1d,
+                 array_type::Type{<:AbstractArray}=Array) -> MPO
 
-Create an MPO representing a Toeplitz matrix with either 3 or 9 diagonals (for order 2 and 4 finite difference stencils).
+Return the banded Toeplitz matrix ``A_{i, i+k} = c_k`` of a finite-difference stencil on a one-dimensional QTT grid of
+``2^N`` points, as an MPO of bond dimension 3, or 9 on its last bond for the wider stencil.
+
+A stencil applied on a uniform grid is a sum of shifted identities, and in the QTT format every shift by a fixed
+offset has an exact representation of bond dimension 2, since adding the offset to a binary index only carries one bit
+from each site to the next (Kazeev & Khoromskij, 2012). We build the whole band at once: every core is written in terms
+of the single-site shift ``J = \\begin{bmatrix} 0 & 1 \\\\ 0 & 0 \\end{bmatrix}``, its transpose and the identity, the
+bond carries the carry of the binary addition, and the coefficients enter only in the last core (site ``N``, the least
+significant bit). With `coeffs` at the offsets ``-1, 0, 1`` (a second-order stencil) every bond has dimension 3; with
+the offsets ``-4, \\dots, 4`` (an eighth-order stencil, ``q = 8``) the last two cores also resolve the offsets up to
+4, and the last bond has dimension 9. If `boundary_conditions.left` is a `PeriodicBC`, the band wraps around and the
+result is the circulant matrix, ``A_{i, j} = c_k`` whenever ``j - i \\equiv k \\pmod{2^N}``; otherwise the entries
+that would fall outside the matrix are dropped, and the boundary rows are left to the corrections of the boundary
+conditions. Only the type of `boundary_conditions.left` is read.
 
 # Arguments
 
-  - `site_indices`: Site indices to use for the mpo.
-  - `coeffs`: Dictionary mapping offset to coefficient (e.g., 0 => 2.0, 1 => -1.0).
-  - `boundary_conditions`: Boundary conditions to apply at edges.
-  - `array_type`: Backend array type.
+  - `site_indices::Vector{<:Index}`: sites of dimension 2, site 1 the most significant bit; the second method creates
+    `nsite` new ones.
+  - `coeffs::Dict{Int,Float64}`: the coefficient ``c_k`` of each offset ``k``, with keys `-1:1` or `-4:4`.
+  - `boundary_conditions::BoundaryCond1d`: periodic or not, read from its left condition.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Throws
+
+  - `ArgumentError`: if `coeffs` does not have 3 or 9 entries, or if there are fewer than 2 sites (3 coefficients) or 4
+    sites (9 coefficients).
+  - `KeyError`: if an offset of the expected range is missing from `coeffs`.
+
+# Examples
+
+```julia
+bc = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+A = DifferenTT.toeplitz_mpo(siteinds(2, 3), Dict(-1 => 1.0, 0 => -2.0, 1 => 1.0), bc)
+contract_mpo(A)  # 8 × 8 circulant second difference
+```
 """
 function toeplitz_mpo(
     site_indices::Vector{<:Index},
@@ -98,17 +129,23 @@ function toeplitz_mpo(
     return toeplitz_mpo(site_indices, coeffs, boundary_conditions, array_type)
 end
 
-# TODO Test this function
 """
-    column_pick_mpo(site_inds::Vector{<:Index}, column_index::Union{Int,Vector{<:Int}}, array_type::Type{<:AbstractArray}=Array)
+    column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_type=Array) -> MPO
+    column_pick_mpo(site_inds::Vector{<:Index}, column_index::Vector{<:Int}, array_type=Array) -> MPO
 
-Construct an MPO that projects onto one or more basis vectors (columns).
+Return the matrix whose column `column_index` is the vector of ones and whose other entries are zero,
+``\\mathbf{1}\\mathbf{e}_c^\\top``, as an MPO of bond dimension 1 on a QTT grid of ``2^N`` points (sites of dimension 2,
+site 1 the most significant bit). Applied to a vector, it copies entry ``c`` to every entry, which the boundary
+operators use to spread a boundary value. Every core is ``\\begin{bmatrix} 1 & 0 \\\\ 1 & 0 \\end{bmatrix}`` or
+``\\begin{bmatrix} 0 & 1 \\\\ 0 & 1 \\end{bmatrix}``, as the corresponding bit of ``c - 1`` is 0 or 1. With a vector of
+indices, the result is the sum of these matrices, with ones in every listed column and a bond dimension of at most the
+number of indices.
 
-# Arguments
+# Throws
 
-  - `site_inds::Vector{<:Index}`: Site indices.
-  - `column_index`: Integer index or vector of indices of the column(s) to pick.
-  - `array_type::Type{<:AbstractArray}`: Backend array type.
+  - `ArgumentError`: if an index is not in `1:2^N`.
+
+See also [`row_pick_mpo`](@ref), [`entry_mpo`](@ref).
 """
 function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     nsite = length(site_inds)
@@ -134,24 +171,23 @@ function column_pick_mpo(site_inds::Vector{<:Index}, column_index::Int=1, array_
     return arrays2mpo(site_inds, bond_inds, tensors)
 end
 
-# TODO Test this function
 function column_pick_mpo(
     site_inds::Vector{<:Index}, column_index::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array
 )
     sum(column_pick_mpo(site_inds, single_column_index, array_type) for single_column_index in column_index)
 end
 
-# TODO Test this function
 """
-    row_pick_mpo(site_inds::Vector{<:Index}, row_index::Union{Int,Vector{<:Int}}, array_type::Type{<:AbstractArray}=Array)
+    row_pick_mpo(site_inds::Vector{<:Index}, row_index::Int=1, array_type=Array) -> MPO
+    row_pick_mpo(site_inds::Vector{<:Index}, row_index::Vector{<:Int}, array_type=Array) -> MPO
 
-Construct an MPO that projects onto one or more basis vectors (rows) (transpose of column pick).
+Return the matrix whose row `row_index` is the vector of ones and whose other entries are zero,
+``\\mathbf{e}_r\\mathbf{1}^\\top``, the transpose of [`column_pick_mpo`](@ref); applied to a vector, it writes the sum
+of its entries into entry ``r``. With a vector of indices, the result is the sum of these matrices.
 
-# Arguments
+# Throws
 
-  - `site_inds::Vector{<:Index}`: Site indices.
-  - `row_index`: Integer index or vector of indices of the row(s) to pick.
-  - `array_type::Type{<:AbstractArray}`: Backend array type.
+  - `ArgumentError`: if an index is not in `1:2^N`.
 """
 function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Int=1, array_type::Type{<:AbstractArray}=Array)
     column_mpo = column_pick_mpo(site_inds, row_index, array_type)
@@ -159,24 +195,27 @@ function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Int=1, array_type::
     return row_mpo
 end
 
-# TODO Test this function
 function row_pick_mpo(site_inds::Vector{<:Index}, row_index::Vector{<:Int}, array_type::Type{<:AbstractArray}=Array)
     return sum(row_pick_mpo(site_inds, single_row_index, array_type) for single_row_index in row_index)
 end
 
 """
-    entry_mpo(site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array)
+    entry_mpo(site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type=Array) -> MPO
 
-Construct the bond-dimension-1 MPO of the single-entry matrix `|row⟩⟨column|`, i.e. the operator that moves the
-value at `column_index` of a 1D vector to `row_index`. Built as the elementwise product of
-[`row_pick_mpo`](@ref) and [`column_pick_mpo`](@ref).
+Return the single-entry matrix ``\\mathbf{e}_r \\mathbf{e}_c^\\top`` on a QTT grid, as an MPO of bond dimension 1:
+the operator that moves entry `column_index` of a vector to entry `row_index` and discards the others. We build it as
+the element-wise product ([`tt_mul`](@ref)) of [`row_pick_mpo`](@ref) and [`column_pick_mpo`](@ref), whose only common
+nonzero entry is ``(r, c)``.
 
 # Arguments
 
-  - `site_inds::Vector{<:Index}`: Site indices.
-  - `row_index::Int`: Row of the nonzero entry (1-based).
-  - `column_index::Int`: Column of the nonzero entry (1-based).
-  - `array_type::Type{<:AbstractArray}`: Backend array type.
+  - `site_inds::Vector{<:Index}`: sites of dimension 2, site 1 the most significant bit.
+  - `row_index::Int`, `column_index::Int`: position of the nonzero entry, in `1:2^N`.
+  - `array_type::Type{<:AbstractArray}=Array`: array backend of the tensors.
+
+# Throws
+
+  - `ArgumentError`: if an index is not in `1:2^N`.
 """
 function entry_mpo(
     site_inds::Vector{<:Index}, row_index::Int, column_index::Int, array_type::Type{<:AbstractArray}=Array
@@ -184,12 +223,17 @@ function entry_mpo(
     return tt_mul(row_pick_mpo(site_inds, row_index, array_type), column_pick_mpo(site_inds, column_index, array_type))
 end
 
-# TODO Test this function
-# TODO FINISH REVISING THIS FUNCTION -> Last one from og operations.jl
 """
-    corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vector{<:Index}, flag::Symbol=:upper, array_type::Type{<:AbstractArray}=Array)
+    corner_pick_mpo(coefficients::Vector{<:AbstractFloat}, site_inds::Vector{<:Index}, flag::Symbol=:upper,
+                    array_type::Type{<:AbstractArray}=Array) -> MPO
 
-Construct an MPO that acts on a "corner" of the full domain, usually for handling boundary conditions in high-dimensional stencils.
+Return the ``4 \\times 4`` triangular Toeplitz block of `coefficients` ``(c_1, \\dots, c_4)`` placed in a corner of an
+otherwise zero QTT operator on `site_inds` (at least 2 sites), as an MPO of bond dimension at most 2. With
+`flag = :upper` the block is upper triangular with first row ``(c_1, c_2, c_3, c_4)`` and sits in the top-left
+corner; with `:lower` it is the transposed block, lower triangular with first column ``(c_1, c_2, c_3, c_4)``, in the
+bottom-right corner. These are the couplings of the first and last four nodes to the four ghost nodes that an
+eighth-order stencil reaches beyond each Dirichlet wall, which the Dirichlet corrections move to the right-hand side.
+The block is built on two sites and padded by [`zeros_padding`](@ref). Throws an `ArgumentError` for any other `flag`.
 """
 function corner_pick_mpo(
     coefficients::Vector{<:AbstractFloat},
@@ -213,7 +257,7 @@ function corner_pick_mpo(
     end
 
     block1 = hcat(eye, J)
-    tensor = permutedims(reshape(block1, 2, 2, 2), (1, 2, 3)) # Does this permute do anything?
+    tensor = permutedims(reshape(block1, 2, 2, 2), (1, 2, 3)) # Identity permutation: already (row, column, bond)
     push!(corner_tensors, tensor)
 
     term1 = coefficients[1] * eye + coefficients[2] * J

@@ -1,15 +1,30 @@
-# TODO This needs heavy polishing
+# TODO(release): the first, middle and last sites are handled in separate branches; merge them into one loop
 """
-    ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::Architecture{N}) where N
+    ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) -> MPO
 
-Lift a 1D QTT operator in MPO format into an N-dimensional MPO operator acting on the `axis`-th dimension, respecting the qubitization mapping defined by `arch`.
+Return the ``N``-dimensional operator that applies the one-dimensional QTT operator `onedim_mpo` to variable `axis`
+and the identity to every other variable.
+
+The cores of `onedim_mpo`, given with the most significant bit first, go on the sites that carry `axis`, in the bit
+order of `arch` (reversed by [`reverse_mpo`](@ref) if `var_nsites[axis]` is negative), and identities go on the
+other sites. In a blocked layout these identities sit before and after the block, with bond dimension 1. In an
+interleaved layout they sit between the cores of `onedim_mpo`, so they also pass its bond on to the next core
+([`make_pass_identity_site`](@ref)), and the bond dimension between two sites of `axis` is that of `onedim_mpo`
+between them. The array backend is that of `onedim_mpo`.
 
 # Arguments
 
-  - `onedim_mpo::MPO`: The 1D operator MPO.
-  - `axis::Int`: The logical dimension (1 to N) this operator acts on.
-  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-  - `arch::Architecture{N}`: The architecture defining the variable mapping.
+  - `onedim_mpo::MPO`: operator on the `abs(var_nsites[axis])` sites of variable `axis`.
+  - `axis::Int`: the variable.
+  - `site_inds::Vector{<:Index}`: sites of the full chain, in site order (e.g. `siteinds(arch)`).
+  - `arch::QTTArchitecture{N}`: the layout.
+
+# Throws
+
+  - `DimensionMismatch`: if `site_inds` does not have `total_sites(arch)` indices, or `onedim_mpo` does not have one
+    site per bit of `axis` (in particular, if `axis` is not a variable of `arch`).
+
+See also [`ndim_operator_sum_mpo`](@ref), and the method for a [`TTArchitecture`](@ref).
 """
 function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where {N}
     length(site_inds) == length(arch.site_map) ||
@@ -156,16 +171,30 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
 end
 
 """
-    ndim_operator_sum_mpo(onedim_ops::NTuple{N, Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) where N
+    ndim_operator_sum_mpo(onedim_ops::NTuple{N,Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) -> MPO
 
-Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting on a QTT architecture.
-This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension.
+Return the Kronecker sum
+``\\sum_{c=1}^{N} \\mathbb{I} \\otimes \\cdots \\otimes A_c \\otimes \\cdots \\otimes \\mathbb{I}`` of the
+one-dimensional QTT operators `onedim_ops` (one MPO per variable), as an exact MPO.
+
+As for the [`TTArchitecture`](@ref) method, we write the sum directly instead of adding the lifted operators of
+[`ndim_operator_mpo`](@ref). Its bonds carry the states of an automaton: state 1, no operator placed yet; state 2,
+one operator completed; and, for every variable whose sites lie on both sides of the bond, the bond of its operator
+while that operator is being placed. The bond dimension at bond ``k`` is therefore ``2 + \\sum_c \\chi_c(k)``, where
+the sum runs over these variables and ``\\chi_c(k)`` is the bond dimension of ``A_c`` at that point: ``2 + \\chi_c``
+inside the block of a variable in a blocked layout, and up to ``2 + \\sum_c \\chi_c`` in an interleaved one. Reversed
+variables are handled as in [`ndim_operator_mpo`](@ref), and variables with a single site complete their operator on
+that site.
 
 # Arguments
 
-  - `onedim_ops::NTuple{N, Any}`: The 1D operator MPOs for each dimension.
-  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-  - `arch::QTTArchitecture{N}`: The architecture defining the variable mapping.
+  - `onedim_ops::NTuple{N,Any}`: one `MPO` per variable, on its `abs(var_nsites[c])` sites, most significant bit first.
+  - `site_inds::Vector{<:Index}`: sites of the full chain, in site order (e.g. `siteinds(arch)`).
+  - `arch::QTTArchitecture{N}`: the layout.
+
+# Throws
+
+  - `DimensionMismatch`: if `site_inds` does not have `total_sites(arch)` indices.
 """
 function ndim_operator_sum_mpo(
     onedim_ops::NTuple{N,Any}, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}
@@ -297,6 +326,16 @@ function ndim_operator_sum_mpo(
     return MPO(mpo_tensors)
 end
 
+"""
+    zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upleft) -> MPO
+
+Place the operator `mpo` in a corner of a larger, otherwise zero QTT operator on `site_inds`: the result is
+``E^{\\otimes p} \\otimes M``, where ``p`` is the number of extra sites, put before `mpo` (they are the most
+significant bits), and ``E`` is the ``2 \\times 2`` single-entry matrix of the corner (`:upleft`, `:upright`,
+`:bottomleft` or `:bottomright`). The extra sites must have dimension 2, and the bond dimension does not grow. Returns
+`mpo` itself if no site is missing; throws an `ArgumentError` if `site_inds` is shorter than `mpo` or the corner is
+unknown.
+"""
 function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upleft)
     totlen = length(site_inds)
     mpo_len = length(mpo)
