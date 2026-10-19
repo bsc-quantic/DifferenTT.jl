@@ -98,3 +98,23 @@ end
     @test eigmin(Symmetric(Gq' * Gq)) > 0
     @test κ(Gq' * Gq * Aqd) <= κ(Aqd) / 100
 end
+
+# The preconditioned build inverts the complement block μ(I - P_L) with (I - P_L)/μ. Weighted by μ, as before, it
+# multiplied the local CG iterations of the build by 21.6 at μ = 1e3 (measured 1.04 now)
+@testset "The preconditioned FAI build weights the complement by 1/μ" begin
+    A, _, _, _ = qtt_laplacian((6,))
+    Ad = todense(A)
+    function build(preconditioning)
+        store = KrylovSweepStats()
+        solver = ResidualALS(;
+            sweep_kwargs=SweepingArgs(; nsweeps=4, maxdim=8), updater_kwargs=cg_args(; rtol=1e-6, numiter_store=store)
+        )
+        F = fai_preconditioner(A; μ=1e3, solver, totalmaxdim=8, preconditioning, rng=rng(1))
+        G = todense(F.operator)
+        return sum(DifferenTT.positions_sum(store)), κ(G' * G * Ad)
+    end
+    iterations_plain, κ_plain = build(false)
+    iterations_preconditioned, κ_preconditioned = build(true)
+    @test iterations_preconditioned < 2 * iterations_plain
+    @test κ_preconditioned < 1.1
+end

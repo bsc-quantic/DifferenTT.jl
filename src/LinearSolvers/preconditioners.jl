@@ -238,10 +238,10 @@ rather than an error.
 
 `D_kwargs` may hold the `cutoff` (default `1e-15`), `maxdim` (default `typemax(Int)`) and `oversample` (default `10`)
 of [`elementwise_function`](@ref). With `preconditioning = true`, the system is preconditioned by
-``\\mathbb{P}_L R \\mathbb{P}_L + \\mu(\\mathbb{I} - \\mathbb{P}_L)``, where ``R`` is the [`rank1_preconditioner`](@ref)
-of its operator. Note that this weights the complement by ``\\mu`` rather than by ``1/\\mu``, and that it slows the
-build down: on a ``2^6``-point QTT Laplacian with `ResidualALS`, it multiplied the local CG iterations by 3 for
-``\\mu = 1`` and by 22 for ``\\mu = 10^7``, for a preconditioner of the same quality;
+``\\mathbb{P}_L R \\mathbb{P}_L + \\mu^{-1}(\\mathbb{I} - \\mathbb{P}_L)``, where ``R`` is the
+[`rank1_preconditioner`](@ref) of its operator and ``\\mu^{-1}`` inverts the complement block. Note that this does not
+speed the build up: on a ``2^6``-point QTT Laplacian with `ResidualALS`, it multiplied the local CG iterations by 3.1
+for ``\\mu = 1``, 1.04 for ``\\mu = 10^3`` and 7.8 for ``\\mu = 10^7``, for a preconditioner of the same quality;
 `residual_tol` adds a [`ResidualObserver`](@ref) on the system as `sweep_observer!`; `compute_residual = true` logs the
 relative residual of the system after the solve, at the cost of two more sandwiches with its operator; the other
 `kwargs` go to [`linearsolve`](@ref).
@@ -305,7 +305,7 @@ function fai_dg(
         projected_preconditioner = Preconditioner(
             +(
                 apply(projector, apply(preconditioner.operator, projector; alg="naive"); alg="naive"),
-                μ * projector_complement;
+                inv(μ) * projector_complement; # (μ(I - P_L))⁻¹ = (I - P_L)/μ on the complement
                 alg="directsum",
             ),
         )
@@ -399,7 +399,7 @@ Larger values of ``\\mu`` also make the system worse conditioned for Krylov loca
   - `D_cutoff::Real=1e-15`, `D_maxdim::Int=typemax(Int)`, `D_oversample::Int=10`: truncation cutoff, maximum bond
     dimension and sketch oversampling of the element-wise map that computes ``D``.
   - `preconditioning::Bool=false`: precondition the solve for ``\\tilde{G}_L`` with [`rank1_preconditioner`](@ref).
-    In our tests this slowed the build down (see the internal `DifferenTT.fai_dg`).
+    In our tests this did not speed the build up (see the internal `DifferenTT.fai_dg`).
   - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps of `solver` once the relative residual of
     Eq. (22) is below it (through a [`ResidualObserver`](@ref) used as `sweep_observer!`).
   - `compute_residual::Bool=false`: compute and log the relative residual of Eq. (22) after the solve.
