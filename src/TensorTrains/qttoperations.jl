@@ -51,6 +51,26 @@ function ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index
 
     onedim_links = linkinds(working_mpo)
     onedim_sites = [siteind(working_mpo, j) for j in 1:active_vars]
+
+    # A variable with a single site: its core has no links, so it only gets the dummy links of its neighbors
+    if active_vars == 1
+        active = only(active_indices)
+        T = replaceinds(working_mpo[1], [onedim_sites[1], onedim_sites[1]'], [site_inds[active], site_inds[active]'])
+        active > 1 && (T *= adapt(array_type, onehot(links[active-1] => 1)))
+        active < total_sites && (T *= adapt(array_type, onehot(links[active] => 1)))
+        for j in 1:total_sites
+            mpo_tensors[j] = if j == active
+                T
+            elseif j == 1
+                make_identity_site(site_inds[j], links[1], array_type)
+            elseif j == total_sites
+                make_identity_site(site_inds[j], links[j-1], array_type)
+            else
+                make_identity_site(site_inds[j], links[j-1], links[j], array_type)
+            end
+        end
+        return MPO(mpo_tensors)
+    end
     # --- 2. Handle the first site ---
     first_active = isempty(active_indices) ? total_sites + 1 : active_indices[1]
     if first_active > 1

@@ -34,6 +34,40 @@ using ITensorMPS
         @test norm(apply(lifted_mpo_int, mps_test_int)) > 0
     end
 
+    # Regression test: a variable with a single site threw a BoundsError (its core has no link indices)
+    @testset "ndim_operator_mpo with one-site variables" begin
+        # Dense reference: the operator acts on the value of variable `ax`, read from its bits (most significant first,
+        # reversed for a negative var_nsites), and is the identity on the values of the other variables
+        function varvals(bits, q)
+            return map(eachindex(q.var_nsites)) do k
+                b = [bits[i] for i in eachindex(bits) if q.site_map[i] == k]
+                q.var_nsites[k] < 0 && reverse!(b)
+                DifferenTT.binary_to_decimal(b)
+            end
+        end
+        function reference(opd, ax, q)
+            n = length(q.site_map)
+            M = zeros(2^n, 2^n)
+            for r in 0:(2^n-1), c in 0:(2^n-1)
+                vr = varvals(DifferenTT.decimal_to_binary(r, n), q)
+                vc = varvals(DifferenTT.decimal_to_binary(c, n), q)
+                all(vr[k] == vc[k] for k in eachindex(vr) if k != ax) && (M[r+1, c+1] = opd[vr[ax]+1, vc[ax]+1])
+            end
+            return M
+        end
+        for (nbits, interleaved) in (((1,), false), ((2, 1, 2), false), ((2, 1, 2), true), ((-1, 2), true))
+            arch = QTTArchitecture(nbits; interleaved)
+            sites = siteinds(arch)
+            for ax in eachindex(nbits)
+                onedim_sites = siteinds(2, abs(nbits[ax]))
+                n = 2^abs(nbits[ax])
+                op = DifferenTT.mat2mpo(reshape(collect(1.0:(n^2)), n, n), onedim_sites)
+                lifted = DifferenTT.ndim_operator_mpo(op, ax, sites, arch)
+                @test contract_mpo(lifted) ≈ reference(contract_mpo(op), ax, arch)
+            end
+        end
+    end
+
     # Regression test: zeros_padding matched the site indices by their position in the tensor, which transposed the
     # block of an MPO whose tensors store (s, s') instead of (s', s)
     @testset "zeros_padding" begin
