@@ -214,7 +214,8 @@ end
 
 Internal. Return the two factors of the FAI of the SPD `operator` ``A``: the lower-triangular approximate inverse
 ``\\tilde{G}_L`` and the diagonal rescaling ``D``, which [`fai_preconditioner`](@ref) multiplies into
-``G_L = D \\tilde{G}_L``. Tests and tutorials call it qualified, `DifferenTT.fai_dg`, to inspect them.
+``G_L = D \\tilde{G}_L``. We keep the two factors apart so that the effects of truncating ``\\tilde{G}_L`` and ``D`` can
+be studied separately when prototyping; call it qualified, `DifferenTT.fai_dg`.
 
 We vectorize ``X = \\tilde{G}_L`` by fusing, at each site, its row index (a copy of the sites, the output of
 ``\\tilde{G}_L``) with its column index into one index of dimension ``d^2``, and solve with `g_solver` the projected
