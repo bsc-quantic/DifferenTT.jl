@@ -1,16 +1,26 @@
 """
-    neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
+    neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15,
+                       maxdim::Int=typemax(Int)) where N -> Union{MPO,Nothing}
 
-Diagonal weight `W = W₁ ⊗ … ⊗ W_N` that symmetrizes a linear system built with the mirrored `NeumannBC`
-closures, whose boundary lies on the stored node. `Wᵢ` is the identity with `1/2` on the Neumann boundary
-rows of axis `i`. Multiplying the whole system `A x = b` by `W` gives the finite volume half-cell equations:
-`W A` is symmetric and has the same solution, and a node shared by two Neumann faces gets weight `1/4`.
-Returns `nothing` if `field` has no `NeumannBC` face.
+Build the diagonal weight ``W = W_1 \\otimes \\dots \\otimes W_N`` that symmetrizes a linear system built with the
+mirrored [`NeumannBC`](@ref) closures of `field`.
 
-Each `Wᵢ` is the identity plus [`onedim_neumann_symmetrization_correction`](@ref) applied to it. In QTT, `Wᵢ`
-has bond dimension 2 (one Neumann side) or 3 (both sides) inside its axis. The lifted `W` has bond dimension
-1 between axes for TT and sequential QTT, while interleaved QTT threads the bonds of every axis through the
-others.
+The mirror closure, ``u_{-k} = u_k``, places the boundary on the stored node and counts its row of the second derivative
+twice, so the operator is no longer symmetric and CG cannot be applied to it. ``W_i`` is the identity with ``1/2`` on
+the Neumann boundary rows of axis ``i`` (the first and/or last row), i.e. the identity plus
+[`onedim_neumann_symmetrization_correction`](@ref) applied to it, and multiplying the whole system
+``A\\mathbf{x} = \\mathbf{b}`` by ``W`` gives the finite-volume half-cell equations: ``WA`` is symmetric, for stencil
+orders 2 and 8, and has the same solution. A node shared by two Neumann faces gets the weight ``1/4``. We weight whole
+``N``-dimensional rows, rather than the boundary row of each one-dimensional operator, because halving only the latter
+leaves the tangential derivatives of a Neumann row with double weight.
+
+In QTT, ``W_i`` has bond dimension 2 (one Neumann side) or 3 (both sides) inside its axis. The lifted ``W`` has bond
+dimension 1 between axes in TT and in non-interleaved QTT, while an interleaved QTT threads the bonds of every axis
+through the others. The weight is built on the backend of `field`. Returns `nothing` if `field` has no `NeumannBC`
+side.
+
+See also [`symmetrized_laplacian`](@ref), [`symmetrize_rhs`](@ref), and the boundary-condition tutorial
+[Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 function neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where {N}
     array_type = backend_type(field)
@@ -44,16 +54,15 @@ function neumann_weight_mpo(field::ScalarField{N}; cutoff::Float64=1e-15, maxdim
 end
 
 """
-    symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N
+    symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where N -> MPS
 
-Weight an arbitrary right-hand side `MPS` with the Neumann weight `W` of `field` (see
-[`neumann_weight_mpo`](@ref)), i.e. halve it on the `NeumannBC` boundary rows of each axis (a quarter on
-nodes shared by two Neumann faces). Meant to be used alongside `symmetrized_laplacian`, which applies the
-same `W` to the operator. Returns `rhs` itself if `field` has no `NeumannBC` face.
+Return ``W\\mathbf{b}``, the right-hand side `rhs` weighted with the Neumann weight ``W`` of `field` (see
+[`neumann_weight_mpo`](@ref)), i.e. halved on the `NeumannBC` boundary rows of each axis, and divided by four on the
+nodes shared by two Neumann faces. It goes with [`symmetrized_laplacian`](@ref), which applies the same ``W`` to the
+operator, so that the weighted system ``WA\\mathbf{x} = W\\mathbf{b}`` has the solution of the original one. Returns
+`rhs` itself if `field` has no `NeumannBC` side.
 
-# Returns
-
-  - `MPS`: The symmetrized right-hand side.
+See also the boundary-condition tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) where {N}
     weight = neumann_weight_mpo(field; cutoff=cutoff, maxdim=maxdim)
@@ -61,11 +70,21 @@ function symmetrize_rhs(field::ScalarField{N}, rhs::MPS; cutoff::Float64=1e-15, 
 end
 
 """
-    face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) -> MPS
 
-MPS on the sites of `field` that is constant along `axis` and equal to `values` along the other axis, i.e. the
-profile of a face of `axis` extended to the whole domain. `values` is either a `Number` (constant profile) or a
-vector with one value per stored node of the other axis, in increasing node index.
+Return the MPS on the sites of `field` that is constant along `axis` and equal to `values` along the other axis, i.e.
+the profile of a face of `axis` extended to the whole two-dimensional domain. The lift operators of the Dirichlet
+corrections are only meaningful on vectors that are constant along their axis, and this is the vector they are
+applied to ([`face_dirichlet_lift`](@ref)). `values` is either a `Number`, for a constant profile, or a vector with one
+value per stored node of the other axis, in increasing node index. A vector profile is built as a dense diagonal
+matrix, converted to an MPO of the other axis and applied to the all-ones MPS, which is cheap up to about ``2^{11}``
+nodes per axis in QTT.
+
+# Throws
+
+  - `ArgumentError`: if a vector `values` does not have one value per node of the other axis.
+
+See also the boundary-condition tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """
 function face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
     array_type = backend_type(field)
@@ -82,25 +101,51 @@ function face_profile_mps(field::ScalarField{2}, axis::Int, values; cutoff::Floa
     return apply(profile_op, ones_mps(field.usites, 1, array_type); cutoff=cutoff, maxdim=maxdim)
 end
 
+"""
+    _onedim_diagonal_operator(arch::TTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
+    _onedim_diagonal_operator(arch::QTTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
+
+Return the one-dimensional diagonal operator ``\\mathrm{diag}(\\mathtt{values})`` of axis `axis` on `array_type`: a
+dense matrix in TT, and in QTT an MPO on new sites of dimension 2 built from the dense ``2^{N_i} \\times 2^{N_i}``
+matrix by `mat2mpo` with `cutoff`.
+"""
 function _onedim_diagonal_operator(arch::TTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
     adapt(array_type, Matrix(Diagonal(Vector{Float64}(values))))
 end
 
-# TODO A diagonal built from vec2mps would avoid the dense 2ⁿ × 2ⁿ matrix (fine up to n ≈ 11)
+# TODO(release): a diagonal built from vec2mps and diagmpo would avoid the dense 2ⁿ × 2ⁿ matrix (fine up to n ≈ 11)
 function _onedim_diagonal_operator(arch::QTTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
     sites = siteinds(2, abs(arch.var_nsites[axis]))
     return adapt(array_type, mat2mpo(Matrix(Diagonal(Vector{Float64}(values))), sites; cutoff=cutoff))
 end
 
 """
-    face_dirichlet_lift(field::ScalarField{2}, grid::Grid{2}, derivative_order::Int, axis::Int, side::Symbol, values; stencil_order::Int=2, cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    face_dirichlet_lift(field::ScalarField{2}, grid::Grid{2}, derivative_order::Int, axis::Int, side::Symbol, values;
+                        stencil_order::Int=2, cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) -> Union{MPS,Nothing}
 
-Ghost contribution of a single face to a derivative of order `derivative_order` along `axis`: the derivative
-operators truncate the stencils at non-periodic faces (ghost value 0), and adding this MPS restores the ghost
-value `values` (a `Number` or a profile along the face, see [`face_profile_mps`](@ref)) on the `side` (`:left` or
-`:right`) face of `axis`. With `stencil_order = 2`, it is only nonzero on the row next to the face.
+Return the ghost contribution of one face to the derivative of order ``k`` = `derivative_order` along `axis`, the
+lift that completes a truncated stencil with nonzero ghost values.
 
-Returns `nothing` if `values` is `nothing` or zero.
+The derivative operators truncate the stencils at the non-periodic faces, i.e. they take the ghost values as zero.
+When the ghost nodes of the `side` (`:left` or `:right`) face of `axis` hold the values ``g``, the full stencil equals
+the truncated one plus
+
+```math
+\\boldsymbol{\\ell} = \\frac{1}{h^k} (C \\otimes \\mathbb{I})\\, \\mathbf{g},
+```
+
+where ``C`` is the one-dimensional block of [`onedim_left_dirichlet_correction`](@ref) or
+[`onedim_right_dirichlet_correction`](@ref), lifted to two dimensions along `axis`, ``h`` the spacing of `grid` along
+`axis`, and ``\\mathbf{g}`` the face values extended along `axis` by [`face_profile_mps`](@ref). `values` is a `Number`
+or a profile along the face. With the default `stencil_order = 2` (the vorticity–streamfunction scheme), the lift is
+nonzero only on the row next to the face. Returns `nothing` if `values` is `nothing` or zero.
+
+# Throws
+
+  - `ArgumentError`: if `side` is not `:left` or `:right`, or if a profile has the wrong length.
+
+See also [`scalar_dirichlet_correction`](@ref), and the boundary-condition tutorial [Vorticity–streamfunction
+formulation](@ref bc_vorticity_streamfunction).
 """
 function face_dirichlet_lift(
     field::ScalarField{2},
@@ -130,10 +175,15 @@ function face_dirichlet_lift(
 end
 
 """
-    remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
+    remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int)) -> MPS
 
-Subtract the node mean of `rhs` (plain sum over the nodes divided by their number), so that a right-hand side of a
-singular system with constant null space becomes consistent.
+Return ``\\mathbf{b} - \\bar{b}\\,\\mathbf{1}``, the right-hand side `rhs` minus its node mean
+``\\bar{b} = \\frac{1}{n} \\sum_j b_j`` over the ``n`` grid nodes. A singular system whose null space is the constant
+vector (pure Neumann or periodic boundaries) is only consistent when the right-hand side is orthogonal to that
+vector, and this projection makes it so. The vorticity–streamfunction scheme uses it; note that the Chorin projection
+removes a different constant (see [`poisson_rhs`](@ref) and the known limitations of [`INSExperiment`](@ref)).
+
+See also the boundary-condition tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """
 function remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
     sites = siteinds(rhs)
@@ -142,14 +192,30 @@ function remove_mean(rhs::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int))
 end
 
 """
-    divergence_dirichlet_correction(u_fields::VectorField{N}; stencil_order::Int = 8) where N
+    divergence_dirichlet_correction(u_fields::VectorField{N}; stencil_order::Int=8, cutoff::Float64=1e-15,
+                                    maxdim::Int=typemax(Int64)) where N -> Union{MPO,Nothing}
 
-Compute the boundary correction MPO for the divergence operator with Dirichlet BCs on velocity.
+Build the diagonal projector that zeroes the divergence of a velocity field on the rows next to its Dirichlet faces.
+
+The term ``\\partial_i u_i`` of the divergence is computed with the first derivative of component ``i`` along axis
+``i``, whose stencil is truncated within ``q/2`` rows of a Dirichlet side of that component. These rows are not
+consistent approximations of the derivative, so the Chorin projection removes them from the pressure equation: the
+projector is the product over the axes of the one-dimensional projectors of [`onedim_boundary_nullifier`](@ref),
+built from the boundary conditions of component ``i`` along axis ``i`` only, and applied to the divergence it sets the
+source of the pressure Poisson equation to zero on those rows (see [`poisson_rhs`](@ref)). Returns `nothing` if no
+component has a Dirichlet side along its own axis.
 
 # Arguments
 
-  - `u_fields::VectorField{N}`: The velocity field (containing BC info).
-  - `stencil_order::Int`: Stencil order.
+  - `u_fields::VectorField{N}`: the velocity field, whose components carry the boundary conditions.
+
+# Keywords
+
+  - `stencil_order::Int=8`: ``q``, which sets the ``q/2`` rows that are zeroed.
+  - `cutoff::Float64=1e-15`, `maxdim::Int=typemax(Int64)`: truncation of the product of the projectors.
+
+See also [`BoundaryNull`](@ref), and the boundary-condition tutorial [Velocity–pressure formulation](@ref
+bc_velocity_pressure).
 """
 function divergence_dirichlet_correction(
     u_fields::VectorField{N}; stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
@@ -175,10 +241,22 @@ function divergence_dirichlet_correction(
 end
 
 """
-    scalar_dirichlet_correction_dim(field::ScalarField{N}, grid::Grid{N}, derivative_order::Int, dim::Int; stencil_order, cutoff, maxdim) where N
+    scalar_dirichlet_correction_dim(field::ScalarField{N}, grid::Grid{N}, derivative_order::Int, dim::Int;
+                                    stencil_order::Int=8, cutoff::Float64=1e-15,
+                                    maxdim::Int=typemax(Int64)) where N -> Union{MPO,Nothing}
 
-Compute the Dirichlet boundary correction MPO for a scalar field along a single dimension `dim`.
-Returns `nothing` if no Dirichlet BCs are present or if the boundary values are zero.
+Build the operator whose product with the all-ones MPS is the Dirichlet lift of `field` along the axis `dim`, for the
+derivative of order ``k`` = `derivative_order`.
+
+Each `DirichletBC` side of the axis with value ``g`` (``|g| > 10^{-14}``) contributes ``g\\, C / h^k``, where ``C`` is
+[`onedim_left_dirichlet_correction`](@ref) or [`onedim_right_dirichlet_correction`](@ref) lifted to ``N`` dimensions,
+and ``h`` the spacing of `grid` along `dim`. The ghost nodes beyond each Dirichlet side therefore all hold its value
+``g``, and ``(\\sum_\\text{sides} g\\,C/h^k)\\,\\mathbf{1}`` is what the truncated derivative misses on the rows next to
+that side. Note that the result is an operator, not the lift itself: the callers apply it to `ones_mps` (see
+[`poisson_rhs`](@ref) and `∇p_correction`). Returns `nothing` if the axis has no Dirichlet side with a nonzero value.
+
+See also [`scalar_dirichlet_correction`](@ref), and the boundary-condition tutorial [Velocity–pressure formulation](@ref
+bc_velocity_pressure).
 """
 function scalar_dirichlet_correction_dim(
     field::ScalarField{N},
@@ -228,10 +306,26 @@ function scalar_dirichlet_correction_dim(
 end
 
 """
-    scalar_dirichlet_correction(field::ScalarField{N}, grid::Grid{N}, derivative_order::Int; stencil_order, cutoff, maxdim) where N
+    scalar_dirichlet_correction(field::ScalarField{N}, grid::Grid{N}, derivative_order::Int; stencil_order::Int=8,
+                                cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N -> Union{MPO,Nothing}
 
-Compute the total Dirichlet boundary correction MPO for a scalar field across all dimensions.
-Returns `nothing` if no corrections are needed.
+Build the operator whose product with the all-ones MPS is the Dirichlet lift of `field` for the derivative of order
+`derivative_order` summed over all axes, i.e. the sum over the axes of [`scalar_dirichlet_correction_dim`](@ref). For
+`derivative_order = 2` it completes the truncated Laplacian with the Dirichlet values of `field`:
+``\\Delta_\\text{full}\\,\\mathbf{p} = \\Delta\\,\\mathbf{p} + C\\,\\mathbf{1}``, where ``C`` is the returned
+operator, so it moves nonhomogeneous Dirichlet data of the pressure to the right-hand side of the Chorin projection
+([`poisson_rhs`](@ref)). Only the second-derivative terms of each axis are covered: an operator with mixed derivatives
+(e.g. [`equicorrelated_laplacian`](@ref)) needs further lifts. Returns `nothing` if no axis has a Dirichlet side with a
+nonzero value.
+
+# Examples
+
+```julia
+C = scalar_dirichlet_correction(p_field, grid, 2; stencil_order=8)
+lift = apply(C, ones_mps(p_field.usites, 1))
+```
+
+See also the boundary-condition tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 function scalar_dirichlet_correction(
     field::ScalarField{N},
