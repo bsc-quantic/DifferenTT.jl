@@ -225,12 +225,15 @@ end
     end
     periodic_faces = ((PeriodicFace(), PeriodicFace()), (PeriodicFace(), PeriodicFace()))
 
+    # The residual of the TT-CG stagnates at about 1e-7 ‖b‖ (the truncation floor of the arithmetic) after about 100
+    # iterations on these 16 × 16 systems, so a larger `maxiter` only repeats iterations at the floor: 2000 of them
+    # took 14 s per solve and gave the same error against the dense solution (1.1e-7) as 200 do
     exact_solver() = GlobalCG(
         updater_kwargs=GlobalUpdaterArgs(
             ishermitian=true,
             isposdef=true,
             rtol=1e-13,
-            maxiter=2000,
+            maxiter=200,
             maxdim=256,
             cutoff=1e-15,
             orth_maxdim=256,
