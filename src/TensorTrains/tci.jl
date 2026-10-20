@@ -174,7 +174,8 @@ Build a tensor train of the function `func` of the coordinates by the one-site t
 TensorCrossInterpolation.jl, as the two-site [`crossinterpolate2`](@ref
 TensorCrossInterpolation.crossinterpolate2) does. The first entry of `initialpivots` is the first pivot and the others
 are passed as `additionalpivots`. Returns the `TensorCI1` object, the ranks and the errors; throws as
-`crossinterpolate2`.
+`crossinterpolate2`. It is offered as an alternative with the same interface, to compare the two methods: in our tests
+the one-site cross was much less accurate than the two-site one, even when the error it reported was small.
 """
 function TensorCrossInterpolation.crossinterpolate1(
     func_type::Type{<:Number},
