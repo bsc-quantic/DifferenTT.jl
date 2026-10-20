@@ -3,6 +3,16 @@ using ITensors
 using ITensorMPS
 using Test
 using TensorCrossInterpolation
+using LinearAlgebra
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+
+# All the multi-indices (0-based, one value per site) of an architecture, site 1 the most significant, i.e. in the
+# order of the entries of contract_mps
+function all_sequences(arch)
+    d = Tuple(site_dims(arch))
+    return [collect(Tuple(c)) .- 1 for c in vec(permutedims(collect(CartesianIndices(d)), length(d):-1:1))]
+end
 
 @testset "tci.jl" begin
     # 1. Setup Grids and Architectures
@@ -148,5 +158,110 @@ using TensorCrossInterpolation
         ranges2, data2 = DifferenTT.samples(mps, grid, arch, 4)
         @test ranges == ranges2
         @test data == data2
+    end
+
+    @testset "point_sequence and sequence_to_point are inverse bijections for every layout" begin
+        layouts = [
+            QTTArchitecture((2, 3)),
+            QTTArchitecture((2, 3); interleaved=true),
+            QTTArchitecture((2, 3), Dict(1 => 2, 2 => 1)),
+            QTTArchitecture((-2, 3); interleaved=true),
+            QTTArchitecture((1, -2), Dict(1 => 2, 2 => 1)),
+            TTArchitecture((3, 5)),
+            TTArchitecture((3, 5), Dict(1 => 2, 2 => 1)),
+        ]
+        for arch in layouts
+            grid = Grid(arch, (1.0, 2.0))
+            n = variable_dims(arch)
+            seqs = all_sequences(arch)
+            @test length(seqs) == prod(n)
+            points = [DifferenTT.sequence_to_point(q, grid, arch) for q in seqs]
+            # every node of the grid exactly once
+            @test sort(points) == sort(vec([(i * grid.dx[1], j * grid.dx[2]) for i in 0:(n[1]-1), j in 0:(n[2]-1)]))
+            @test all(DifferenTT.point_sequence(p, grid, arch) == q for (p, q) in zip(points, seqs))
+            # a point between nodes is snapped to the closest one
+            p = points[end÷2]
+            @test DifferenTT.point_sequence(p .+ 0.3 .* grid.dx, grid, arch) == seqs[end÷2]
+        end
+        # the bits of a reversed variable are least significant first: node 1 of 8 is the sequence (1, 0, 0)
+        arch = QTTArchitecture((-3,))
+        grid = Grid(arch, (7.0,))
+        @test DifferenTT.point_sequence((1.0,), grid, arch) == [1, 0, 0]
+        @test DifferenTT.sequence_to_point([1, 0, 0], grid, arch) == (1.0,)
+        @test DifferenTT.point_sequence((1.0,), grid, QTTArchitecture((3,))) == [0, 0, 1]
+    end
+
+    @testset "sample, samples and integrate against the dense vector" begin
+        f(x) = 1 + x[1] - 2 * x[2]^2
+        for arch in (TTArchitecture((3, 4), Dict(1 => 2, 2 => 1)), QTTArchitecture((2, -1); interleaved=true))
+            grid = Grid(arch, (1.0, 2.0))
+            seqs = all_sequences(arch)
+            v = [f(DifferenTT.sequence_to_point(q, grid, arch)) for q in seqs]
+            mps = DifferenTT.vec2mps(v, siteinds(arch))
+            @test all(
+                DifferenTT.sample(mps, DifferenTT.sequence_to_point(q, grid, arch), grid, arch) ≈ v[k] for
+                (k, q) in enumerate(seqs)
+            )
+            @test DifferenTT.integrate(mps) ≈ sum(v)
+
+            ranges, data = DifferenTT.samples(mps, grid, arch, (3, 5))
+            @test size(data) == (3, 5)
+            @test ranges[1] == range(0.0, 1.0; length=3) && ranges[2] == range(0.0, 2.0; length=5)
+            # every value is that of the node closest to the sample point
+            snap(x) = DifferenTT.sequence_to_point(DifferenTT.point_sequence(x, grid, arch), grid, arch)
+            @test all(data[i, j] ≈ f(snap((ranges[1][i], ranges[2][j]))) for i in 1:3, j in 1:5)
+            @test_throws DimensionMismatch DifferenTT.sample(mps, (0.0, 0.0), grid, QTTArchitecture((2, 2)))
+        end
+        # integrate on unequal site dimensions
+        x = randn(rng(), 24)
+        @test DifferenTT.integrate(DifferenTT.vec2mps(x, DifferenTT.site_indices([2, 3, 4]))) ≈ sum(x)
+    end
+
+    @testset "crossinterpolate1/2 against the dense function" begin
+        f(x) = sin(x[1]) * cos(x[2]) + x[1] * x[2]
+        for arch in (TTArchitecture((5, 4), Dict(1 => 2, 2 => 1)), QTTArchitecture((2, 3); interleaved=true))
+            grid = Grid(arch, (2.0, 1.0))
+            v = [f(DifferenTT.sequence_to_point(q, grid, arch)) for q in all_sequences(arch)]
+            pivot = DifferenTT.optfirstpivot(Float64, f, grid, arch; iters=50, rng=rng())
+            tt2, _ = DifferenTT.crossinterpolate2(Float64, f, grid, arch; initialpivots=[pivot], tolerance=1e-12)
+            @test todense(MPS(tt2)) ≈ v rtol = 1e-10
+            # one-site TCI, with a second pivot passed as additionalpivots, against TensorCrossInterpolation called
+            # directly on the multi-indices. (TCI1 itself is not accurate here, even for a rank-1 function: see the
+            # WP3a report.)
+            pivots = [pivot, ones(Int, total_sites(arch))]
+            tt1, ranks1, errs1 = DifferenTT.crossinterpolate1(
+                Float64, f, grid, arch; initialpivots=pivots, tolerance=1e-12
+            )
+            g(i) = f(DifferenTT.sequence_to_point(i .- 1, grid, arch))
+            ref1, ranks_ref, errs_ref = TensorCrossInterpolation.crossinterpolate1(
+                Float64, g, collect(site_dims(arch)), pivots[1]; tolerance=1e-12, additionalpivots=pivots[2:2]
+            )
+            @test ranks1 == ranks_ref
+            @test isequal(errs1, errs_ref)  # TCI1 reports NaN errors on some iterations
+            @test todense(MPS(tt1)) ≈ todense(MPS(ref1))
+            for ci in (DifferenTT.crossinterpolate1, DifferenTT.crossinterpolate2)
+                @test_throws ArgumentError ci(Float64, f, grid, arch; initialpivots=Vector{Int}[])
+                @test_throws DimensionMismatch ci(Float64, f, grid, arch; initialpivots=[[1]])
+            end
+        end
+    end
+
+    @testset "optfirstpivot and the pivot helpers" begin
+        @test DifferenTT._tci_center_pivot([5, 4, 2, 1]) == [3, 2, 1, 1]
+        r = rng()
+        draws = [DifferenTT._tci_random_pivot([5, 2, 3]; rng=r) for _ in 1:200]
+        @test all(2 <= p[1] <= 4 && 1 <= p[2] <= 2 && p[3] == 2 for p in draws)
+        @test Set(p[1] for p in draws) == Set(2:4)
+        @test DifferenTT._tci_random_pivot([5, 2, 3]; rng=rng(7)) == DifferenTT._tci_random_pivot([5, 2, 3]; rng=rng(7))
+
+        # a function with its largest magnitude at one interior node is found by the random search
+        arch = TTArchitecture((5, 5))
+        grid = Grid(arch, (4.0, 4.0))
+        g(x) = 1 / (1 + (x[1] - 1)^2 + (x[2] - 3)^2)
+        @test DifferenTT.optfirstpivot(Float64, g, grid, arch; iters=100, rng=rng()) == [2, 4]
+        # with no draw the center is returned; the center is the origin of a QTT layout
+        @test DifferenTT.optfirstpivot(Float64, g, grid, arch; iters=0) == [3, 3]
+        q = QTTArchitecture((2, 2))
+        @test DifferenTT.optfirstpivot(Float64, x -> 1.0, Grid(q, (1.0, 1.0)), q; iters=0) == [1, 1, 1, 1]
     end
 end
