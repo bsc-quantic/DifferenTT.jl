@@ -159,6 +159,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - The QTT Neumann corrections of the differential operators (`left_neumann_boundary_correction`,
   `right_neumann_boundary_correction`) ignored `array_type` and built their corner block on the CPU, so a Neumann side
   could not be used on a GPU (found by code review). Results on the CPU are unchanged.
+- `chorin_evolve!` and `vorticity_evolve!` with `save_every > 1` also stored the state of step `nsteps - 1` whenever
+  `nsteps - 1` was not a multiple of `save_every`, and the `k`-th entry of the logged `linsolve_errorlog` was the
+  residual of a different step than the `k`-th stored pressure or stream function. The fields now store the initial
+  state and the steps `save_every`, `2 save_every`, … and `nsteps`, with one residual per stored step; `save_every < 1`
+  throws `ArgumentError`. The paper's workers call `chorin_step` and are not affected.
 
 ### Deprecated
 

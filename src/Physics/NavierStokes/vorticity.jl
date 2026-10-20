@@ -807,12 +807,11 @@ function vorticity_evolve!(
     time_evol_kwargs = stepper.time_evol_kwargs
     check_cfl(experiment, stepper; vmax=experiment.vmax)
 
-    save_checkpoints = collect(1:save_every:time_evol_kwargs.nsteps)
-    save_checkpoints = if save_checkpoints[end] == time_evol_kwargs.nsteps
-        save_checkpoints
-    else
-        push!(save_checkpoints, time_evol_kwargs.nsteps)
-    end
+    save_every >= 1 || throw(ArgumentError("save_every must be at least 1, got $save_every"))
+    # A new slot is pushed at the steps 1, 1 + save_every, …, which freezes the previous one (the initial state, then
+    # the states of the steps save_every, 2 save_every, …). Between checkpoints the last slot is overwritten, so it
+    # always holds the latest step, which is the input of the next one, and the last step is always stored
+    save_checkpoints = 1:save_every:time_evol_kwargs.nsteps
 
     cache = VorticityCache(experiment)
     linsolve_errorlog = Float64[]
@@ -830,6 +829,7 @@ function vorticity_evolve!(
         else
             experiment.psi_field[length(experiment.psi_field)] = psi
             experiment.omega_field[length(experiment.omega_field)] = omega_next
+            linsolve_errorlog[end] = linsolve_error
         end
     end
 

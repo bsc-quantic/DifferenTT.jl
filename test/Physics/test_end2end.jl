@@ -91,6 +91,17 @@ using LinearAlgebra
 
         @test length(experiment3.u_fields) == 3
         @test length(experiment3.p_field) == 2
+
+        # Regression test: 5 steps saved every 3 store the initial velocity and the steps 3 and 5. The step 4 was also
+        # stored, because the last step was appended as an extra checkpoint
+        stepper5 = RK4(time_evol_kwargs=TimeEvolArgs(0.0, 0.005, 5), cutoff=1e-8, maxdim=10)
+        v_field5 = VectorField((v0 * ones_mps(sites, 1), 0.0 * ones_mps(sites, 1)), arch, (bcsvx, bcsvy))
+        experiment5 = DifferenTT.INSExperiment(
+            grid, v_field5, ScalarField(sites, arch, bcsp), Re, nothing; stencil_order=2, maxdim=10, cutoff=1e-8
+        )
+        DifferenTT.chorin_evolve!(experiment5, observed_solver, stepper5, 3, nothing, "")
+        @test length(experiment5.u_fields) == 3
+        @test length(experiment5.p_field) == 2
         # The observer in the solver was bound per step, never stored
         @test isnothing(observed_solver.sweep_kwargs.observer!.A)
         @test isnothing(observed_solver.sweep_kwargs.observer!.b)
