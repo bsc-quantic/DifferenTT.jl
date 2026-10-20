@@ -3,6 +3,8 @@ using ITensors
 using ITensorMPS
 using Test
 using LinearAlgebra
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
 
 @testset "constructors.jl" begin
     @testset "make_identity_site" begin
@@ -316,5 +318,160 @@ using LinearAlgebra
         @test contract_mpo(DifferenTT.upper_triang_mpo(s1, false)) ≈ triu(ones(3, 3), 1)
         @test contract_mpo(DifferenTT.lower_triang_mpo(s1)) ≈ tril(ones(3, 3))
         @test contract_mpo(DifferenTT.lower_triang_mpo(s1, false)) ≈ tril(ones(3, 3), -1)
+    end
+
+    # The constant MPOs and MPSs, checked densely for each way of giving the sites: indices, dimensions (unequal), a
+    # QTT or a TT architecture, and a single site
+    @testset "identity, zeros and ones against dense references" begin
+        cases = [
+            DifferenTT.site_indices([2, 3, 2]),
+            [2, 3, 4],
+            QTTArchitecture((2, 1); interleaved=true),
+            TTArchitecture((3, 2), Dict(1 => 2, 2 => 1)),
+            DifferenTT.site_indices([3]),
+            [5],
+        ]
+        sitedims(c::Vector{<:Index}) = dim.(c)
+        sitedims(c::Vector{Int}) = c
+        sitedims(c::DifferenTT.Architecture) = collect(site_dims(c))
+        for c in cases
+            d = sitedims(c)
+            D = prod(d)
+            N = length(d)
+
+            Id = identity_mpo(c)
+            @test dim.(only.(siteinds(Id; plev=0))) == d
+            @test maxlinkdim(Id) == 1
+            @test todense(Id) == I(D)
+
+            Z = zeros_mpo(c)
+            @test todense(Z) == zeros(D, D)
+            Zs = zeros_mps(c)
+            @test todense(Zs) == zeros(D)
+            @test dim.(siteinds(Zs)) == d
+
+            @test todense(ones_mps(c)) == ones(D)
+            @test todense(ones_mpo(c)) == ones(D, D)
+            # with bond dimension χ every entry is the number of paths through the bonds, χ^(N-1)
+            @test todense(ones_mps(c, 3)) == fill(3.0^(N - 1), D)
+            @test todense(ones_mpo(c, 2)) == fill(2.0^(N - 1), D, D)
+            if N > 1
+                @test linkdims(ones_mps(c)) == fill(1, N - 1)
+                @test linkdims(ones_mpo(c, 2)) == fill(2, N - 1)
+                @test maxlinkdim(zeros_mps(c; linkdims=2)) == 2
+            end
+        end
+
+        # the given link indices are used as they are
+        sites = DifferenTT.site_indices([2, 2, 2])
+        links = DifferenTT.link_indices([2, 3])
+        M = ones_mps(sites, links)
+        @test linkinds(M) == links
+        @test todense(M) == fill(6.0, 8)
+        O = ones_mpo(sites, links)
+        @test linkinds(O) == links
+        @test todense(O) == fill(6.0, 8, 8)
+
+        @test_throws DimensionMismatch ones_mps(sites, links[1:1])
+        @test_throws DimensionMismatch ones_mpo(sites, links[1:1])
+    end
+
+    @testset "make_pass_identity_site" begin
+        s = Index(3, "Site")
+        l1, l2 = Index(2, "Link,l=1"), Index(2, "Link,l=2")
+        T = DifferenTT.make_pass_identity_site(s, l1, l2, 2, Array)
+        @test hasinds(T, s, s', l1, l2)
+        @test all(T[s=>i, s'=>j, l1=>a, l2=>b] == (i == j && a == b) for i in 1:3, j in 1:3, a in 1:2, b in 1:2)
+        # pass_dim smaller than the links leaves the remaining channels empty
+        T1 = DifferenTT.make_pass_identity_site(s, l1, l2, 1, Array)
+        @test norm(T1) ≈ sqrt(3)
+        @test T1[s=>2, s'=>2, l1=>1, l2=>1] == 1.0
+    end
+
+    # P·vec(X) = vec(tril(X)) (or triu), in the vectorization of the docstring: site k of the vector merges the column
+    # (sites[k]) and the row (sites[k]') of site k of X
+    @testset "triang_projector_mpo is the projector onto the triangular entries" begin
+        tri = Dict(
+            (:lower, true) => tril,
+            (:lower, false) => X -> tril(X, -1),
+            (:upper, true) => triu,
+            (:upper, false) => X -> triu(X, 1),
+        )
+        for d in ([2], [2, 3], [3, 2, 2])
+            sites = DifferenTT.site_indices(d)
+            D = prod(d)
+            X = randn(rng(), D, D)
+            Xm = DifferenTT.mat2mpo(X, sites)
+            for which in (:lower, :upper), incl in (true, false)
+                P = DifferenTT.triang_projector_mpo(sites, which, incl)
+                @test maxlinkdim(P) <= 2
+                # the combiners of the second method are those of the projector's indices: rebuild them to vectorize X
+                combs = [combiner(sites[k], sites[k]'; tags="csite=$k") for k in eachindex(sites)]
+                cinds = only.(siteinds(P; plev=0))
+                xv = MPS([Xm[k] * combs[k] * delta(combinedind(combs[k]), cinds[k]) for k in eachindex(sites)])
+                yv = noprime(contract(P, xv))
+                Y = MPO([yv[k] * delta(cinds[k], combinedind(combs[k])) * combs[k] for k in eachindex(sites)])
+                @test todense(Y) ≈ tri[(which, incl)](X)
+                # it is a diagonal 0/1 operator, i.e. a projector
+                Pd = todense(P)
+                @test Pd ≈ Diagonal(diag(Pd))
+                @test sort(unique(round.(diag(Pd); digits=12))) ⊆ [0.0, 1.0]
+                @test sum(diag(Pd)) ≈ (incl ? D * (D + 1) ÷ 2 : D * (D - 1) ÷ 2)
+            end
+        end
+        # one site of dimension 2: the diagonal (1, 0, 1, 1) of Eq. (20) of the FAI paper, for row >= column, with the
+        # combiner merging (column, row) as fai_dg does
+        s = DifferenTT.site_indices([2])
+        helper = DifferenTT.site_indices([2])
+        P = DifferenTT.triang_projector_mpo(s, [combiner(s[1], helper[1])], :lower)
+        @test diag(todense(P)) == [1.0, 0.0, 1.0, 1.0]
+    end
+
+    @testset "arrays2mps and arrays2mpo round trips" begin
+        r = rng()
+        sites = DifferenTT.site_indices([2, 3, 2])
+        A = [randn(r, 2, 2), randn(r, 3, 2, 4), randn(r, 2, 4)]
+        M = DifferenTT.arrays2mps(sites, A)
+        @test linkdims(M) == [2, 4]
+        ref = [sum(A[1][i, a] * A[2][j, a, b] * A[3][k, b] for a in 1:2, b in 1:4) for i in 1:2, j in 1:3, k in 1:2]
+        @test todense(M) ≈ vec(permutedims(ref, (3, 2, 1)))
+        @test DifferenTT.vec2tensor(todense(M), [2, 3, 2]) ≈ ref
+
+        # with given link indices, which the MPS then carries
+        links = DifferenTT.link_indices([2, 4])
+        M2 = DifferenTT.arrays2mps(sites, links, A)
+        @test linkinds(M2) == links
+        @test todense(M2) ≈ todense(M)
+        @test_throws DimensionMismatch DifferenTT.arrays2mps(sites, DifferenTT.link_indices([2, 3]), A)
+
+        B = [randn(r, 2, 2, 3), randn(r, 3, 3, 3, 2), randn(r, 2, 2, 2)]
+        O = DifferenTT.arrays2mpo(sites, B)
+        @test linkdims(O) == [3, 2]
+        # entry (row (i,j,k), column (i',j',k')): the first axis of each array is the output (row) index
+        refO = [
+            sum(B[1][i, ip, a] * B[2][j, jp, a, b] * B[3][k, kp, b] for a in 1:3, b in 1:2) for
+            i in 1:2, j in 1:3, k in 1:2, ip in 1:2, jp in 1:3, kp in 1:2
+        ]
+        @test DifferenTT.mat2tensor(todense(O), [2, 3, 2]) ≈ refO
+        links = DifferenTT.link_indices([3, 2])
+        O2 = DifferenTT.arrays2mpo(sites, links, B)
+        @test linkinds(O2) == links
+        @test todense(O2) ≈ todense(O)
+        @test_throws DimensionMismatch DifferenTT.arrays2mpo(sites, DifferenTT.link_indices([3, 3]), B)
+
+        # contract → vec2mps/mat2mpo → contract
+        @test todense(DifferenTT.vec2mps(todense(M), sites)) ≈ todense(M)
+        @test todense(DifferenTT.mat2mpo(todense(O), sites)) ≈ todense(O)
+    end
+
+    @testset "vec2mps and mat2mpo pass the truncation keywords" begin
+        sites = DifferenTT.site_indices([2, 2, 2, 2])
+        v = randn(rng(), 16)
+        @test maxlinkdim(DifferenTT.vec2mps(v, sites; maxdim=2)) == 2
+        u = kron([1.0, 2.0], [1.0, -1.0], [3.0, 1.0], [0.5, 2.0])
+        @test maxlinkdim(DifferenTT.vec2mps(u, sites; cutoff=1e-14)) == 1
+        m = randn(rng(), 16, 16)
+        @test maxlinkdim(DifferenTT.mat2mpo(m, sites; maxdim=3)) == 3
+        @test maxlinkdim(DifferenTT.mat2mpo(kron(m[1:2, 1:2], m[3:4, 3:4], I(4)), sites; cutoff=1e-14)) == 1
     end
 end
