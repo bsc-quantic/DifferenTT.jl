@@ -2,6 +2,7 @@ using Test
 using ITensors
 using ITensorMPS
 using LinearAlgebra
+using Random
 using DifferenTT
 
 include(joinpath(@__DIR__, "..", "testutils.jl"))
@@ -277,6 +278,95 @@ try
         S = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=q))
         @test S ≈ Diagonal(w) * A atol = 1e-8 * norm(A)
         @test S ≈ S' atol = 1e-8 * norm(A)
+    end
+
+    @testset "gradient, divergence, advection and diffusion against dense operators ($label, q=$q)" for (label, arch) in
+                                                                                                        (
+            ("TT", TTArchitecture((9, 8))), ("QTT", QTTArchitecture((4, 5)))
+        ),
+        q in (2, 8)
+
+        n1, n2 = variable_dims(arch)
+        dims = (n1, n2)
+        grid = Grid(arch, (1.0, 2.0))
+        h = grid.dx
+        sites = siteinds(arch)
+        # Each component has its own boundary conditions along each axis: the operators use those of the component
+        walls = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        mirror = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+        wrap = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+        component_bcs = (BoundaryConditions(walls, wrap), BoundaryConditions(mirror, walls))
+        side_symbol(bc) = bc isa NeumannBC ? :mirror : (bc isa PeriodicBC ? :wrap : :truncate)
+        function ghost_op(order, n, bc)
+            coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+            D = zeros(n, n)
+            for i in 1:n, (k, c) in coeffs
+                j = i + k
+                if j < 1
+                    side_symbol(bc.left) == :mirror && (D[i, 2-j] += c)
+                    side_symbol(bc.left) == :wrap && (D[i, j+n] += c)
+                elseif j > n
+                    side_symbol(bc.right) == :mirror && (D[i, 2n-j] += c)
+                    side_symbol(bc.right) == :wrap && (D[i, j-n] += c)
+                else
+                    D[i, j] += c
+                end
+            end
+            return D
+        end
+        # Dense derivative operator of order `order` along `axis` for the boundary conditions `bcs`, spacing included
+        function dense_derivative(order, axis, bcs)
+            ops = [Matrix(1.0I, dims[1], dims[1]), Matrix(1.0I, dims[2], dims[2])]
+            ops[axis] = ghost_op(order, dims[axis], bcs[axis]) ./ h[axis]^order
+            return kron(ops...)
+        end
+        as_vector(F) = vec(F') # [i₁, i₂] → site 1 is the most significant index
+        ux_dense, uy_dense, p_dense = (randn(rng(k), n1, n2) for k in (11, 12, 13))
+        function as_mps(F)
+            if arch isa TTArchitecture
+                return MPS(ITensor(F, sites[1], sites[2]), sites)
+            else
+                return vec2mps(as_vector(F), sites)
+            end
+        end
+        ux, uy, pm = as_mps(ux_dense), as_mps(uy_dense), as_mps(p_dense)
+        u = (ux, uy)
+        U = (as_vector(ux_dense), as_vector(uy_dense))
+
+        u_fields = VectorField(u, arch, component_bcs)
+        diff_ops = DifferenTT.DifferentialOps(grid, u_fields; stencil_order=q)
+        tol(x) = 1e-8 * norm(x) # the MPOs are truncated with the ITensors cutoff 1e-15
+
+        # gradient of a scalar: the first derivatives with the pressure's own boundary conditions
+        p_bcs = BoundaryConditions(mirror, wrap)
+        p_ops = DifferenTT.DifferentialOpsScalar(grid, ScalarField(sites, arch, p_bcs); stencil_order=q)
+        P = as_vector(p_dense)
+        grad = gradient(pm, p_ops)
+        @test length(grad) == 2
+        for axis in 1:2
+            @test DifferenTT.contract_mps(grad[axis]) ≈ dense_derivative(1, axis, p_bcs) * P atol = tol(P) * 10
+        end
+
+        # divergence: ∂₁u₁ + ∂₂u₂, each with the boundary conditions of its own component
+        expected_div = dense_derivative(1, 1, component_bcs[1]) * U[1] + dense_derivative(1, 2, component_bcs[2]) * U[2]
+        @test DifferenTT.contract_mps(divergence(u, diff_ops)) ≈ expected_div atol = tol(expected_div) * 10
+
+        # diffusion: Σⱼ ∂ⱼ² uᵢ with the boundary conditions of component i
+        diff = diffusion(u, diff_ops)
+        for i in 1:2
+            expected = sum(dense_derivative(2, j, component_bcs[i]) * U[i] for j in 1:2)
+            @test DifferenTT.contract_mps(diff[i]) ≈ expected atol = tol(expected) * 10
+        end
+
+        # advection: Σⱼ uⱼ ∂ⱼ uᵢ, a Hadamard product of the velocity with the derivative
+        Random.seed!(5) # tt_mul draws its sketches from the default generator
+        adv = advection(u, diff_ops)
+        for i in 1:2
+            expected = sum(U[j] .* (dense_derivative(1, j, component_bcs[i]) * U[i]) for j in 1:2)
+            @test DifferenTT.contract_mps(adv[i]) ≈ expected atol = tol(expected) * 10
+        end
+        # The truncation keywords are honoured
+        @test all(maxlinkdim(m) <= 2 for m in diffusion(u, diff_ops; maxdim=2))
     end
 
     @testset "ndim_operator_sum_mpo pairwise FSM" begin

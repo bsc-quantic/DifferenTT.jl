@@ -178,6 +178,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
   axes that are not plotted, which is the sample before the middle one for an odd `npoints` (and index 0 for
   `npoints = 1`), although they are documented to use the middle sample; they now use `cld(npoints, 2)`. The figures of
   an even `npoints` (including the defaults of 50 and 20) are unchanged.
+- The one-dimensional differential operator of a periodic `TTArchitecture` axis with at most `q` nodes (`n = 8` for
+  `stencil_order = 8`) overwrote the coefficients of offsets that wrap onto the same node instead of adding them, and
+  threw a `BoundsError` for fewer than 5 nodes. Axes of more than `q` nodes, including every QTT axis (at least 16
+  nodes), are unchanged.
 
 ### Deprecated
 

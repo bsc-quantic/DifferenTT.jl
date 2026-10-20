@@ -602,4 +602,22 @@ end
             @test isnothing(DifferenTT.divergence_dirichlet_correction(VectorField((p_u, p_v)); stencil_order=q))
         end
     end
+
+    @testset "Periodic TT operator on an axis of at most q nodes (regression)" begin
+        # A stencil of half-width 4 wraps onto itself when n <= 8: n = 8 maps the offsets -4 and +4 to the same node,
+        # whose coefficients add up (the operator overwrote them), and n < 5 wrapped more than once (BoundsError)
+        wrap = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+        @testset "n=$n, q=$q, order $order" for n in (8, 7, 6, 5, 4, 3), q in (2, 8), order in (1, 2)
+            coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+            expected = zeros(n, n)
+            for i in 1:n, (k, c) in coeffs
+                expected[i, mod1(i + k, n)] += c
+            end
+            D = DifferenTT.onedim_differential_operator(order, TTArchitecture((n,)), 1, wrap, Array; stencil_order=q)
+            @test D ≈ expected
+            # The constant is in the kernel, and the periodic operators are circulant
+            @test D * ones(n) ≈ zeros(n) atol = 1e-12
+            @test all(D[mod1(i + 1, n), mod1(j + 1, n)] ≈ D[i, j] for i in 1:n, j in 1:n)
+        end
+    end
 end

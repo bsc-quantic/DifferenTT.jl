@@ -66,6 +66,8 @@ and the identity acts on the ``p`` least significant ones, ``D \\otimes \\mathbb
 a grid of ``2^{N_i - p}`` nodes, applied to each of the ``2^p`` subsets of nodes whose indices have the same remainder
 modulo ``2^p``. In TT, the operator acts on the first ``n - p`` nodes and the identity on the last ``p``,
 ``\\mathrm{diag}(D, \\mathbb{I}_p)``. In both cases the boundary closures are those of the shorter operator ``D``.
+On a periodic TT axis of at most ``q`` nodes, a stencil wraps onto itself, and the coefficients that land on the
+same node add up.
 
 # Arguments
 
@@ -219,12 +221,8 @@ function onedim_differential_operator(
         for (offset, val) in coeffs
             j = i + offset
             if boundary_conditions.left isa PeriodicBC # If periodic
-                if j < 1
-                    j += noneye_dim
-                elseif j > noneye_dim
-                    j -= noneye_dim
-                end
-                mat[i, j] = val
+                # Offsets that wrap onto the same node (an axis of at most q nodes) add up
+                mat[i, mod1(j, noneye_dim)] += val
             else
                 if 1 <= j <= noneye_dim
                     mat[i, j] = val
