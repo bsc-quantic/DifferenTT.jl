@@ -18,7 +18,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `GlobalUpdaterArgs(; converged_store)`: a `Ref{Bool}` that receives whether the global Krylov solve converged.
 - `enable_debug_timings!()` and `disable_debug_timings!()` (they were exported but undefined).
 - `public` declarations for the documented non-exported API (tensor-train utilities, operator and physics building
-  blocks, Krylov algorithm types and statistics, and the renamed functions below).
+  blocks, Krylov algorithm types and statistics, the local updaters and the `ExpandedALS` expansions
+  (`AbstractUpdater`, `AbstractALSExpansion`, `NullExpansion`, `RandomSPSDexpansion`, `RandomLTexpansion`,
+  `ResidualExpansion`), the observer helpers `bind_observer` and `default_differenTT_checkdone`, and the renamed
+  functions below).
 - `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code.
 - Plotting moved to the package extension `DifferenTTPlotsExt`: `visualize_scalar`, `visualize_vector` and
   `visualize_vorticity` need `using Plots`, and print a hint otherwise.
@@ -40,6 +43,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - The global solvers (`GlobalCG`, `GlobalGMRES`) warn when they stop without converging, and throw `ArgumentError`
   for a `numiter_store` or `converged_store` that does not support `store[] = value`.
 - `ResidualALS.residual_tol` and `residual_damp` are `Float64`.
+- `ResidualALS` follows the ITensors cutoff convention in the Frobenius floor of its residual-based truncation: the
+  discarded relative weight `Σσ²` is at most `cutoff`, as for `ALS` and `AMEn` (it was `cutoff^2`). With `cutoff > 0`
+  the floor keeps fewer singular values than before, so the bond dimensions and solutions of `ResidualALS` differ from
+  v0.0.1 and from the paper data, which used `cutoff = 1e-13` (Sec. 5.1) or `cutoff = 0` (Sec. 5.2, unaffected).
 - `tt_mul_fallbacks` counts with a `Threads.Atomic{Int}`.
 - `elementwise_function` builds its suffix sketches once per call, as `tt_mul` does (one sketch index and one
   right-to-left pass, `suffix_sketches(...; positive)`), instead of re-sketching every suffix at every bond. It is
@@ -79,6 +86,24 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - TT-CG on shifted systems `(a₀I + a₁A)x = b` with `a₀ ≠ 0`: the step denominator used `a₁⟨p,p⟩` instead of `a₀⟨p,p⟩`,
   so the iteration diverged. `GlobalCG`, which solves the unshifted system, was not affected.
 - Preconditioned `GlobalGMRES` threw a site-index mismatch in the Arnoldi step.
+- Preconditioned GMRES (`preconditioned_linsolve` with `GMRES`, and TT-GMRES with `M⁻¹`) that stopped without
+  converging returned the norm of the preconditioned residual `M⁻¹r` as `normres`; the dense version also returned a
+  residual `r` that was not updated after the last restart. Both now return the residual of the unpreconditioned
+  system and its norm.
+- `ResidualExpansion` throws `ArgumentError` instead of `ErrorException` when the sites of `A` and `b` do not match.
+- **FAI construction.** `fai_dg`, and through it `fai_preconditioner`, applied `A` to the row index of the vectorized
+  unknown, so it solved `(A G̃_L)_ij = δ_ij` for `i ≥ j` (the transposed FSAI) instead of Eq. (10) of the paper,
+  `(G̃_L A)_ij = δ_ij`. `G_L = D G̃_L` was then not the inverse Cholesky factor `L_A⁻¹`: even for an exactly solved
+  `G̃_L`, `κ(G_LᵀG_L A)` was 3.3 on an 8 × 8 Laplacian (κ(A) = 32) and 79 on a 2⁶-point QTT Laplacian (κ(A) = 1712),
+  instead of 1. The preconditioner was positive definite, but every FAI result differs from v0.0.1 and from the paper
+  data, which were produced with the transposed construction.
+- `linsolve_preconditioner` had the same orientation error and returned `A⁻ᵀ` instead of `A⁻¹` for a nonsymmetric
+  operator (both with and without `symmetrize`). Results for symmetric operators are unchanged.
+- `inverse_laplacian_preconditioner` throws `ArgumentError` instead of `ErrorException` for unsupported boundary
+  conditions.
+- `fai_preconditioner(...; preconditioning=true)` preconditions the complement block `μ(I - P_L)` of Eq. (22) with
+  `(I - P_L)/μ` instead of `μ(I - P_L)`. The build needed about 22 times more local iterations for `μ ≥ 1e3`; results
+  for `μ = 1` are unchanged.
 - `DifferentialOpsScalar(grid, field, n_eyepad)` threw on a missing grid field. The padded operator is scaled by the
   spacing of the coarse grid of `2^(n - p)` nodes over the same box in QTT, and by the original spacing in TT.
 - The exports `sited_dim` (now `site_dim`) and `enable_debug_timings!` named functions that did not exist;

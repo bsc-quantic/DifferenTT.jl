@@ -26,11 +26,19 @@
 # See also THIRD_PARTY_NOTICES.md.
 
 """
-    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
+    preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::KrylovKit.CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg) -> (x, info)
 
-Solve ``(a_0 + a_1 A) x = b`` by preconditioned CG, with the preconditioner applied as `KrylovKit.apply(M⁻¹, r)`.
-The unpreconditioned iteration is that of KrylovKit.jl; see the header of this file. Returns `(x, info)` as
-`KrylovKit.linsolve` does.
+Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by preconditioned CG (PCG) from `x₀`, where both the shifted operator
+and `M⁻¹` must be SPD. Any vector type that KrylovKit supports works; `operator` and `M⁻¹` are applied with
+`KrylovKit.apply`, so they can be matrices, functions or the projected operators of a local problem.
+
+The iteration is that of KrylovKit's CG, adapted from KrylovKit.jl (MIT license, see the header of this file and
+`THIRD_PARTY_NOTICES.md`), with the residual ``\\mathbf{r}`` replaced by ``\\mathbf{z} = M^{-1}\\mathbf{r}`` in the
+search directions and in ``\\rho = \\langle \\mathbf{r}, \\mathbf{z} \\rangle``. As in KrylovKit, `alg.tol` is an
+absolute tolerance on ``\\|\\mathbf{r}\\|``, and `alg.maxiter` bounds the number of iterations. `alg_rrule` is accepted
+for compatibility and ignored.
+
+Returns the solution and a `KrylovKit.ConvergenceInfo`, as `KrylovKit.linsolve` does.
 """
 function preconditioned_linsolve(operator, b, x₀, M⁻¹, alg::CG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     # Initial function operation and division defines number type

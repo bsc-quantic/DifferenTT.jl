@@ -1,40 +1,62 @@
 """
-    AMEn <: AbstractDMRGSolver
+    AMEn(; sweep_kwargs=SweepingArgs(), updater_kwargs=LocalUpdaterArgs(), updater=KrylovUpdater(),
+         enrichment_maxdim=5, enrichment_cutoff=1e-10, residual_tol=1e-8, residual_damp=1.1, kick_tol=nothing,
+         local_stop=true) <: AbstractDMRGSolver
 
-Alternating Minimal Energy (AMEn) solver for linear systems `A x = b` (Dolgov & Savostyanov,
-arXiv:1304.1222). It always sweeps with 1-site updates, so `SweepingArgs.nsite` is ignored.
+Alternating Minimal Energy (AMEn) solver for ``A \\mathbf{x} = \\mathbf{b}`` in the TT format (Dolgov & Savostyanov,
+2014, Part II, arXiv:1304.1222).
 
-At every bond of a sweep:
+The two-site MALS adapts the rank of the solution, but its local problems have dimension ``\\chi^2 d^2``, while the
+one-site ALS is cheaper but cannot change the rank. AMEn keeps the one-site local problems and adapts the rank by
+enriching each core with directions taken from the residual, so that the basis grows where the error is. At every
+bond of a sweep we proceed as follows:
 
- 1. the core is updated by a 1-site local solve;
- 2. the core is truncated **on its own** by the local residual (as in [`ResidualALS`](@ref)): the
-    smallest rank that keeps the local residual below `residual_tol / √N` (times `residual_damp`) is
-    kept, with the sweeping `cutoff` acting as a Frobenius floor;
- 3. the truncated solution is enriched with up to `enrichment_maxdim` directions taken from the
-    residual, unless the residual is already below `kick_tol` (so the rank stops growing once the local
-    problem is solved). The enriched core is orthonormalised with a QR, so the enrichment never changes
-    `x` nor is affected by its scale;
- 4. the orthogonality centre is moved to the next site.
+ 1. We update the core by a one-site local solve.
+ 2. We truncate the core on its own by the local residual, as in [`ResidualALS`](@ref): we keep the smallest rank
+    whose local residual stays below `residual_damp * max(residual_tol / √N, ε_exact)`, where ``N`` is the number of
+    sites and ``\\varepsilon_{\\text{exact}}`` the local residual of the untruncated core, with the sweeping `cutoff` as
+    a Frobenius floor in the ITensors convention. Since the core is truncated alone, the rank does not depend on the
+    scale of ``\\mathbf{x}`` nor on the enrichment.
+ 3. We enrich the truncated core with up to `enrichment_maxdim` directions of the residual of the two-site problem,
+    unless that residual is already below `kick_tol`, so that the rank stops growing once the local problem is
+    solved. The enriched core is orthonormalized with a QR, so the enrichment changes neither ``\\mathbf{x}`` nor
+    depends on its scale.
+ 4. We move the orthogonality center to the next site.
 
-The sweeping `maxdim` is honoured: the truncation in 2. leaves room for the enrichment in 3.
+The sweeping `maxdim` is honored: the truncation of step 2 leaves room for the enrichment of step 3. AMEn always
+sweeps with one-site updates, so `SweepingArgs.nsite` is ignored.
 
 # Fields
 
-  - `sweep_kwargs`, `updater_kwargs`, `updater`: sweeping arguments, local solver arguments and local
-    solver, as in the other DMRG-type solvers.
-  - `enrichment_maxdim`: maximum number of residual directions added per bond and half-sweep.
-  - `enrichment_cutoff`: relative (to ‖Z‖²) cutoff of the SVD of the residual that extracts the
-    enrichment directions.
-  - `residual_tol`: target relative local residual. The rank of each core is chosen so that it is kept
-    below `residual_tol / √N` (with `N` the number of sites), and the sweeps stop once the local
-    residual of every core is below `residual_tol` (see `local_stop`).
-  - `residual_damp`: factor by which the local residual of a truncated core may exceed
-    `max(residual_tol / √N, residual of the untruncated core)`.
-  - `kick_tol`: no enrichment is added at a bond where `‖Z‖ ≤ kick_tol ‖b_local‖`, with `Z` the residual
-    of the local problem. `nothing` (default) uses `residual_tol / √N`.
-  - `local_stop`: stop after the half-sweep in which the local residual of every core, evaluated just
-    before updating it, was below `residual_tol` (the stopping rule of Sec. 5.2 of the paper). It is
-    independent of any `checkdone` / `ResidualObserver` given in `sweep_kwargs`, which is still applied.
+  - `sweep_kwargs::SweepingArgs`, `updater_kwargs::LocalUpdaterArgs`, `updater::AbstractUpdater`: sweeps, local solver
+    arguments and local solver, as for the other DMRG-type solvers.
+  - `enrichment_maxdim::Int=5`: maximum number of residual directions added per bond and half-sweep.
+  - `enrichment_cutoff::Float64=1e-10`: cutoff, relative to ``\\|Z\\|^2``, of the SVD of the residual ``Z`` that
+    extracts the enrichment directions.
+  - `residual_tol::Float64=1e-8`: target relative local residual. The rank of each core is chosen so that its local
+    residual stays below `residual_tol / √N`, and with `local_stop` the sweeps stop once the local residual of every
+    core is below `residual_tol`.
+  - `residual_damp::Float64=1.1`: factor by which the local residual of a truncated core may exceed
+    `max(residual_tol / √N, ε_exact)`.
+  - `kick_tol::Union{Float64,Nothing}=nothing`: no enrichment is added at a bond where
+    ``\\|Z\\| \\le \\texttt{kick\\_tol}\\, \\|\\mathbf{b}_{\\text{loc}}\\|``; `nothing` uses `residual_tol / √N`.
+  - `local_stop::Bool=true`: stop after the half-sweep in which the local residual of every core, evaluated with the
+    old core just before its update, was below `residual_tol` (the stopping rule of Sec. 5.2 of Dolgov & Savostyanov,
+    Part II). It needs no global residual, and it is applied in addition to any `checkdone` or
+    [`ResidualObserver`](@ref) given in `sweep_kwargs`.
+
+# Examples
+
+```julia
+solver = AMEn(;
+    sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=40),
+    updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true),
+    residual_tol=1e-6,
+)
+x = linearsolve(solver, A, b, nothing)
+```
+
+See also [`linearsolve`](@ref), [`ResidualALS`](@ref), [`ExpandedALS`](@ref).
 """
 Base.@kwdef struct AMEn <: AbstractDMRGSolver
     sweep_kwargs::SweepingArgs = SweepingArgs()
@@ -48,6 +70,12 @@ Base.@kwdef struct AMEn <: AbstractDMRGSolver
     local_stop::Bool = true
 end
 
+"""
+    linearsolve(solver::AMEn, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...) -> MPS
+
+Solve ``A \\mathbf{x} = \\mathbf{b}`` by AMEn sweeps from `x0`. The keywords override the fields of
+`solver.sweep_kwargs` (see [`linearsolve`](@ref)).
+"""
 function linearsolve(solver::AMEn, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_problem = ReducedLinearProblem(A, b)
@@ -69,6 +97,14 @@ function linearsolve(solver::AMEn, A::MPO, b::MPS, x0::Union{MPS,Nothing}; kwarg
     )
 end
 
+"""
+    linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing};
+                preconditioner_sites=nothing, kwargs...) -> MPS
+
+Solve ``A \\mathbf{x} = \\mathbf{b}`` by AMEn sweeps from `x0`, preconditioning each one-site local problem with the
+projection of `M⁻¹` (Sec. 4 of Torrente et al.), and only those whose site is in `preconditioner_sites` when it is
+given. The truncation and the enrichment use the residual of the unpreconditioned problem.
+"""
 function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditioner, x0::Union{MPS,Nothing}; kwargs...)
     init = isnothing(x0) ? default_linearsolve_init(b) : x0
     reduced_precond_problem = initialize_reducedprecondlinearproblem(A, b, M⁻¹)
@@ -89,6 +125,12 @@ function linearsolve(solver::AMEn, A::MPO, b::MPS, M⁻¹::AbstractPreconditione
     )
 end
 
+"""
+    _clear_cache!(P)
+
+Invalidate the cached environments of the projected problem `P` (and of its preconditioner), so that the next
+`position!` rebuilds them; needed after `orthogonalize!` changes the state behind them. A no-op for other objects.
+"""
 _clear_cache!(P::Any) = nothing
 
 function _clear_cache!(P::ITensorMPS.AbstractProjMPO)
@@ -122,6 +164,13 @@ function _clear_cache!(P::AbstractReducedPreconditioner)
     _clear_cache!(P.reduced_op)
 end
 
+"""
+    amen_alternating_update(operator, init::MPS; updater, updater_kwargs, enrich_maxdim, enrich_cutoff, resid_tol,
+                            resid_damp, kick_tol, local_stop, kwargs...)
+
+Sweeping loop of [`AMEn`](@ref), a copy of `ITensorMPS.alternating_update` with one-site steps, the residual
+tolerances scaled by ``1/\\sqrt{N}``, and the local stopping rule. Returns the final MPS.
+"""
 function amen_alternating_update(
     operator,
     init::MPS;
@@ -234,6 +283,12 @@ function amen_alternating_update(
     return state
 end
 
+"""
+    amen_sweep_update(order, reduced_operator, state::MPS; stop_tol=nothing, kwargs...)
+
+One AMEn sweep: one [`amen_sub_sweep_update`](@ref) per half-sweep, stopping after a half-sweep whose largest local
+residual is below `stop_tol`. Returns `(state, reduced_operator, info)`.
+"""
 function amen_sweep_update(
     order::ITensorMPS.TDVPOrder,
     reduced_operator,
@@ -264,7 +319,7 @@ function amen_sweep_update(
         if !isnothing(time_step)
             current_time += sub_time_step
         end
-        # Stopping rule of the paper (Sec. 5.2), checked after every half-sweep
+        # Stopping rule of Dolgov & Savostyanov, Part II (Sec. 5.2), checked after every half-sweep
         if !isnothing(stop_tol) && info.maxlocres < stop_tol
             break
         end
@@ -272,6 +327,12 @@ function amen_sweep_update(
     return state, reduced_operator, info
 end
 
+"""
+    amen_sub_sweep_update(direction, reduced_operator, state::MPS; updater, updater_kwargs, kwargs...)
+
+One AMEn half-sweep in `direction`: at each site, the one-site solve and [`_amen_truncate_enrich_shift!`](@ref).
+Returns `(state, reduced_operator, (; maxtruncerr, maxlocres))`, with `maxlocres = NaN` unless `stop_tol` is set.
+"""
 function amen_sub_sweep_update(
     direction::Base.Ordering,
     reduced_operator,
@@ -419,7 +480,7 @@ end
     _amen_truncate_enrich_shift!(state, reduced_operator, b, nb, rhs; kwargs...)
 
 AMEn step for the bond between site `b` (holding the orthogonality center and the freshly solved core)
-and its neighbour `nb = b ± 1`. It is direction-agnostic: the same code handles the forward
+and its neighbor `nb = b ± 1`. It is direction-agnostic: the same code handles the forward
 (`nb = b + 1`) and the reverse (`nb = b - 1`) half-sweeps.
 
  1. Truncate `state[b]` alone by the local residual (`_residual_rank`), so that the truncation depends
@@ -427,7 +488,7 @@ and its neighbour `nb = b ± 1`. It is direction-agnostic: the same code handles
     with `nsite = 1`, and `rhs` is its local right-hand side.
  2. Enrich the truncated core with up to `enrich_maxdim` directions of the residual (skipped if the
     residual is below `kick_tol`, or if the bond has no room left below `maxdim`).
- 3. Orthonormalise with a QR, so that `x` is unchanged and the center moves to `nb`.
+ 3. Orthonormalize with a QR, so that `x` is unchanged and the center moves to `nb`.
 
 Returns the relative truncation error of step 1.
 """
@@ -470,7 +531,7 @@ function _amen_truncate_enrich_shift!(
     # 2. Enrich the truncated solution with the residual
     kk = min(enrich_maxdim, maxdim - r, prod(dim, linds) - r)
     if kk > 0
-        # TODO (residual TT, as in Sec. 4.3 of Dolgov & Savostyanov): the residual below is the
+        # TODO(release) (residual TT, as in Sec. 4.3 of Dolgov & Savostyanov): the residual below is the
         # 2-site residual `b₂ - A₂ (X_b X_nb)`, projected both on the left interface of the solution
         # *and on the solution's own right interface*. This has two problems:
         #   - It is not the residual of the paper (their eq. (14)), which is projected only on the
@@ -491,7 +552,7 @@ function _amen_truncate_enrich_shift!(
         #      of z̃ (rather than with the solution's), i.e. the first core of its low-rank
         #      approximation;
         #   2. the core of z̃ is updated by contracting the residual with the left and right
-        #      interfaces of z̃, and then orthonormalised (eqs. (22)-(23) of the paper).
+        #      interfaces of z̃, and then orthonormalized (Eqs. (22)-(23) of Dolgov & Savostyanov, Part II).
         # This costs O(ρ n² χ³) per bond (no SVD of the 2-site residual) and restores the global
         # information used by the convergence theory.
         set_nsite!(reduced_operator, 2)
@@ -509,7 +570,7 @@ function _amen_truncate_enrich_shift!(
                 ur = commonind(Ub, Xnb)
                 l_z = commonind(U_z, S_z)
 
-                # Expand the core with the residual directions, and pad the neighbour with zeros so
+                # Expand the core with the residual directions, and pad the neighbor with zeros so
                 # that x is unchanged
                 zero_block = ITensor(eltype(Xnb), l_z, uniqueinds(Xnb, Ub)...)
                 Xb_exp, l1 = directsum(Ub => ur, U_z => l_z; tags=tags(ur))

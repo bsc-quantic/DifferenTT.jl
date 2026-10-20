@@ -1,3 +1,18 @@
+"""
+    KrylovKit.linsolve(operator::MPO, b::MPS, x₀::MPS, alg::TTCG, a₀::Real=0, a₁::Real=1; alg_rrule=alg) -> (x, info)
+    KrylovKit.linsolve(operator::MPO, b::MPS, x₀::MPS, M⁻¹::AbstractPreconditioner, alg::TTCG, a₀::Real=0, a₁::Real=1;
+                       alg_rrule=alg) -> (x, info)
+
+Solve ``(a_0 + a_1 A)\\mathbf{x} = \\mathbf{b}`` by CG on tensor trains, from `x₀`, optionally preconditioned by the SPD
+`M⁻¹`; the shifted operator must be SPD. See [`TTCG`](@ref) for the algorithm and its truncation parameters. With
+`M⁻¹`, we evaluate ``\\rho = \\langle \\mathbf{r}, M^{-1} \\mathbf{r} \\rangle`` with the untruncated sandwich
+`inner(r, M⁻¹, r)`, while the preconditioned residual
+``\\mathbf{z} = M^{-1}\\mathbf{r}`` is truncated. `alg_rrule` is accepted for compatibility with KrylovKit and
+ignored.
+
+Returns the solution and a `KrylovKit.ConvergenceInfo`, whose `normres` is the norm of the last residual and
+`numiter` the number of iterations.
+"""
 function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Real=1; alg_rrule=alg)
     kwargs_tt = (; maxdim=alg.maxdim, cutoff=alg.cutoff)
     kwargs_orth = (; maxdim=alg.orth_maxdim, cutoff=alg.orth_cutoff)
@@ -52,7 +67,8 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTCG, a₀::Real=0, a₁::Re
     end
     α = ρ / denom
 
-    # TODO Evaluate the cost of recomputing the residual at each step in order to mitigate truncation-related errors
+    # TODO(release): evaluate the cost of recomputing the residual at each step in order to mitigate the
+    # truncation errors
     # killing the A-conjugate property
     x = +(x, α * p; kwargs_tt...)
     r = +(r, -α * q; kwargs_tt...)

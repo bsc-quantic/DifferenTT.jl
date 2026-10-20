@@ -151,3 +151,79 @@ relative_residual(A, x, b) = norm(apply(A, x) - b) / norm(b)
         @test relative_residual(A, x2, b2) < rtol
     end
 end
+
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils
+using LinearAlgebra: Diagonal, dot
+using ITensorMPS: maxlinkdim
+
+@testset "Argument structs convert to NamedTuples with every field" begin
+    for T in (LocalUpdaterArgs, GlobalUpdaterArgs, SweepingArgs)
+        args = T()
+        @test sort(collect(keys(NamedTuple(args)))) == sort(collect(fieldnames(T)))
+        @test all(getfield(args, f) === NamedTuple(args)[f] for f in fieldnames(T))
+    end
+end
+
+@testset "default_linearsolve_init" begin
+    s = siteinds("S=1/2", 3)
+    x0 = default_linearsolve_init(random_mps(rng(1), s))
+    @test siteinds(x0) == s
+    @test maxlinkdim(x0) == 1
+    @test norm(x0) == 0
+end
+
+@testset "ResidualObserver: positional constructor and zero right-hand side" begin
+    s = siteinds("S=1/2", 3)
+    A = MPO(s, "Id")
+    x = random_mps(rng(1), s)
+    obs = ResidualObserver(A, x, 1e-6)
+    @test obs.rtol == 1e-6
+    @test ITensorMPS.checkdone!(obs; state=x)
+    # With b = 0 the absolute residual |Ax| = |x| = 1 is compared with rtol
+    zero_b = 0.0 * x
+    @test !ITensorMPS.checkdone!(ResidualObserver(A, zero_b, 1e-6); state=x)
+    @test ITensorMPS.checkdone!(ResidualObserver(A, zero_b, 2.0); state=x)
+end
+
+# preconditioner_sites = Int[] preconditions no local problem, so a solve with a deliberately bad M⁻¹ must reproduce the
+# unpreconditioned one exactly (suggested in pr31_review.md)
+@testset "preconditioner_sites = Int[] ignores the preconditioner" begin
+    A, sites, _, _ = qtt_laplacian((5,))
+    b = random_mps(rng(1), sites; linkdims=2)
+    # SPD, but poorly scaled: a diagonal with entries spread over [1e-3, 1]
+    bad = Preconditioner(mat2mpo(Matrix(Diagonal(exp10.(-3 .* rand(rng(2), 2^5)))), sites))
+    @testset "$(nameof(S))" for S in (ALS, ResidualALS, AMEn)
+        solve(store, args...; kwargs...) = linearsolve(
+            S(;
+                sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=8),
+                updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, numiter_store=store),
+            ),
+            A,
+            b,
+            args...;
+            kwargs...,
+        )
+        plain_store, empty_store, all_store = KrylovSweepStats(), KrylovSweepStats(), KrylovSweepStats()
+        x_plain = solve(plain_store, nothing)
+        x_empty = solve(empty_store, bad, nothing; preconditioner_sites=Int[])
+        solve(all_store, bad, nothing)
+        @test todense(x_empty) ≈ todense(x_plain) rtol = 1e-12
+        @test DifferenTT.krylov_numiters(empty_store) == DifferenTT.krylov_numiters(plain_store)
+        # The bad preconditioner does change the local solves when it is applied
+        @test DifferenTT.krylov_numiters(all_store) != DifferenTT.krylov_numiters(plain_store)
+    end
+end
+
+@testset "preconditioner_sites validation" begin
+    @test DifferenTT._checked_preconditioner_sites(nothing, 4) === nothing
+    @test DifferenTT._checked_preconditioner_sites((1, 3), 4) == [1, 3]
+    @test DifferenTT._checked_preconditioner_sites(Int[], 4) == Int[]
+    @test_throws ArgumentError DifferenTT._checked_preconditioner_sites([1.5], 4)
+    @test_throws ArgumentError DifferenTT._checked_preconditioner_sites([0], 4)
+    @test_throws ArgumentError DifferenTT._checked_preconditioner_sites(2:5, 4)
+end
+
+@testset "_clear_cache! is a no-op on other objects" begin
+    @test isnothing(DifferenTT._clear_cache!(1))
+end

@@ -1,15 +1,18 @@
 """
-    (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
+    KrylovUpdater() <: AbstractUpdater
 
-Local updater for `alternating_update` that solves the reduced linear system using KrylovKit's `linsolve`.
+Local solver that solves each local problem by a Krylov method, the default of every DMRG-type solver.
 
-Dispatches to KrylovKit's algorithm selector (CG for Hermitian positive-definite, GMRES otherwise).
-Optionally computes the condition number κ_λ = max|λ| / min|λ| of the reduced operator from its
-dense local spectrum, when a `cond_store` or an `spd_tol` is passed via `kwargs`.
+We pass the local problem to `KrylovKit.linsolve` with the fields of [`LocalUpdaterArgs`](@ref), so that KrylovKit
+selects CG when `ishermitian && isposdef` and restarted GMRES otherwise. The local operator is never formed: each
+iteration contracts it with the current local tensor, at a cost of
+``\\mathcal{O}(\\chi^3 \\chi_A d^2 + \\chi^2 \\chi_A^2 d^3)`` for a 2-site problem, where ``\\chi`` and ``\\chi_A`` are
+the bond dimensions of the solution and of `A`. A preconditioned local problem is solved instead by
+[`preconditioned_linsolve`](@ref), which runs PCG or left-preconditioned GMRES with the projected preconditioner (Sec. 4
+of Torrente et al.).
 
-# Returns
-
-  - `(x::ITensor, (; info))`: The solution tensor and a named tuple containing KrylovKit convergence info.
+The local diagnostics of [`LocalUpdaterArgs`](@ref) (`numiter_store`, `cond_store`, `pc_cond_store`,
+`spectrum_store`, `spd_tol`) are recorded or checked after each local solve.
 """
 struct KrylovUpdater <: AbstractUpdater end
 
@@ -31,8 +34,8 @@ struct KrylovUpdater <: AbstractUpdater end
 """
     _uses_cg_metric(kwargs) -> Bool
 
-True when KrylovKit would select CG (`ishermitian && isposdef`), in which case the local operators
-are expected to be SPD and a warning is emitted if their spectrum says otherwise.
+Return whether KrylovKit selects CG (`ishermitian && isposdef` in `kwargs`), in which case the local operators are
+expected to be SPD and `spd_tol` checks the sign of their spectra.
 """
 function _uses_cg_metric(kwargs)::Bool
     return Bool(get(kwargs, :ishermitian, false)) && Bool(get(kwargs, :isposdef, false))
@@ -53,7 +56,8 @@ end
 """
     _local_dense_matrix(op, b_tensor) -> (A, rowinds, colinds, rowdim, coldim)
 
-Contract indices shared with `b_tensor` into a dense matrix.
+Reshape the local operator `op` into a dense matrix whose rows are the indices it shares with `b_tensor` and whose
+columns are its other indices.
 """
 function _local_dense_matrix(op, b_tensor)
     rowinds = commoninds(op, b_tensor)
@@ -65,11 +69,21 @@ function _local_dense_matrix(op, b_tensor)
 end
 
 """
-    NotSPDError(label, lpos, λmin, λmax_abs)
+    NotSPDError(label::String, lpos::Int, λmin::Float64, λmax_abs::Float64) <: Exception
 
-Thrown by the local SPD checks of a CG solve when `spd_tol` is set and a local operator has an eigenvalue with
-real part below `-spd_tol * max|λ|`. It aborts the sweep, so callers can stop a solve as soon as a non-SPD local
-operator (e.g. a preconditioner that is not positive definite) is found.
+Exception thrown by a CG solve with `spd_tol` set (see [`LocalUpdaterArgs`](@ref)) when a local operator has an
+eigenvalue whose real part is below `-spd_tol * max|λ|`.
+
+CG requires an SPD operator, and a truncated approximate inverse can lose its definiteness (Fig. 3 of Torrente et
+al.), in which case PCG may stagnate or diverge without any error. The exception stops the solve at the first local
+problem where this happens, so that a parameter scan can discard that preconditioner early.
+
+# Fields
+
+  - `label::String`: the operator that failed, `"Operator A"` or `"Preconditioned operator P⁻¹A"`.
+  - `lpos::Int`: the `lpos` of the local problem, i.e. its first site minus one.
+  - `λmin::Float64`: the smallest real part of the local spectrum.
+  - `λmax_abs::Float64`: the largest modulus of the local spectrum.
 """
 struct NotSPDError <: Exception
     label::String
@@ -86,9 +100,12 @@ function Base.showerror(io::IO, e::NotSPDError)
     )
 end
 
-# Throws a `NotSPDError` when the most negative real part of the spectrum is below -spd_tol * max|λ|, i.e. clearly
-# away from the rounding level around 0. Without `spd_tol` there is nothing to check: the sign information of every
-# block is recorded by `spectrum_store` instead (see `_local_spectrum`).
+"""
+    _check_spd(λ, label, lpos, spd_tol)
+
+Throw a [`NotSPDError`](@ref) if the smallest real part of the spectrum `λ` is below `-spd_tol * max|λ|`, i.e.
+clearly away from the rounding level around 0. Without `spd_tol` (`nothing`) nothing is checked.
+"""
 _check_spd(λ, label, lpos, ::Nothing) = nothing
 
 function _check_spd(λ, label, lpos, spd_tol::Real)
@@ -98,21 +115,36 @@ function _check_spd(λ, label, lpos, spd_tol::Real)
     return nothing
 end
 
-# The dense local spectrum is only computed when one of its consumers is attached: a condition-number store records
-# κ, `spd_tol` checks the sign of the spectrum. `verbosity` only logs what was computed.
+"""
+    _wants_cond(cond_store, pc_cond_store, spd_tol) -> Bool
+
+Return whether the dense local spectrum must be computed: only when a condition-number store records ``\\kappa``, or
+`spd_tol` checks the sign of the spectrum. The `verbosity` only logs what was computed.
+"""
 function _wants_cond(cond_store, pc_cond_store, spd_tol)
     !isnothing(cond_store) || !isnothing(pc_cond_store) || !isnothing(spd_tol)
 end
 
+"""
+    _record_cond!(store, problem, κ)
+
+Record `κ` in `store` at the position of `problem`, unless `store` is `nothing` or `κ` is not finite.
+"""
 function _record_cond!(store, problem, κ)
     if !isnothing(store) && isfinite(κ)
         record_krylov_cond!(store, _krylov_lpos(problem), κ)
     end
 end
 
-# A non-preconditioned problem has no κ_PC of its own. When `pc_cond_store` is given (a block of a preconditioned
-# solve that skips the preconditioner, see `preconditioner_sites`), κ(A) is recorded in it as well, so that
-# `pc_cond_store` holds an entry for every visited block and stays aligned with `cond_store`.
+"""
+    _compute_and_record_cond!(problem, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing)
+
+Diagonalize the dense local operator of `problem`, check it with [`_check_spd`](@ref) if `use_cg`, and record its
+condition number. For a preconditioned problem we also diagonalize ``M^{-1}_{\\text{loc}} A_{\\text{loc}}`` and
+record its condition number in `pc_cond_store`. An unpreconditioned problem has no ``\\kappa_{PC}`` of its own: when
+`pc_cond_store` is given (a local problem that `preconditioner_sites` leaves unpreconditioned), we record
+``\\kappa(A_{\\text{loc}})`` in it as well, so that it stays aligned with `cond_store`.
+"""
 function _compute_and_record_cond!(
     problem::ReducedLinearProblem, use_cg, verbosity, cond_store, pc_cond_store, spd_tol=nothing
 )
@@ -158,10 +190,10 @@ function _compute_and_record_cond!(
 end
 
 # ---------------------------------------------------------------------------
-# Sign-aware local spectra (`spectrum_store`). The local blocks are congruences VᵀAV, VᵀM⁻¹V of the global
-# operators (V the basis of the current projection), so by Sylvester's law of inertia a negative eigenvalue of the
-# symmetric part of the local M⁻¹ certifies that the global M⁻¹ is not positive definite. The converse does not
-# hold: a positive local block only says that M⁻¹ is positive on the span of V.
+# Sign-aware local spectra (`spectrum_store`, see `KrylovSpectrumStats`). The local blocks are congruences VᵀAV,
+# VᵀM⁻¹V of the global operators (V the basis of the current projection), so by Sylvester's law of inertia a negative
+# eigenvalue of the symmetric part of the local M⁻¹ certifies that the global M⁻¹ is not positive definite. The
+# converse does not hold: a positive local block only says that M⁻¹ is positive on the span of V.
 # ---------------------------------------------------------------------------
 
 const _EMPTY_LOCAL_SPECTRUM = (;
@@ -177,9 +209,19 @@ const _EMPTY_LOCAL_SPECTRUM = (;
     nneg_PA=-1,
 )
 
+"""
+    _relative_asymmetry(M) -> Float64
+
+Return ``\\|M - M^\\top\\|_F / \\|M\\|_F``.
+"""
 _relative_asymmetry(M::AbstractMatrix) = norm(M - transpose(M)) / norm(M)
 
-# Negative eigenvalues beyond the rounding level of a dense eigensolver
+"""
+    _count_negative(λ) -> Int
+
+Return the number of eigenvalues in `λ` below ``-n\\, \\epsilon \\max|\\lambda|``, i.e. negative beyond the rounding
+level of a dense eigensolver of dimension ``n``.
+"""
 _count_negative(λ) = count(<(-length(λ) * eps(Float64) * maximum(abs, λ)), λ)
 
 """
@@ -210,6 +252,12 @@ function _local_spectrum(A::AbstractMatrix, Pinv::Union{Nothing,AbstractMatrix})
     return merge(spectrum, (; eigmin_PA=first(λPA), eigmax_PA=last(λPA), nneg_PA=_count_negative(λPA)))
 end
 
+"""
+    _record_spectrum!(store, problem, info)
+
+Record in the [`KrylovSpectrumStats`](@ref) `store` the spectra of the local problem `problem` (computed only if its
+dimension is at most `store.max_blockdim`) and the KrylovKit `info` of its solve. A no-op if `store` is `nothing`.
+"""
 _record_spectrum!(::Nothing, problem, info) = nothing
 
 function _record_spectrum!(store::KrylovSpectrumStats, problem::ReducedLinearProblem, info)
@@ -237,31 +285,30 @@ function _record_spectrum!(
 end
 
 """
-    (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
-    (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem, ReducedFAIPrecondLinearProblem}, init; internal_kwargs, coefficients, kwargs...)
+    (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...) -> (x, (; info))
+    (up::KrylovUpdater)(problem::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, init;
+                        internal_kwargs, coefficients, preconditioner_sites=nothing,
+                        kwargs...) -> (x, (; info, residual))
 
-Local updater for linear problems. Passes the preconditioner `ProjMPO` to KrylovKit's
-`linsolve` (PCG when `ishermitian && isposdef`, else preconditioned GMRES).
+Solve the local problem ``(a_0 + a_1 A_{\\text{loc}}) \\mathbf{x}_{\\text{loc}} = \\mathbf{b}_{\\text{loc}}``, with
+`coefficients = (a₀, a₁)`, from the initial guess `init`. The `kwargs` are the fields of [`LocalUpdaterArgs`](@ref).
 
-If `preconditioner_sites` is given, the preconditioner is only applied to the blocks whose first site
-(`lpos + 1`) is in it; the other blocks are solved unpreconditioned. For those blocks, the condition number
-of the unpreconditioned local problem is recorded in both `cond_store` and `pc_cond_store`.
+The first method calls `KrylovKit.linsolve` (CG if `ishermitian && isposdef`, GMRES otherwise). The second one calls
+[`preconditioned_linsolve`](@ref) with the projected preconditioner of `problem`, so it runs PCG or
+left-preconditioned GMRES, except at the local problems whose first site (`lpos + 1`) is not in
+`preconditioner_sites`, which are solved unpreconditioned. For those, the condition number of the unpreconditioned
+problem is recorded in both `cond_store` and `pc_cond_store`.
 
-If a `KrylovSpectrumStats` is passed as `spectrum_store`, the sign-aware local spectra of every visited block are
-recorded too (see `_local_spectrum`).
+After the solve, we record the iteration count in `numiter_store`, the spectra in `spectrum_store`, and, only if
+`cond_store`, `pc_cond_store` or `spd_tol` is set, the condition numbers ``\\kappa = \\max|\\lambda| / \\min|\\lambda|``
+of the dense local ``A_{\\text{loc}}`` and ``M^{-1}_{\\text{loc}} A_{\\text{loc}}``. This is the spectral condition
+number that bounds the convergence of CG and PCG; for GMRES it is only a heuristic indicator, since it is a lower bound
+on ``\\kappa_2`` for non-normal operators and GMRES also depends on the eigenvector conditioning. With `spd_tol` set and
+CG selected, a local operator with an eigenvalue whose real part is below `-spd_tol * max|λ|` throws a
+[`NotSPDError`](@ref). With `verbosity > 0`, the computed condition numbers are logged.
 
-The dense local spectra are computed only when a consumer is attached: `cond_store` / `pc_cond_store` record the
-condition numbers, and `spd_tol` (CG only, `ishermitian && isposdef`) checks the local A and P⁻¹A: an eigenvalue whose
-real part is below `-spd_tol * max|λ|` throws a `NotSPDError`, which stops the solve. With `verbosity > 0` the
-computed condition numbers are also logged.
-
-Condition metrics: κ_λ = max|λ| / min|λ| of the dense local A and P⁻¹A. This is the exact spectral κ for
-CG/PCG. For GMRES it is a heuristic indicator only: it is a lower bound on κ₂ for non-normal operators, and
-GMRES convergence also depends on the eigenvector conditioning and on the spectrum distribution.
-
-# Returns
-
-  - `(x::ITensor, (; info, residual))`: The solution tensor, KrylovKit info, and residual norm.
+Returns the new local tensor and a `NamedTuple` with the KrylovKit convergence `info` (and its `residual` for a
+preconditioned problem).
 """
 function (up::KrylovUpdater)(problem::ReducedLinearProblem, init; internal_kwargs, coefficients, kwargs...)
     numiter_store = get(kwargs, :numiter_store, nothing)

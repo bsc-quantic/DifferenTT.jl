@@ -107,3 +107,54 @@ using .TestUtils
         @test length(x_precond) == length(s)
     end
 end
+
+using ITensorMPS: linkdims, maxlinkdim, siteinds as mps_siteinds
+using LinearAlgebra: norm
+
+# Every expansion returns an MPS on the same sites with larger bond dimensions; ResidualExpansion also keeps the vector
+@testset "Expansions keep the sites and increase the bond dimension" begin
+    sites = siteinds(4, 4)
+    state = random_mps(rng(1), sites; linkdims=2)
+    @testset "$name" for (name, make) in (
+        ("RandomSPSDexpansion", r -> RandomSPSDexpansion(; rng=r)),
+        ("RandomLTexpansion", r -> RandomLTexpansion(; rng=r)),
+    )
+        expanded = make(rng(2))(state)
+        @test mps_siteinds(expanded) == sites
+        @test all(linkdims(expanded) .> linkdims(state))
+        # Seeded expansions are reproducible
+        @test todense(make(rng(2))(state)) ≈ todense(expanded)
+    end
+
+    A = MPO(sites, "Id") + MPO(sites, "Id")
+    b = random_mps(rng(4), sites; linkdims=3)
+    expansion = ResidualExpansion(A, b; maxdim=2, cutoff=1e-12)
+    expanded = expansion(state)
+    @test mps_siteinds(expanded) == sites
+    @test all(linkdims(state) .< linkdims(expanded) .<= linkdims(state) .+ 2)
+    # The first core of the residual is zeroed, so the direct sum still represents the state
+    @test todense(expanded) ≈ todense(state) rtol = 1e-12
+
+    @test_throws ArgumentError ResidualExpansion(A, random_mps(rng(5), siteinds(4, 4)))
+    @test_throws ArgumentError ExpandedALS(; sweep_kwargs=SweepingArgs(; nsite=2))
+end
+
+@testset "ExpandedALS with ResidualExpansion grows the rank of a rank-1 guess" begin
+    A, sites, _, _ = qtt_laplacian((5,))
+    b = random_mps(rng(1), sites; linkdims=3)
+    x_ref = todense(A) \ todense(b)
+    local_args = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-10)
+    plain = ExpandedALS(; sweep_kwargs=SweepingArgs(; nsite=1, nsweeps=6, maxdim=16), updater_kwargs=local_args)
+    expanded = ExpandedALS(;
+        sweep_kwargs=SweepingArgs(; nsite=1, nsweeps=6, maxdim=16),
+        updater_kwargs=local_args,
+        expander_func=ResidualExpansion(A, b; maxdim=3),
+    )
+    # From the zero guess of bond dimension 1, the one-site ALS cannot leave rank 1, while the expansion converges
+    x_plain = linearsolve(plain, A, b, nothing)
+    x_expanded = linearsolve(expanded, A, b, nothing)
+    @test maxlinkdim(x_plain) == 1
+    @test maxlinkdim(x_expanded) > 1
+    @test norm(todense(x_expanded) - x_ref) < 1e-6 * norm(x_ref)
+    @test norm(todense(x_plain) - x_ref) > 1e-2 * norm(x_ref)
+end

@@ -220,3 +220,31 @@ amen_relres(A, x, b) = norm(apply(A, x; alg="naive", truncate=false) - b) / norm
         @test amen_relres(A, x_amen, b) <= 2 * amen_relres(A, x_als, b)
     end
 end
+
+include(joinpath(@__DIR__, "..", "testutils.jl"))
+using .TestUtils: qtt_laplacian, rng
+
+@testset "AMEn and ExpandedALS printed output, and normalize" begin
+    A, sites, _, _ = qtt_laplacian((5,))
+    b = random_mps(rng(1), sites; linkdims=2)
+    loc = LocalUpdaterArgs(; ishermitian=true, isposdef=true)
+    capture(f) =
+        mktemp() do path, io
+            redirect_stdout(f, io)
+            close(io)
+            read(path, String)
+        end
+    out = capture(() -> linearsolve(AMEn(; updater_kwargs=loc, residual_tol=1e-6), A, b, nothing; outputlevel=2))
+    @test occursin("After sweep 1", out)
+    @test occursin("maxlocres", out)
+    @test occursin("AMEn local residual stopping condition met", out)
+
+    expander = DifferenTT.ResidualExpansion(A, b; maxdim=3)
+    solver = ExpandedALS(;
+        sweep_kwargs=SweepingArgs(; nsite=1, nsweeps=3, maxdim=16), updater_kwargs=loc, expander_func=expander
+    )
+    out = capture(() -> linearsolve(solver, A, b, nothing; outputlevel=1))
+    @test occursin("After sweep 3", out)
+    # normalize = true rescales the state after each expansion and update, so the result has unit norm
+    @test norm(linearsolve(solver, A, b, nothing; normalize=true)) ≈ 1 rtol = 1e-10
+end
