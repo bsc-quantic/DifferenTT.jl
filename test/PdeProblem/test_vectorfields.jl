@@ -39,6 +39,19 @@ using .TestUtils
 
         @test_throws ArgumentError push!(field, u_bad)
 
+        # A mismatch in a later component must not leave the earlier ones with one more state (regression: push!
+        # and setindex! used to mutate component 1 before component 2 threw)
+        u_half_bad = (random_mps(sites), random_mps(bad_sites))
+        @test_throws ArgumentError push!(field, u_half_bad)
+        @test length(field[1]) == length(field[2]) == 2
+        @test_throws ArgumentError field[1] = u_half_bad
+        @test mps_equal(last(field), u_new)
+
+        # push! and setindex! return the field
+        @test push!(field, u_new) === field
+        @test length(field) == 3
+        @test setindex!(field, u_init, 3) === field
+
         field[1] = u_new
         @test mps_equal(field.components[1][1], u_new[1])
         @test mps_equal(field.components[2][1], u_new[2])

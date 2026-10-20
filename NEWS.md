@@ -152,6 +152,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
   of `sketch`, `positive_sketch` and `suffix_sketches`, the delta tensors of `diagmpo`, `diagmps` and
   `triang_projector_mpo`, and the link tensors of `zeros_padding` were created on the CPU; they now follow the backend
   of their input. `sample` contracts on the CPU. Results on the CPU are unchanged.
+- `push!` and `setindex!` on a `VectorField` appended or replaced the states of the first components before a site
+  mismatch in a later component threw, which left the components with different numbers of stored states; they now
+  check every component first. `push!` and `setindex!` on a `ScalarField` or `VectorField` return the field (they
+  returned its internal vector of states, or `nothing`).
 
 ### Deprecated
 

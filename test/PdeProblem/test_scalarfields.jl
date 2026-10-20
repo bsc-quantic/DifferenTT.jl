@@ -45,6 +45,11 @@ using .TestUtils
 
         @test length(field) == 2
 
+        # push! and setindex! return the field, as Base's do
+        @test push!(field, u_new) === field
+        @test setindex!(field, u_init, 3) === field
+        @test length(field) == 3
+
         field[1] = u_new
         @test mps_equal(field[1], u_new)
 
