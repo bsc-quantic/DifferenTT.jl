@@ -131,7 +131,7 @@ try
 
     @testset "symmetrized_laplacian with Neumann faces" begin
         # Mirrored (unsymmetrized) Kronecker sum, built term by term as in the directsum reference above
-        function mirrored_laplacian_dense(field::ScalarField{N}, grid::Grid{N}) where {N}
+        function mirrored_laplacian_dense(field::ScalarField{N}, grid::Grid{N}; stencil_order::Int=2) where {N}
             terms = ntuple(
                 i -> begin
                     onedim_op = DifferenTT.onedim_differential_operator(
@@ -140,7 +140,7 @@ try
                         i,
                         field.bcu[i],
                         DifferenTT.backend_type(field);
-                        stencil_order=2,
+                        stencil_order=stencil_order,
                         cutoff=0.0,
                         maxdim=100,
                     )
@@ -159,19 +159,21 @@ try
         )
 
         # toeplitz_mpo needs at least 4 qubits per axis
-        @testset "Whole rows weighted ($label)" for (label, arch) in (
-            ("QTT sequential", QTTArchitecture((4, 4))),
-            ("QTT reversed", QTTArchitecture((4, -4))),
-            ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
-            ("TT", TTArchitecture((16, 16))),
-        )
+        @testset "Whole rows weighted ($label, q=$q)" for (label, arch) in (
+                ("QTT sequential", QTTArchitecture((4, 4))),
+                ("QTT reversed", QTTArchitecture((4, -4))),
+                ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+                ("TT", TTArchitecture((16, 16))),
+            ),
+            q in (2, 8)
+
             grid = Grid(arch, (1.0, 1.0))
             field = ScalarField(siteinds(arch), arch, neumann_bcs)
 
-            Δ = symmetrized_laplacian(field, grid; stencil_order=2)
+            Δ = symmetrized_laplacian(field, grid; stencil_order=q)
             Δ_dense = DifferenTT.contract_mpo(Δ)
             W_dense = DifferenTT.contract_mpo(neumann_weight_mpo(field))
-            A_dense = mirrored_laplacian_dense(field, grid)
+            A_dense = mirrored_laplacian_dense(field, grid; stencil_order=q)
 
             # The weight multiplies the whole mirrored operator, so the system keeps its solution
             @test norm(Δ_dense - W_dense * A_dense) < 1e-10 * norm(A_dense)

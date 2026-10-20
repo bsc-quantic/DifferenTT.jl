@@ -116,4 +116,17 @@ using .TestUtils
         @test_throws DimensionMismatch VectorField((sx,))
         @test_throws MethodError VectorField(())
     end
+
+    @testset "backend_type" begin
+        arch = QTTArchitecture((2, 2))
+        sites = siteinds(arch)
+        sx = ScalarField(random_mps(rng(1), sites), arch, bcu2d)
+        sy = ScalarField(random_mps(rng(2), sites), arch, bcu2d)
+        @test DifferenTT.backend_type(sx) === Array
+        @test DifferenTT.backend_type(VectorField((sx, sy))) === Array
+        @test DifferenTT.backend_type(VectorField(arch, bcs2d)) === Array
+        @test VectorField(arch, bcs2d).array_type === Array
+        # The components of a vector field share one backend
+        @test all(DifferenTT.backend_type(c) === Array for c in VectorField(arch, bcs2d).components)
+    end
 end

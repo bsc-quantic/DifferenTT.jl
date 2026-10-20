@@ -188,4 +188,116 @@ using .TestUtils
             @test shift ≈ fill(DifferenTT.integrate(rhs) / 64, 64)
         end
     end
+
+    # 5. The Dirichlet lift of a whole field: truncated operator + lift = full stencil on the ghost-extended array
+    # Ghost-extended dense reference: the stencil of order `order` along `axis`, spacing h, applied to the array F whose
+    # ghost nodes hold g_left and g_right (a number for a Dirichlet side, :mirror for a Neumann side)
+    function ghost_stencil(F, order, axis, q, h, g_left, g_right)
+        coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+        n = size(F, axis)
+        out = zeros(size(F))
+        for idx in CartesianIndices(F), (k, c) in coeffs
+            j = idx[axis] + k
+            ghost = j < 1 ? g_left : (j > n ? g_right : nothing)
+            value = if isnothing(ghost)
+                F[CartesianIndex(Base.setindex(Tuple(idx), j, axis))]
+            elseif ghost === :mirror
+                m = j < 1 ? 2 - j : 2n - j
+                F[CartesianIndex(Base.setindex(Tuple(idx), m, axis))]
+            else
+                ghost
+            end
+            out[idx] += c * value
+        end
+        return out ./ h^order
+    end
+
+    @testset "scalar_dirichlet_correction(_dim): truncated operator + lift = full stencil ($label, q=$q)" for (
+            label, arch
+        ) in (
+            ("QTT sequential", QTTArchitecture((4, 4))),
+            ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+            ("QTT reversed", QTTArchitecture((4, -4))),
+            ("TT", TTArchitecture((16, 16))),
+        ),
+        q in (2, 8)
+
+        dims = variable_dims(arch)
+        box = (1.0, 1.3)
+        g_grid = Grid(arch, box)
+        sites = siteinds(arch)
+        values_of(mps) = [
+            DifferenTT.sample(mps, ((i - 1) * g_grid.dx[1], (j - 1) * g_grid.dx[2]), g_grid, arch) for
+            i in 1:dims[1], j in 1:dims[2]
+        ]
+        ones_field = ones_mps(sites, 1)
+        p = random_mps(rng(21), sites; linkdims=3)
+        P = values_of(p)
+
+        # Different nonzero values on the four faces; one case with a Neumann side
+        cases = (
+            (
+                "four Dirichlet faces",
+                BoundaryConditions(
+                    BoundaryCond1d(DirichletBC(0.7), DirichletBC(-1.3)),
+                    BoundaryCond1d(DirichletBC(2.0), DirichletBC(0.5)),
+                ),
+                (0.7, -1.3, 2.0, 0.5),
+            ),
+            (
+                "one zero face",
+                BoundaryConditions(
+                    BoundaryCond1d(DirichletBC(0.0), DirichletBC(1.1)),
+                    BoundaryCond1d(DirichletBC(-0.4), DirichletBC(0.0)),
+                ),
+                (0.0, 1.1, -0.4, 0.0),
+            ),
+            (
+                "Dirichlet-Neumann x, Neumann-Dirichlet y",
+                BoundaryConditions(
+                    BoundaryCond1d(DirichletBC(0.9), NeumannBC(0.0)), BoundaryCond1d(NeumannBC(0.0), DirichletBC(-0.6))
+                ),
+                (0.9, :mirror, :mirror, -0.6),
+            ),
+        )
+        for (case, bcs, ghosts) in cases
+            field = ScalarField(sites, arch, bcs)
+            ops = DifferentialOpsScalar(g_grid, field; stencil_order=q)
+            lifted_axes = Int[]
+            for axis in 1:2
+                gl, gr = ghosts[2axis-1], ghosts[2axis]
+                for order in (1, 2)
+                    op = order == 1 ? ops.d_ops[axis] : ops.d2_ops[axis]
+                    C = DifferenTT.scalar_dirichlet_correction_dim(field, g_grid, order, axis; stencil_order=q)
+                    nonzero = any(g -> g isa Number && !iszero(g), (gl, gr))
+                    @test isnothing(C) == !nonzero
+                    lift = nonzero ? values_of(apply(C, ones_field)) : zeros(dims...)
+                    reference = ghost_stencil(P, order, axis, q, g_grid.dx[axis], gl, gr)
+                    @test values_of(apply(op, p)) .+ lift ≈ reference
+                end
+                any(g -> g isa Number && !iszero(g), (gl, gr)) && push!(lifted_axes, axis)
+            end
+            # Summed over the axes
+            for order in (1, 2)
+                C = DifferenTT.scalar_dirichlet_correction(field, g_grid, order; stencil_order=q)
+                @test isnothing(C) == isempty(lifted_axes)
+                total = zeros(dims...)
+                reference = zeros(dims...)
+                for axis in 1:2
+                    op = order == 1 ? ops.d_ops[axis] : ops.d2_ops[axis]
+                    total .+= values_of(apply(op, p))
+                    reference .+= ghost_stencil(P, order, axis, q, g_grid.dx[axis], ghosts[2axis-1], ghosts[2axis])
+                end
+                isnothing(C) || (total .+= values_of(apply(C, ones_field)))
+                @test total ≈ reference
+            end
+        end
+
+        # All values zero: nothing to lift
+        zero_bcs = BoundaryConditions(
+            BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        )
+        zero_field = ScalarField(sites, arch, zero_bcs)
+        @test isnothing(DifferenTT.scalar_dirichlet_correction(zero_field, g_grid, 2; stencil_order=q))
+    end
 end
