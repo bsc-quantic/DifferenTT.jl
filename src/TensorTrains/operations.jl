@@ -350,7 +350,7 @@ end
 Return the ``N``-dimensional operator that applies the one-dimensional operator `onedim_op` to variable `axis` and the
 identity to every other variable, i.e. ``\\mathbb{I} \\otimes \\cdots \\otimes A \\otimes \\cdots \\otimes \\mathbb{I}``
 in site order, as an MPO of bond dimension 1. The matrix goes on the site that carries `axis` (`arch.var_map[axis]`),
-with its rows on the output index; the array backend is taken from the type of `onedim_op`.
+with its rows on the output index; the array backend is that of the array storing `onedim_op` ([`backend_type`](@ref)).
 
 # Arguments
 
@@ -379,8 +379,9 @@ function ndim_operator_mpo(
     link_dims = ones(Int, max(0, total_sites - 1))
     links = [Index(1, "Link,l=$i") for i in 1:(total_sites-1)]
 
-    # Determine array type from the matrix type
-    array_type = Base.typename(typeof(onedim_op)).wrapper
+    # Backend of the matrix, not its wrapper type: rebuilding the matrices with Adjoint or Symmetric would transpose or
+    # symmetrize them
+    array_type = backend_type(onedim_op)
 
     for i in 1:total_sites
         if arch.site_map[i] == axis
@@ -475,8 +476,9 @@ function ndim_operator_sum_mpo(
     has_pairs = !isnothing(pair_ops) && total_sites > 1
     links = [Index(has_pairs ? 3 : 2, "Link,l=$i") for i in 1:(total_sites-1)]
 
-    # Determine array type from the matrix type
-    array_type = Base.typename(typeof(onedim_ops[1])).wrapper
+    # Backend of the matrix, not its wrapper type: rebuilding the matrices with Adjoint or Symmetric would transpose or
+    # symmetrize them
+    array_type = backend_type(onedim_ops[1])
 
     for i in 1:total_sites
         c = arch.site_map[i]

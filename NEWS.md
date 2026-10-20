@@ -115,6 +115,12 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `vec2mps` and `mat2mpo` scrambled the entries of the vector or matrix whenever the site dimensions were not a
   palindrome (e.g. sites of dimensions `[2, 3]`), with no error. QTT sites all have dimension 2, so their QTT uses were
   correct.
+- `ndim_operator_mpo` and `ndim_operator_sum_mpo` on a `TTArchitecture` rebuilt the matrices with the wrapper type of
+  the (first) operator, with no error: an `Adjoint` or `Transpose` operator was transposed back, and a `Symmetric`,
+  `Diagonal` or triangular first operator symmetrized, diagonalized or truncated the other operators of the sum (a
+  view threw). `backend_type` of an array now looks through such wrappers to the array that stores the data. The
+  library's own callers pass dense matrices, so their operators are unchanged.
+- `ones_mps` and `ones_mpo` on a single site ignored `array_type`.
 
 ### Deprecated
 

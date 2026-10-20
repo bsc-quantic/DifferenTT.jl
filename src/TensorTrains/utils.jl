@@ -4,7 +4,8 @@
     backend_type(tensortrain::AbstractMPS) -> Type
 
 Return the array type, without its parameters (e.g. `Array` or `CuArray`), that stores `array`, the data of `itensor`,
-or the data of the first tensor of `tensortrain`. The constructors of the package take this type as their
+or the data of the first tensor of `tensortrain`. Wrappers such as `Adjoint`, `Symmetric`, `Diagonal` or a view are
+looked through, so `backend_type(A')` is `backend_type(A)`. The constructors of the package take this type as their
 `array_type` argument, so that a new tensor train is built on the same backend as the one it is combined with. For an
 MPS or MPO we assume, without checking, that all tensors live on the same backend.
 
@@ -16,7 +17,9 @@ Array
 ```
 """
 function backend_type(array::AbstractArray)
-    return typeof(array).name.wrapper
+    # Look through wrappers (Adjoint, Symmetric, Diagonal, SubArray, ...) to the array that stores the data
+    data = parent(array)
+    return data === array ? typeof(array).name.wrapper : backend_type(data)
 end
 
 function backend_type(itensor::ITensor)
