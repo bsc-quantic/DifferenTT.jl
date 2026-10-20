@@ -308,6 +308,48 @@ try
         qtt_field = ScalarField(siteinds(2, 6), qtt_arch, BoundaryConditions(dirichlet, dirichlet))
         @test_throws ArgumentError equicorrelated_laplacian(qtt_field, Grid(qtt_arch, (1.0, 1.0)); correlation=0.5)
     end
+    @testset "equicorrelated_laplacian against the dense formula and the condition-number floor F(ρ, N)" begin
+        # -L(ρ) = Σ_ℓ ∂_ℓ² + 2ρ Σ_{ℓ<m} ∂_ℓ ∂_m (Eq. (28)), written out densely from the three-point stencils on the
+        # interior grid h = 1/(n+1) of the paper's Appendix A, with homogeneous Dirichlet sides
+        d2(n, h) = (diagm(1 => ones(n - 1)) + diagm(-1 => ones(n - 1)) - 2I(n)) / h^2
+        d1(n, h) = (diagm(1 => ones(n - 1)) - diagm(-1 => ones(n - 1))) / (2h)
+        # Kronecker product with `factors[ℓ]` on axis ℓ and the identity elsewhere (site 1 is the most significant index)
+        dense_kron(N, n, factors) = reduce(kron, [get(factors, ℓ, Matrix(1.0I, n, n)) for ℓ in 1:N])
+        dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+
+        @testset "N = $N" for (N, n) in ((2, 8), (3, 6))
+            arch = TTArchitecture(ntuple(_ -> n, N))
+            grid = interior_grid(arch, ntuple(_ -> 1.0, N))
+            h = 1 / (n + 1)
+            @test all(≈(h), grid.dx)
+            field = ScalarField(siteinds(arch), arch, BoundaryConditions(ntuple(_ -> dirichlet, N)...))
+            laplacian = sum(dense_kron(N, n, Dict(ℓ => d2(n, h))) for ℓ in 1:N)
+            mixed = sum(dense_kron(N, n, Dict(ℓ => d1(n, h), m => d1(n, h))) for ℓ in 1:N for m in (ℓ+1):N)
+
+            for ρ in (0.0, 0.25, 0.5, 0.9)
+                mpo = equicorrelated_laplacian(field, grid; correlation=ρ, stencil_order=2)
+                L = DifferenTT.contract_mpo(mpo)
+                @test L ≈ laplacian + 2ρ * mixed rtol = 1e-10
+                @test maxlinkdim(mpo) == (iszero(ρ) ? 2 : 3) # Eq. (29), whatever N
+
+                # Eq. (30): κ(L₀⁻¹ L) ≤ F(ρ, N) = (1 + (N-1)ρ)/(1 - ρ), from the extreme generalized eigenvalues
+                λ = eigvals(Symmetric(-L), Symmetric(-laplacian))
+                @test minimum(λ) >= (1 - ρ) - 1e-10
+                @test maximum(λ) <= (1 + (N - 1) * ρ) + 1e-10
+                @test maximum(λ) / minimum(λ) <= (1 + (N - 1) * ρ) / (1 - ρ) * (1 + 1e-10)
+            end
+        end
+
+        # A negative correlation (N = 2, -1 < ρ < 1) is still SPD, and q = 8 builds the same structure
+        arch = TTArchitecture((6, 6))
+        grid = interior_grid(arch, (1.0, 1.0))
+        field = ScalarField(siteinds(arch), arch, BoundaryConditions(dirichlet, dirichlet))
+        L_neg = DifferenTT.contract_mpo(equicorrelated_laplacian(field, grid; correlation=-0.5, stencil_order=2))
+        @test isposdef(Symmetric(-L_neg))
+        mpo8 = equicorrelated_laplacian(field, grid; correlation=0.4, stencil_order=8)
+        @test maxlinkdim(mpo8) == 3
+        @test DifferenTT.contract_mpo(mpo8) ≈ DifferenTT.contract_mpo(mpo8)' rtol = 1e-10
+    end
 finally
     ITensors.set_warn_order(previous_warn_order)
 end

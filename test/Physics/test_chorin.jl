@@ -115,6 +115,42 @@ using .TestUtils
         @test length(out[2]) == n_sites
     end
 
+    @testset "mask_correction with a mask against the dense Hadamard product ($label)" for (label, arch) in (
+        ("TT", TTArchitecture((6, 5))), ("QTT", QTTArchitecture((3, 3)))
+    )
+        sites = siteinds(arch)
+        dims = variable_dims(arch)
+        grid_m = Grid(arch, (1.0, 1.0))
+        values_of(mps) = [
+            DifferenTT.sample(mps, ((i - 1) * grid_m.dx[1], (j - 1) * grid_m.dx[2]), grid_m, arch) for
+            i in 1:dims[1], j in 1:dims[2]
+        ]
+        # 0 inside a disc, 1 outside, like the cylinder of the paper's channel, stored as an MPS of the sites
+        disc = [hypot(x - 0.5, y - 0.5) < 0.3 ? 0.0 : 1.0 for x in grid_m.points[1], y in grid_m.points[2]]
+        mask = if arch isa TTArchitecture
+            MPS(ITensor(disc, sites[1], sites[2]), sites)
+        else
+            vec2mps(vec(disc'), sites)  # site 1 (axis 1) is the most significant index
+        end
+        @test values_of(mask) ≈ disc
+
+        u = (random_mps(rng(5), sites; linkdims=3), random_mps(rng(6), sites; linkdims=3))
+        U = values_of.(u)
+        masked = DifferenTT.mask_correction(u, mask)
+        @test length(masked) == 2
+        for c in 1:2
+            @test values_of(masked[c]) ≈ U[c] .* disc atol = 1e-10
+            @test all(iszero, round.(values_of(masked[c])[disc .== 0]; digits=10)) # nothing survives inside the obstacle
+        end
+        # The truncation keywords are honoured, and the input is untouched
+        capped = DifferenTT.mask_correction(u, mask; maxdim=2)
+        @test all(maxlinkdim(c) <= 2 for c in capped)
+        @test values_of(u[1]) ≈ U[1]
+        # Applying the mask twice is the same as once, since the mask is 0 or 1
+        twice = DifferenTT.mask_correction(masked, mask)
+        @test values_of(twice[1]) ≈ values_of(masked[1]) atol = 1e-10
+    end
+
     @testset "regularization_check" begin
         # 
         sites = siteinds(TTArchitecture(arch_2d))
@@ -136,6 +172,21 @@ using .TestUtils
 
         exp_dirichlet = INSExperiment(grid, u_fields, p_field_dirichlet, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_dirichlet) == false
+
+        # One Dirichlet side anywhere is enough to remove the null space; Neumann or open sides alone are not
+        neumann_bc1d = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+        open_bc1d = BoundaryCond1d(OpenBC(), OpenBC())
+        outlet_bc1d = BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))
+        for (bcs_p, singular) in (
+            (BoundaryConditions(neumann_bc1d, neumann_bc1d), true),
+            (BoundaryConditions(open_bc1d, neumann_bc1d), true),
+            (BoundaryConditions(neumann_bc1d, outlet_bc1d), false),
+            (BoundaryConditions(outlet_bc1d, bc1d), false),
+        )
+            p_field_mixed = ScalarField(TTArchitecture(arch_2d), bcs_p)
+            exp_mixed = quietly(() -> INSExperiment(grid, u_fields, p_field_mixed, Re, nothing; stencil_order=2))
+            @test DifferenTT.regularization_check(exp_mixed) == singular
+        end
     end
 
     @testset "check_cfl 2D" begin
@@ -244,6 +295,7 @@ using .TestUtils
             updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true),
         )
         n_u, n_p = length(experiment.u_fields), length(experiment.p_field)
+        u_before = (copy(ux), copy(uy))
         u_next, p_next, linsolve_error = chorin_step(experiment, cache, last(experiment.u_fields), solver, stepper, 0.0)
         @test length(u_next) == 2
         @test all(u -> siteinds(u) == qsites, u_next)
@@ -252,6 +304,9 @@ using .TestUtils
         # chorin_step leaves the experiment untouched
         @test length(experiment.u_fields) == n_u
         @test length(experiment.p_field) == n_p
+        @test mps_equal(last(experiment.u_fields), (ux, uy))
+        @test mps_equal((ux, uy), u_before)
+        @test u_next[1] !== ux && u_next[2] !== uy
     end
 
     @testset "symmetrize_rhs" begin
