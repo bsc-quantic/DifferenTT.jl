@@ -185,7 +185,7 @@ function ones_mps(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_
     )
     N = length(site_inds)
     M = MPS(N)
-    N == 1 && return MPS([ITensor(1.0, site_inds[1])])
+    N == 1 && return MPS([adapt(array_type, ITensor(1.0, site_inds[1]))])
     for i in 1:N
         if i == 1
             inds = (site_inds[i], bond_inds[i])
@@ -248,7 +248,7 @@ function ones_mpo(site_inds::Vector{<:Index}, bond_inds::Vector{<:Index}, array_
     )
     N = length(site_inds)
     M = MPO(N)
-    N == 1 && return MPO([ITensor(1.0, site_inds[1], site_inds[1]')])
+    N == 1 && return MPO([adapt(array_type, ITensor(1.0, site_inds[1], site_inds[1]'))])
     for i in 1:N
         if i == 1
             inds = (site_inds[i], site_inds[i]', bond_inds[i])

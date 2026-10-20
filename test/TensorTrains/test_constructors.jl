@@ -474,4 +474,17 @@ using .TestUtils
         @test maxlinkdim(DifferenTT.mat2mpo(m, sites; maxdim=3)) == 3
         @test maxlinkdim(DifferenTT.mat2mpo(kron(m[1:2, 1:2], m[3:4, 3:4], I(4)), sites; cutoff=1e-14)) == 1
     end
+
+    # Regression test: on a single site ones_mps and ones_mpo skipped the adapt to array_type. Array{Float32} stands in
+    # for a GPU backend: adapt converts the element type, so a tensor left out of the pipeline stays Float64
+    @testset "array_type reaches the tensors of ones_mps and ones_mpo" begin
+        for n in (1, 3)
+            sites = DifferenTT.site_indices(fill(2, n))
+            @test all(eltype(t) == Float32 for t in ones_mps(sites, Array{Float32}))
+            @test all(eltype(t) == Float32 for t in ones_mpo(sites, Array{Float32}))
+            if n > 1  # one site: a uniform delta tensor, which stores no array
+                @test all(eltype(t) == Float32 for t in identity_mpo(sites, Array{Float32}))
+            end
+        end
+    end
 end
