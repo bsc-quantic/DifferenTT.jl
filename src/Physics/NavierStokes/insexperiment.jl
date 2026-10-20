@@ -40,7 +40,8 @@ The constructor checks that the velocity, the pressure and the mask share their 
 
 # Throws
 
-  - `ArgumentError`: if `object_mask` is given and the site indices of the fields and the mask differ.
+  - `ArgumentError`: if `object_mask` is given and the site indices of the fields and the mask differ, or if `grid`
+    flags an axis as periodic whose boundary conditions are not periodic.
 
 # Known limitations
 
@@ -70,7 +71,8 @@ p_bcs = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0)), per
 sites = siteinds(arch)
 mask = …                                       # obstacle mask on `sites`, e.g. from crossinterpolate2
 u_fields = VectorField((mask, zeros_mps(sites)), arch, (u_bcs, v_bcs))
-experiment = INSExperiment(Grid(arch, (2.0, 1.0)), u_fields, ScalarField(sites, arch, p_bcs), 3000, mask)
+grid = Grid(arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(p_bcs))   # period 1 in y
+experiment = INSExperiment(grid, u_fields, ScalarField(sites, arch, p_bcs), 3000, mask)
 ```
 
 See also [`ChorinCache`](@ref), [`chorin_evolve!`](@ref), and the boundary-condition tutorial
@@ -100,10 +102,27 @@ struct INSExperiment{N} <: INSExperimentBase
             throw(ArgumentError("Physical sites for velocity, pressure and mask fields do not match"))
         end
 
+        _check_grid_periodicity(grid, u_fields.components..., p_field)
         check_kolmogorov_scale(grid, Re)
 
         return new{N}(grid, u_fields, p_field, Re, object_mask, stencil_order, maxdim, cutoff)
     end
+end
+
+"""
+    _check_grid_periodicity(grid::Grid{N}, fields::ScalarField{N}...) where N
+
+Throw an `ArgumentError` if an axis that `grid` flags as periodic is not periodic in the boundary conditions of
+every field ([`periodic_axes`](@ref)). The opposite case, a `PeriodicBC` axis on a grid built without the flag, is
+accepted for backward compatibility: its stencils then have period ``L + h`` (see [`PeriodicBC`](@ref)).
+"""
+function _check_grid_periodicity(grid::Grid{N}, fields::ScalarField{N}...) where {N}
+    for field in fields, i in 1:N
+        if grid.periodic[i] && !periodic_axes(field.bcu)[i]
+            throw(ArgumentError("axis $i of the grid is periodic, but the boundary conditions of a field are not"))
+        end
+    end
+    return nothing
 end
 
 """

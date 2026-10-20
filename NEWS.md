@@ -25,6 +25,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code.
 - Plotting moved to the package extension `DifferenTTPlotsExt`: `visualize_scalar`, `visualize_vector` and
   `visualize_vorticity` need `using Plots`, and print a hint otherwise.
+- `Grid(arch, box_size; periodic)`, `interior_grid(...; periodic)` and `periodic_axes(bcs)`: a periodic axis gets
+  the spacing `L/n`, so that its wrapped stencils have period `L` (without the flag the period is `L + h`), and
+  `Grid` stores the flags in a new field `periodic`. `vorticity_grid` sets them from the faces, and `INSExperiment` and
+  `INSVorticityExperiment` throw `ArgumentError` when a periodic grid axis has non-periodic boundary conditions. The
+  default, and every existing grid, is unchanged.
 
 ### Changed
 
@@ -179,3 +184,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)`
   instead of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also
   changes the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2.
+- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places
+  the Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
+  first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
+  projection. A second-order closure by odd reflection is planned for v0.2.
+- `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`; the
+  paper's Chorin runs use it.

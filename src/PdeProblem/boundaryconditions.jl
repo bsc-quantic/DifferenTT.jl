@@ -24,9 +24,9 @@ end, so the stencil wraps around and the one-dimensional operator is a circulant
 the right-hand side is needed. It must be set on both sides of an axis, which [`BoundaryCond1d`](@ref) checks; its
 `value` field is `nothing`.
 
-Note that [`Grid`](@ref) places nodes at both ends of every axis, periodic or not, with spacing ``h = L/(n - 1)``, so
-on that grid the period of the wrapped stencil is ``n h = L + h`` rather than ``L``. The three-argument
-[`interior_grid`](@ref) with one ghost side on the axis gives ``h = L/n``, for which the period is ``L``.
+Note that the period of the wrapped stencil is ``n h``, so the grid must not store the node at ``L``: build it with
+`Grid(arch, box_size; periodic=periodic_axes(bcs))`, which gives ``h = L/n``. Without the flag, [`Grid`](@ref) places
+nodes at both ends, ``h = L/(n - 1)``, and the period becomes ``L + h``.
 
 # Examples
 
@@ -77,6 +77,11 @@ last stored node as zero, and the value then enters in a different way depending
     boundary values are set by the initial condition, not by this object.
   - In the vorticity–streamfunction formulation, the value is not read: the [`VorticityFace`](@ref) of each side holds
     the boundary data, and [`vorticity_boundary_conditions`](@ref) only uses `DirichletBC` to mark ghost faces.
+
+Note that the Dirichlet value therefore sits on the first ghost node, one spacing beyond the last stored node, and that
+the lift fills every ghost node with it. This is exact for ``q = 2``, but for ``q = 8`` and a solution with a nonzero
+slope at the boundary it makes the closure, and the solution, only first-order accurate (a known limitation of v0.1;
+the higher-order closure is planned for v0.2).
 
 # Fields
 
@@ -220,6 +225,23 @@ end
 function BoundaryConditions(conditions::BoundaryCond1d...)
     return BoundaryConditions{length(conditions),eltype(conditions)}(conditions)
 end
+
+"""
+    periodic_axes(bcs::BoundaryConditions{N}) where N -> NTuple{N,Bool}
+
+Return whether each axis of `bcs` is periodic, the flags that [`Grid`](@ref) takes as `periodic`, so that the grid
+is built from the boundary conditions without depending on their types.
+
+# Examples
+
+```jldoctest
+julia> wall, periodic = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC());
+
+julia> DifferenTT.periodic_axes(BoundaryConditions(wall, periodic))
+(false, true)
+```
+"""
+periodic_axes(bcs::BoundaryConditions{N}) where {N} = ntuple(i -> bcs[i].left isa PeriodicBC, N)
 
 """
     getindex(bcs::BoundaryConditions, i::Int) -> BoundaryCond1d

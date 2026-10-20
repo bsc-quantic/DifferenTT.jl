@@ -474,6 +474,11 @@ end
 # Dirichlet boundary corrections: they move the ghost values of a Dirichlet side to the right-hand side. They are
 # built for a unit boundary value and h = 1, and scaled by the value and by 1/h^k afterwards (see
 # `scalar_dirichlet_correction_dim` and `face_dirichlet_lift` in linearsyscorrections.jl)
+#
+# TODO(v0.2): every ghost node beyond a Dirichlet side holds the boundary value g, which is exact only for q = 2 or a
+# flat solution, so with q = 8 the closure (and the solution) is only first-order accurate. Odd reflection about the
+# first ghost node, u_{n+1+m} = 2g - u_{n+1-m}, gives second order and keeps W A symmetric and -W A SPD (checked
+# densely in 1D during WP3b); it changes the q = 8 pressure systems of the Chorin projection (Sec. 5.2, Fig. 3)
 # -------------------------------------------------------------------------------------------------
 
 """

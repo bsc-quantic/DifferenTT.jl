@@ -344,6 +344,10 @@ end
         # One ghost side for inflow + outflow and for periodic axes, two for walls, none for two outflows
         @test all(vorticity_grid(arch, (2.0, 1.0), faces).dx .≈ (2.0 / K1, 1.0 / K2))
         @test vorticity_grid(arch, (1.0, 1.0), cavity_faces(1.0)).dx == interior_grid(arch, (1.0, 1.0)).dx
+        # Periodic faces flag their axis as periodic in the grid
+        periodic_x_faces = ((PeriodicFace(), PeriodicFace()), (NoSlipWall(), NoSlipWall()))
+        @test vorticity_grid(arch, (1.0, 1.0), periodic_x_faces).periodic == (true, false)
+        @test vorticity_grid(arch, (1.0, 1.0), cavity_faces(1.0)).periodic == (false, false)
         @test vorticity_grid(arch, (1.0, 1.0), ((OutflowFace(), OutflowFace()), (SlipWall(), NoSlipWall()))).dx[1] ≈
             1 / (K1 - 1)
     end

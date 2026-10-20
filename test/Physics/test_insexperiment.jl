@@ -36,6 +36,20 @@ using ITensorMPS
         DifferenTT.check_kolmogorov_scale(exp)
     end
 
+    @testset "Grid periodicity must match the boundary conditions" begin
+        periodic_grid = Grid(tt_arch, (1.0, 1.0); periodic=(true, true))
+        exp = DifferenTT.INSExperiment(periodic_grid, vfield, sfield, 1.0, nothing; stencil_order=2)
+        @test exp.grid.periodic == (true, true)
+        walls = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), bc_periodic)
+        wall_field = ScalarField(u_mps, tt_arch, walls)
+        @test_throws ArgumentError DifferenTT.INSExperiment(periodic_grid, vfield, wall_field, 1.0, nothing)
+        @test_throws ArgumentError DifferenTT.INSExperiment(
+            periodic_grid, VectorField((wall_field, wall_field)), sfield, 1.0, nothing
+        )
+        # A PeriodicBC on a grid without the flag is still accepted (period L + h)
+        @test DifferenTT.INSExperiment(grid, vfield, sfield, 1.0, nothing) isa DifferenTT.INSExperiment
+    end
+
     @testset "INSExperiment validation" begin
         # Invalid object mask
         mask = random_mps(siteinds("S=1/2", 3)) # wrong sites

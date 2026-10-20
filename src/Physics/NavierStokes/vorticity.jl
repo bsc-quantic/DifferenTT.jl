@@ -175,7 +175,9 @@ and a periodic axis has one ghost side, the image of its first node. The spacing
 See also the boundary-condition tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """
 function vorticity_grid(arch, domain_size, faces)
-    interior_grid(arch, domain_size, ntuple(i -> faces[i][1] isa PeriodicFace ? 1 : count(is_ghost_face, faces[i]), 2))
+    periodic = ntuple(i -> faces[i][1] isa PeriodicFace, 2)
+    ghost_sides = ntuple(i -> periodic[i] ? 1 : count(is_ghost_face, faces[i]), 2)
+    return interior_grid(arch, domain_size, ghost_sides; periodic=periodic)
 end
 
 """
@@ -354,6 +356,7 @@ struct INSVorticityExperiment{N} <: INSExperimentBase
             end
         end
 
+        _check_grid_periodicity(grid, omega_field, psi_field)
         check_kolmogorov_scale(grid, Re)
 
         return new{N}(
