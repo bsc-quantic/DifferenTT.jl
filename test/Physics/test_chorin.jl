@@ -360,6 +360,92 @@ using .TestUtils
     end
 end
 
+# The Poisson system of the projection against the full stencil on the ghost-extended array. For a pressure with a
+# Dirichlet outlet of value g, a Neumann inlet and Neumann walls, the solution p dt of A (p dt) = b satisfies the full
+# second-derivative stencil with ghost values g dt, and equals the divergence of the velocity on every row that is not
+# next to a Dirichlet face of its component; the projection subtracts dt times the full-stencil gradient of p.
+@testset "Chorin projection with a Dirichlet pressure against the ghost-extended stencil (q=$q)" for q in (2, 8)
+    arch = TTArchitecture((10, 9))
+    n1, n2 = variable_dims(arch)
+    grid = Grid(arch, (1.0, 1.5))
+    h = grid.dx
+    sites = siteinds(arch)
+    walls = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    mirror = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+    wrap = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    outlet_value = 0.8
+    outlet = BoundaryCond1d(NeumannBC(0.0), DirichletBC(outlet_value))
+    # u₁ has walls along x (its own axis, so the divergence rows next to them are removed) and wraps along y; u₂ is
+    # Neumann along y (its own axis): nothing is removed there
+    u_bcs = (BoundaryConditions(walls, wrap), BoundaryConditions(walls, mirror))
+    p_bcs = BoundaryConditions(outlet, mirror)
+    u = (random_mps(rng(31), sites; linkdims=9), random_mps(rng(32), sites; linkdims=9))
+    u_fields = VectorField(u, arch, u_bcs)
+    experiment = quietly(
+        () -> INSExperiment(
+            grid,
+            u_fields,
+            ScalarField(sites, arch, p_bcs),
+            100.0,
+            nothing;
+            stencil_order=q,
+            cutoff=1e-14,
+            maxdim=256,
+        ),
+    )
+    cache = quietly(() -> ChorinCache(experiment))
+    @test !cache.regularize
+    dt = 0.05
+
+    ghost_stencil(F, order, axis, g_left, g_right) = begin
+        coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+        n = size(F, axis)
+        out = zeros(size(F))
+        for idx in CartesianIndices(F), (k, c) in coeffs
+            j = idx[axis] + k
+            ghost = j < 1 ? g_left : (j > n ? g_right : nothing)
+            value = if isnothing(ghost)
+                F[CartesianIndex(Base.setindex(Tuple(idx), j, axis))]
+            elseif ghost === :mirror
+                F[CartesianIndex(Base.setindex(Tuple(idx), j < 1 ? 2 - j : 2n - j, axis))]
+            elseif ghost === :wrap
+                F[CartesianIndex(Base.setindex(Tuple(idx), mod1(j, n), axis))]
+            else
+                ghost
+            end
+            out[idx] += c * value
+        end
+        return out ./ h[axis]^order
+    end
+    as_array(mps) = reshape(DifferenTT.contract_mps(mps), n2, n1)' # [i₁, i₂]: site 1 is the most significant index
+    U = as_array.(u)
+
+    # Divergence of u* with the closures of each component along its own axis (walls: truncated; Neumann: mirrored)
+    divergence_dense = ghost_stencil(U[1], 1, 1, 0.0, 0.0) + ghost_stencil(U[2], 1, 2, :mirror, :mirror)
+    keep = ones(n1, n2) # the projector Z: zero on the q/2 rows next to the x walls
+    keep[1:(q÷2), :] .= 0.0
+    keep[(n1-q÷2+1):n1, :] .= 0.0
+
+    b = DifferenTT.poisson_rhs(experiment, cache, u, dt)
+    A = todense(cache.poisson_op)
+    pdt = A \ todense(b)
+    PDT = reshape(pdt, n2, n1)'
+    @test norm(A * pdt - todense(b)) < 1e-9 * norm(todense(b))
+
+    # Full stencil of p dt, with the Dirichlet ghost value g dt beyond the outlet and the mirror elsewhere
+    laplacian_full = ghost_stencil(PDT, 2, 1, :mirror, outlet_value * dt) + ghost_stencil(PDT, 2, 2, :mirror, :mirror)
+    @test laplacian_full ≈ keep .* divergence_dense rtol = 1e-8 atol = 1e-8 * norm(divergence_dense)
+
+    # The projected velocity: u - dt (grad p + lift), with the full-stencil gradient of p = (p dt) / dt
+    p = MPS(ITensor(PDT ./ dt, sites[1], sites[2]), sites)
+    P = PDT ./ dt
+    projected = DifferenTT.∇p_correction(u, experiment, cache, p, dt)
+    for (axis, expected_gradient) in
+        ((1, ghost_stencil(P, 1, 1, :mirror, outlet_value)), (2, ghost_stencil(P, 1, 2, :mirror, :mirror)))
+        @test as_array(projected[axis]) ≈ U[axis] .- dt .* expected_gradient rtol = 1e-8 atol = 1e-8 * norm(U[axis])
+    end
+end
+
 # Known limitations of the Chorin projection, kept as documented in v0.1 (decision D8 of the release plan): both are
 # recorded as @test_broken until they are fixed in v0.2.
 @testset "Chorin known limitations (D8)" begin
