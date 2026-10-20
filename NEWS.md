@@ -46,6 +46,8 @@ The first public release. Version 0.0.1 is the state of the library that produce
   tries is zero, `_rsi_tt_mul` and `elementwise_function` with `nsite < 2` (`tt_mul` still falls back to the direct
   product), `backsolveL`/`backsolveU` on a non-square matrix, and `interpolative` with prescribed `cols` for the
   `"prrldu"` algorithm.
+- `visualize_vector` and `visualize_vorticity` throw `ArgumentError` instead of `ErrorException` for a
+  one-dimensional field.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
   docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
@@ -172,6 +174,10 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `log_data` threw an `ArgumentError` from JLD2 when it wrote a key that the file already had, although it was
   documented to update it (e.g. when an evolution was logged twice to the same file); it now overwrites the key and
   keeps the others.
+- `visualize_scalar`, `visualize_vector` and `visualize_vorticity` sliced a field at index `div(npoints, 2)` along the
+  axes that are not plotted, which is the sample before the middle one for an odd `npoints` (and index 0 for
+  `npoints = 1`), although they are documented to use the middle sample; they now use `cld(npoints, 2)`. The figures of
+  an even `npoints` (including the defaults of 50 and 20) are unchanged.
 
 ### Deprecated
 

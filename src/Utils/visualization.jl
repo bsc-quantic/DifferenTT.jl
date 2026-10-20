@@ -50,7 +50,7 @@ time step `step`. If `save_path` is a `String`, the figure is also saved there. 
 Plots.jl.
 
 These methods are defined in the package extension `DifferenTTPlotsExt` and require `using Plots`. One-dimensional
-fields throw an `ErrorException`.
+fields throw an `ArgumentError`.
 
 # Returns
 
@@ -76,7 +76,7 @@ of the vorticity of the first three components, on the slice spanned by `slice_d
 figure is also saved there. The remaining keywords are passed to Plots.jl.
 
 These methods are defined in the package extension `DifferenTTPlotsExt` and require `using Plots`. One-dimensional
-fields throw an `ErrorException`, and for ``N \\geq 4`` only the first three components and coordinates enter the
+fields throw an `ArgumentError`, and for ``N \\geq 4`` only the first three components and coordinates enter the
 vorticity, which is then not meaningful.
 
 # Returns

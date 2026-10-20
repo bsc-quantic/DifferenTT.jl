@@ -74,7 +74,7 @@ function visualize_scalar(
         for d in 1:N
             if d ∉ slice_dims
                 if isnothing(slice_vals) || length(slice_vals) < (d - count(x -> x < d, slice_dims))
-                    slice_idx = div(npoints, 2)
+                    slice_idx = cld(npoints, 2)
                     push!(val_strs, "mid")
                 else
                     val_idx = d - count(x -> x < d, slice_dims)
@@ -95,7 +95,7 @@ function visualize_scalar(
 
         plot = heatmap(x_range, y_range, slice_data'; title=title_str, kwargs...)
     else
-        error("Visualization not implemented for N=$N")
+        throw(ArgumentError("visualize_scalar needs a field with N ≥ 1 dimensions, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))
@@ -204,7 +204,7 @@ function visualize_vector(
         val_strs = String[]
         for d in 1:N
             if d ∉ slice_dims
-                slice_idx = div(npoints, 2)
+                slice_idx = cld(npoints, 2)
                 slice_indices[d] = slice_idx
                 push!(val_strs, "mid")
             end
@@ -231,7 +231,7 @@ function visualize_vector(
         q_slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
-                q_slice_indices[d] = div(quiver_npoints, 2)
+                q_slice_indices[d] = cld(quiver_npoints, 2)
             end
         end
 
@@ -243,7 +243,7 @@ function visualize_vector(
 
         quiver!(X[:], Y[:]; quiver=(arrow_scale .* q_slice_u[:], arrow_scale .* q_slice_v[:]), color=:red, kwargs...)
     else
-        error("Visualization not implemented for N=$N")
+        throw(ArgumentError("visualize_vector needs a field with N ≥ 2 components, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))
@@ -373,7 +373,7 @@ function visualize_vorticity(
             end
         end
 
-        slice_idx = div(npoints, 2)
+        slice_idx = cld(npoints, 2)
         slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
@@ -408,7 +408,7 @@ function visualize_vorticity(
         q_slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
-                q_slice_indices[d] = div(quiver_npoints, 2)
+                q_slice_indices[d] = cld(quiver_npoints, 2)
             end
         end
 
@@ -420,7 +420,7 @@ function visualize_vorticity(
 
         quiver!(X[:], Y[:]; quiver=(arrow_scale .* q_slice_u[:], arrow_scale .* q_slice_v[:]), color=:white, kwargs...)
     else
-        error("Vorticity not implemented for N=$N")
+        throw(ArgumentError("visualize_vorticity needs a field with N ≥ 2 components, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))
