@@ -1,8 +1,8 @@
 using Test
 using DifferenTT
 
-# Without Plots, calling a visualize_* function is a MethodError with a hint to load Plots. The hint depends on whether the
-# extension is loaded, which is global state of the process, so it is checked in a fresh process that has not loaded Plots.
+# Without Plots, calling a visualize_* function is a MethodError with a hint to load Plots. The hint depends on whether
+# the extension is loaded, which is global state of the process, so it is checked in a fresh process without Plots.
 @testset "MethodError hint of visualize_*" begin
     project = dirname(Base.active_project())
     script = """

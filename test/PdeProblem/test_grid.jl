@@ -107,6 +107,16 @@ using Test
         end
     end
 
+    @testset "The three-argument constructor stores non-periodic axes" begin
+        grid = Grid{2}((1.0, 2.0), (0.5, 1.0), ([0.0, 0.5, 1.0], [0.0, 1.0, 2.0]))
+        @test grid isa Grid{2}
+        @test grid.periodic == (false, false)
+        @test grid.dx == (0.5, 1.0) && grid.box_size == (1.0, 2.0)
+        @test grid.points[2] == [0.0, 1.0, 2.0]
+        # The four-argument constructor takes the flags as they are
+        @test Grid{2}(grid.box_size, grid.dx, grid.points, (true, false)).periodic == (true, false)
+    end
+
     @testset "periodic axes" begin
         for arch in (QTTArchitecture((3, 4)), TTArchitecture((8, 16)))
             dims = variable_dims(arch)

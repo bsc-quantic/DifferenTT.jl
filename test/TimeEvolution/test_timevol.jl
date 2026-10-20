@@ -70,9 +70,9 @@ end
     t = TimeEvolArgs(0.0, 1.0, 0.3, 7)
     @test (t.dt, t.nsteps) == (0.3, 7)
 
-    # The default show is the constructor call, as in the docstring
-    @test sprint(show, TimeEvolArgs(0.0, 1.0, 4)) == "TimeEvolArgs(0.0, 1.0, 0.25, 4)"
-    @test sprint(show, TimeEvolArgs(0.0, 1.0, 0.3)) == "TimeEvolArgs(0.0, 1.0, 0.3, 3)"
+    # The default show is the constructor call, as in the docstring (qualified with the module unless it is imported)
+    @test endswith(sprint(show, TimeEvolArgs(0.0, 1.0, 4)), "TimeEvolArgs(0.0, 1.0, 0.25, 4)")
+    @test endswith(sprint(show, TimeEvolArgs(0.0, 1.0, 0.3)), "TimeEvolArgs(0.0, 1.0, 0.3, 3)")
 
     # A stepper without truncation keywords stores an empty NamedTuple
     for stepper_type in (ExplicitEuler, RK4)

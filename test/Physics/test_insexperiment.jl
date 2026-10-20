@@ -69,7 +69,7 @@ using .TestUtils
     warnings(logs) = filter(r -> r.level == Logging.Warn, logs)
     infos(logs) = filter(r -> r.level == Logging.Info, logs)
 
-    # Hand values of the stencil sums of Σ_k |c_k|: ±1/2 for the first derivative and 1, -2, 1 for the second with q = 2;
+    # Hand values of the stencil sums Σ_k |c_k|: ±1/2 for the first derivative and 1, -2, 1 for the second with q = 2;
     # the eighth-order coefficients are the exact fractions below
     s1 = Dict(2 => 1.0, 8 => 2 * (4 / 5 + 1 / 5 + 4 / 105 + 1 / 280))
     s2 = Dict(2 => 4.0, 8 => 205 / 72 + 2 * (8 / 5 + 1 / 5 + 8 / 315 + 1 / 560))
@@ -168,7 +168,8 @@ using .TestUtils
     end
 
     @testset "check_kolmogorov_scale" begin
-        # The Kolmogorov scale of Re = 100 is 100^(-3/4) = 0.0316; a 16-node unit axis has h = 1/15 > η, a 64-node one 1/63 < η
+        # The Kolmogorov scale of Re = 100 is 100^(-3/4) = 0.0316; a 16-node unit axis has h = 1/15 > η, a 64-node one
+        # has 1/63 < η
         η = 100.0^(-3 / 4)
         coarse = Grid(TTArchitecture((16, 64)), (1.0, 1.0))
         fine = Grid(TTArchitecture((64, 64)), (1.0, 1.0))

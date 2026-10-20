@@ -140,7 +140,8 @@ using .TestUtils
         @test length(masked) == 2
         for c in 1:2
             @test values_of(masked[c]) ≈ U[c] .* disc atol = 1e-10
-            @test all(iszero, round.(values_of(masked[c])[disc .== 0]; digits=10)) # nothing survives inside the obstacle
+            # nothing survives inside the obstacle
+            @test all(iszero, round.(values_of(masked[c])[disc .== 0]; digits=10))
         end
         # The truncation keywords are honoured, and the input is untouched
         capped = DifferenTT.mask_correction(u, mask; maxdim=2)

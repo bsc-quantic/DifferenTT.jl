@@ -45,8 +45,8 @@ function expected_diff_matrix(derivative_order::Int, dim::Int, bcs::BoundaryCond
     return mat
 end
 
-# Dense reference by explicit ghost elimination (spacing 1, nodes 1:n): a stencil entry that lands on a ghost node is dropped
-# (`:truncate`), moved to the mirror node (`:mirror`) or wrapped around (`:wrap`)
+# Dense reference by explicit ghost elimination (spacing 1, nodes 1:n): a stencil entry that lands on a ghost node is
+# dropped (`:truncate`), moved to the mirror node (`:mirror`) or wrapped around (`:wrap`)
 function ghost_operator(order::Int, n::Int, left::Symbol, right::Symbol; stencil_order::Int)
     coeffs = DifferenTT.derivative_coefficients(order; stencil_order=stencil_order)
     D = zeros(n, n)

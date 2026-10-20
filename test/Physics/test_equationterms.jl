@@ -445,7 +445,7 @@ try
         # interior grid h = 1/(n+1) of the paper's Appendix A, with homogeneous Dirichlet sides
         d2(n, h) = (diagm(1 => ones(n - 1)) + diagm(-1 => ones(n - 1)) - 2I(n)) / h^2
         d1(n, h) = (diagm(1 => ones(n - 1)) - diagm(-1 => ones(n - 1))) / (2h)
-        # Kronecker product with `factors[ℓ]` on axis ℓ and the identity elsewhere (site 1 is the most significant index)
+        # Kronecker product with `factors[ℓ]` on axis ℓ and the identity elsewhere (site 1 is the most significant)
         dense_kron(N, n, factors) = reduce(kron, [get(factors, ℓ, Matrix(1.0I, n, n)) for ℓ in 1:N])
         dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
 
