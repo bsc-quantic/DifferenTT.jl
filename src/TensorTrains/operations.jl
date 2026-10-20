@@ -1,8 +1,10 @@
 """
     transpose_mpo(mpo::MPO) -> MPO
 
-Return the transpose of `mpo`, obtained by swapping the prime levels 0 and 1 of the site index at every site. The
-link indices are shared with `mpo`.
+Return the transpose of `mpo`, obtained by swapping the prime levels 0 (input) and 1 (output) of the site index at
+every site, so that `contract_mpo(transpose_mpo(mpo)) == transpose(contract_mpo(mpo))`. The bond dimensions do not
+change, and the link indices are shared with `mpo`. This is the owned replacement of the former
+`Base.transpose(::MPO)` method.
 """
 function transpose_mpo(mpo::MPO)
     nsite = length(mpo)
@@ -17,8 +19,10 @@ end
 """
     reverse_mpo(mpo::MPO) -> MPO
 
-Return `mpo` with its site order reversed. The site indices move with their tensors, so their tags are no longer in
-ascending order; the link indices are renamed so that bond `k` is tagged `"Link,l=\$k"` again.
+Return `mpo` with its site order reversed, as needed by a reversed variable of a [`QTTArchitecture`](@ref), whose
+first site carries the least significant bit. The site indices move with their tensors, so their tags are no longer
+in ascending order, and the link indices are renamed so that bond `k` is tagged `"Link,l=\$k"` again. The tensors are
+copies. This is the owned replacement of the former `Base.reverse(::MPO)` method.
 """
 function reverse_mpo(mpo::MPO)
     nsite = length(mpo)
@@ -42,9 +46,11 @@ function reverse_mpo(mpo::MPO)
 end
 
 """
-    _nothing_sum_handler(elements::Vararg{<:Any}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+    _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
 
-Helper to sum a vector of AbstractMPS objects where some might be `nothing`.
+Return the sum of the MPS or MPO among `elements` that are not `nothing` (see [`_sum_elements`](@ref)): `nothing` if
+there are none, and the element itself, uncopied, if there is one. The optional terms of an operator, such as the
+boundary corrections, are `nothing` when they do not apply.
 """
 function _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     filtered = filter(!isnothing, elements)
@@ -58,6 +64,13 @@ function _nothing_sum_handler(elements...; cutoff::Float64=1e-15, maxdim::Int=ty
     end
 end
 
+"""
+    _sum_elements(elements; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
+
+Return the sum of the MPS or MPO in `elements`: exactly, by direct sum of the bonds, if `cutoff == 0` and `maxdim` is
+`typemax(Int)`, and otherwise truncated to `cutoff` and `maxdim` by `ITensorMPS`; one-site tensor trains are summed
+tensor by tensor.
+"""
 function _sum_elements(elements; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     if length(first(elements)) == 1
         return typeof(first(elements))([sum([e[1] for e in elements])])
@@ -69,11 +82,12 @@ function _sum_elements(elements; cutoff::Float64=1e-15, maxdim::Int=typemax(Int6
     end
 end
 
-# TODO Test this function
 """
     _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
 
-Helper to apply (multiply) a sequence of operators where some might be `nothing`.
+Return the product ``M_1 M_2 \\cdots`` of the operators among `elements` that are not `nothing`, applied from left to
+right with `apply` and truncated to `cutoff` and `maxdim` after each product; `nothing` if there are none, and the
+operator itself, uncopied, if there is one.
 """
 function _nothing_apply_handler(elements::Union{MPO,Nothing}...; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     element_vec = collect(elements)
@@ -96,9 +110,10 @@ end
     replace_mpo_siteinds!(mpo::MPO, sites::Vector{<:Index}) -> MPO
     replace_mpo_siteinds(mpo::MPO, sites::Vector{<:Index}) -> MPO
 
-Replace the site indices of `mpo`, at prime levels 0 and 1, by `sites` and `sites'`, keeping the prime levels. The
-version with `!` overwrites the tensors of `mpo` and returns it; the other one works on a copy. For an MPS, use
-`ITensorMPS.replace_siteinds!`.
+Replace the site indices of `mpo`, at prime levels 0 (input) and 1 (output), by `sites` and `sites'`. The version with
+`!` overwrites the tensors of `mpo` and returns it; the other one works on a copy. For an MPS, use
+`ITensorMPS.replace_siteinds!`. These are the owned replacements of the former `replace_siteinds(!)(::MPO, sites)`
+methods.
 """
 function replace_mpo_siteinds!(M::MPO, sites::Vector{<:Index})
     for j in eachindex(M)
@@ -108,14 +123,38 @@ function replace_mpo_siteinds!(M::MPO, sites::Vector{<:Index})
     return M
 end
 
+"""
+    replace_mpo_siteinds(mpo::MPO, sites::Vector{<:Index}) -> MPO
+
+Return a copy of `mpo` with its site indices replaced by `sites` and `sites'`; see [`replace_mpo_siteinds!`](@ref).
+"""
 replace_mpo_siteinds(M::MPO, sites::Vector{<:Index}) = replace_mpo_siteinds!(copy(M), sites)
 
+"""
+    diagmpo(mpo::MPO) -> MPO
+
+Return the diagonal part of the operator `mpo`, ``\\mathrm{Diagonal}(\\mathrm{diag}(M))``, as an MPO on the same site
+indices. We contract every site with a delta tensor that keeps only the entries with equal input and output values,
+so the bond dimensions do not change.
+
+# Examples
+
+```julia
+M = random_mpo(siteinds(2, 3))
+contract_mpo(diagmpo(M)) ≈ Diagonal(diag(contract_mpo(M)))  # true
+```
+
+See also [`diagmps`](@ref).
+"""
 function diagmpo(mpo::MPO)
     n = length(mpo)
     out_sites = only.(siteinds(mpo; plev=0))
     placeholder_sites = sim(out_sites)
 
-    deltas = [delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
+    array_type = backend_type(mpo)
+    deltas = [
+        adapt(array_type, delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]')) for i in 1:n
+    ]
     out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
@@ -124,12 +163,28 @@ function diagmpo(mpo::MPO)
     return out_mpo
 end
 
+"""
+    diagmps(mpo::MPO) -> MPS
+
+Return the diagonal ``\\mathrm{diag}(M)`` of the operator `mpo` as an MPS on its input sites (prime level 0). As in
+[`diagmpo`](@ref), every site is contracted with a delta tensor, so the bond dimensions do not change. The FAI
+construction uses it to extract ``\\mathrm{diag}(\\tilde{G}_L)`` before computing ``D`` element-wise (Fig. 6 and
+Sec. 3.2 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*).
+
+# Examples
+
+```julia
+M = random_mpo(siteinds(2, 3))
+contract_mps(diagmps(M)) ≈ diag(contract_mpo(M))  # true
+```
+"""
 function diagmps(mpo::MPO)
     n = length(mpo)
     out_sites = only.(siteinds(mpo; plev=0))
     placeholder_sites = sim(out_sites)
 
-    deltas = [delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
+    array_type = backend_type(mpo)
+    deltas = [adapt(array_type, delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]')) for i in 1:n]
     out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
@@ -139,15 +194,15 @@ function diagmps(mpo::MPO)
 end
 
 """
-    concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
+    concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...) -> MPO
 
-Concatenate multiple MPOs into a single larger MPO along the site dimension.
-Glue indices are inserted between the MPOs to connect them.
+Return the Kronecker product ``M_1 \\otimes M_2 \\otimes \\cdots`` of the operators `mpos` as one MPO, whose sites are
+those of `mpos[1]`, then those of `mpos[2]`, and so on, renamed to `site_inds`. The operators are joined by link
+indices of dimension 1, and their own link indices are replaced by new ones, so the result shares no index with the
+inputs except `site_inds`; its array backend is that of `mpos[1]`. Throws a `DimensionMismatch` if `site_inds` does not
+have one index per site of `mpos`.
 
-# Arguments
-
-  - `site_inds::Vector{<:Index}`: The site indices for the combined MPO.
-  - `mpos::MPO...`: Variable number of MPOs to concatenate.
+See also [`concatenate_mpss`](@ref), [`onedim_eye_padding`](@ref).
 """
 function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
     total_len = sum(length, mpos)
@@ -192,14 +247,11 @@ function concatenate_mpos(site_inds::Vector{<:Index}, mpos::MPO...)
 end
 
 """
-    concatenate_mpss(site_inds::Vector{<:Index}, mpss::MPS...)
+    concatenate_mpss(site_inds::Vector{<:Index}, mpss::MPS...) -> MPS
 
-Concatenate multiple MPSs into a single larger MPS along the site dimension.
-
-# Arguments
-
-  - `site_inds::Vector{<:Index}`: The site indices for the combined MPS.
-  - `mpss::MPS...`: Variable number of MPSs to concatenate.
+Return the Kronecker product ``\\mathbf{x}_1 \\otimes \\mathbf{x}_2 \\otimes \\cdots`` of the vectors `mpss` as one
+MPS, as [`concatenate_mpos`](@ref) does for operators. Throws a `DimensionMismatch` if `site_inds` does not have one
+index per site of `mpss`.
 """
 function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
     total_len = sum(length, mpss)
@@ -243,13 +295,24 @@ function concatenate_mpss(site_inds::Vector{<:Index}, mpss::Vararg{MPS})
 end
 
 """
-    contract_mpo(mpo::MPO)
+    contract_mpo(mpo::MPO) -> Matrix
 
-Fully contract an MPO into a dense matrix, reordering from the TT basis to the standard linear basis via bit-reversal permutation.
+Return the dense matrix of `mpo`, with rows indexed by the output sites (prime level 1) and columns by the input sites
+(prime level 0). Site 1 is the most significant index of both, so that the MPO of ``A_1 \\otimes A_2 \\otimes \\cdots``,
+with ``A_k`` on site ``k``, contracts to `kron(A₁, A₂, …)`; this is the convention of every dense reference in the
+package. The element type is that of the tensors. It forms the full ``\\prod_k d_k \\times \\prod_k d_k`` matrix, so it
+is meant for tests and small examples.
 
-# Returns
+# Examples
 
-  - `Matrix{Float64}`: The dense matrix representation.
+```julia
+s = siteinds(2, 2)
+A, B = rand(2, 2), rand(2, 2)
+M = MPO([ITensor(A, s[1]', s[1]), ITensor(B, s[2]', s[2])])  # bond dimension 1, without link indices
+contract_mpo(M) ≈ kron(A, B)  # true
+```
+
+See also [`contract_mps`](@ref), [`mat2mpo`](@ref).
 """
 function contract_mpo(mpo::MPO)
     # Contract using package-consistent in/out convention
@@ -266,13 +329,13 @@ function contract_mpo(mpo::MPO)
 end
 
 """
-    contract_mps(mps::MPS)
+    contract_mps(mps::MPS) -> Vector
 
-Fully contract an MPS into a dense vector, reordering from the TT basis to the standard linear basis via bit-reversal permutation.
+Return the dense vector of `mps`, with site 1 as the most significant index, as in [`contract_mpo`](@ref): the MPS of
+``\\mathbf{x}_1 \\otimes \\mathbf{x}_2 \\otimes \\cdots`` contracts to `kron(x₁, x₂, …)`. It forms the full vector of
+length ``\\prod_k d_k``, so it is meant for tests and small examples.
 
-# Returns
-
-  - `Vector{Float64}`: The dense vector representation.
+See also [`vec2mps`](@ref).
 """
 function contract_mps(mps::MPS)
     # Contract using package-consistent in/out convention
@@ -286,23 +349,33 @@ function contract_mps(mps::MPS)
 end
 
 """
-    ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) where N
+    ndim_operator_mpo(onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}) -> MPO
 
-Lift a 1D operator matrix into an N-dimensional MPO acting on the `axis`-th dimension.
-Identities are placed on all other sites.
+Return the ``N``-dimensional operator that applies the one-dimensional operator `onedim_op` to variable `axis` and the
+identity to every other variable, i.e. ``\\mathbb{I} \\otimes \\cdots \\otimes A \\otimes \\cdots \\otimes \\mathbb{I}``
+in site order, as an MPO of bond dimension 1. The matrix goes on the site that carries `axis` (`arch.var_map[axis]`),
+with its rows on the output index; the array backend is that of the array storing `onedim_op` ([`backend_type`](@ref)).
 
 # Arguments
 
-  - `onedim_op::AbstractMatrix`: The 1D operator matrix.
-  - `axis::Int`: The logical dimension (1 to N) this operator acts on.
-  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-  - `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
+  - `onedim_op::AbstractMatrix`: ``n_{\\text{axis}} \\times n_{\\text{axis}}`` operator on variable `axis`.
+  - `axis::Int`: the variable, in `1:N`.
+  - `site_inds::Vector{<:Index}`: one site index per variable, in site order (e.g. `siteinds(arch)`).
+  - `arch::TTArchitecture{N}`: the layout.
+
+# Throws
+
+  - `DimensionMismatch`: if `site_inds` does not have `N` indices.
+  - `ArgumentError`: if `axis` is not in `1:N`.
+
+See also [`ndim_operator_sum_mpo`](@ref), and the method for a [`QTTArchitecture`](@ref).
 """
 function ndim_operator_mpo(
     onedim_op::AbstractMatrix, axis::Int, site_inds::Vector{<:Index}, arch::TTArchitecture{N}
 ) where {N}
     length(site_inds) == length(arch.site_map) ||
         throw(DimensionMismatch("Length of site_inds must match length of site_map"))
+    1 <= axis <= N || throw(ArgumentError("axis must lie in 1:$N, got $axis"))
 
     total_sites = length(site_inds)
     mpo_tensors = Vector{ITensor}(undef, total_sites)
@@ -310,8 +383,9 @@ function ndim_operator_mpo(
     link_dims = ones(Int, max(0, total_sites - 1))
     links = [Index(1, "Link,l=$i") for i in 1:(total_sites-1)]
 
-    # Determine array type from the matrix type
-    array_type = Base.typename(typeof(onedim_op)).wrapper
+    # Backend of the matrix, not its wrapper type: rebuilding the matrices with Adjoint or Symmetric would transpose or
+    # symmetrize them
+    array_type = backend_type(onedim_op)
 
     for i in 1:total_sites
         if arch.site_map[i] == axis
@@ -339,7 +413,7 @@ function ndim_operator_mpo(
                     mpo_tensors[i] = make_identity_site(site_inds[i], links[i-1], links[i], array_type)
                 end
             else
-                error("Cannot have total_sites == 1 and axis not equal to site_map[1]")
+                throw(ArgumentError("Cannot have total_sites == 1 and axis not equal to site_map[1]"))
             end
         end
     end
@@ -348,22 +422,47 @@ function ndim_operator_mpo(
 end
 
 """
-    ndim_operator_sum_mpo(onedim_ops::NTuple{N, AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N}; pair_ops=nothing) where N
+    ndim_operator_sum_mpo(onedim_ops::NTuple{N,AbstractMatrix}, site_inds::Vector{<:Index}, arch::TTArchitecture{N};
+                          pair_ops=nothing) -> MPO
 
-Construct the exact sum of N 1D operators lifted to an N-dimensional MPO acting on a TT architecture.
-This uses a finite-state machine to construct the MPO directly, guaranteeing an optimal bond dimension of 2.
+Return the Kronecker sum
+``\\sum_{c=1}^{N} \\mathbb{I} \\otimes \\cdots \\otimes A_c \\otimes \\cdots \\otimes \\mathbb{I}`` of the
+one-dimensional operators `onedim_ops`, one per variable, as an exact MPO of bond dimension 2.
 
-If `pair_ops = (P, Q)` is given, the pairwise term `Σ_{i<j} P_{c(i)} ⊗ Q_{c(j)}` is added, where `i < j`
-runs over physical sites and `c = arch.site_map`. A third FSM state ("P placed, waiting for Q") is used,
-so the bond dimension is exactly 3. `P` and `Q` are indexed by variable, like `onedim_ops`: the `P` of the
-variable on the last site and the `Q` of the variable on the first site are never used.
+Summing the ``N`` lifted operators of [`ndim_operator_mpo`](@ref) with `+` would give bond dimension ``N`` before
+rounding. We instead write the sum directly with the bond-dimension-2 cores of Kazeev & Khoromskij (2012), which behave
+as a two-state automaton along the chain: state 1 means that no operator has been placed yet and state 2 that one has,
+so the middle cores are ``\\begin{bmatrix} \\mathbb{I} & A_{c(k)} \\\\ & \\mathbb{I} \\end{bmatrix}``, where ``c`` =
+`arch.site_map`. In this way [`kronecker_laplacian`](@ref) keeps bond dimension 2 in any number of dimensions, and the
+pairwise term gives the mixed derivatives of [`equicorrelated_laplacian`](@ref) with bond dimension 3.
+
+If `pair_ops = (P, Q)` is given, we also add the pairwise term
+
+```math
+\\sum_{i < j} P_{c(i)} \\otimes Q_{c(j)},
+```
+
+where ``i < j`` runs over the sites, with the identity on every other site. A third state ("``P`` placed, waiting for
+``Q``") is needed for it, so the bond dimension becomes 3. `P` and `Q` are indexed by variable, like `onedim_ops`, so
+the `P` of the variable on the last site and the `Q` of the variable on the first site are never used. On a single
+site the result is `onedim_ops[1]`.
 
 # Arguments
 
-  - `onedim_ops::NTuple{N, AbstractMatrix}`: The 1D operator matrices for each dimension.
-  - `site_inds::Vector{<:Index}`: The full set of site indices for the N-dim system.
-  - `arch::TTArchitecture{N}`: The architecture defining the variable mapping.
-  - `pair_ops`: Optional tuple `(P, Q)` of N 1D operator matrices each, defining the pairwise term.
+  - `onedim_ops::NTuple{N,AbstractMatrix}`: one operator per variable, ``n_c \\times n_c``.
+  - `site_inds::Vector{<:Index}`: one site index per variable, in site order (e.g. `siteinds(arch)`).
+  - `arch::TTArchitecture{N}`: the layout.
+
+# Keywords
+
+  - `pair_ops::Union{Nothing,Tuple{NTuple{N,AbstractMatrix},NTuple{N,AbstractMatrix}}}=nothing`: the operators
+    `(P, Q)` of the pairwise term.
+
+# Throws
+
+  - `DimensionMismatch`: if `site_inds` does not have `N` indices.
+
+See also [`ndim_operator_mpo`](@ref), and the method for a [`QTTArchitecture`](@ref).
 """
 function ndim_operator_sum_mpo(
     onedim_ops::NTuple{N,AbstractMatrix},
@@ -381,8 +480,9 @@ function ndim_operator_sum_mpo(
     has_pairs = !isnothing(pair_ops) && total_sites > 1
     links = [Index(has_pairs ? 3 : 2, "Link,l=$i") for i in 1:(total_sites-1)]
 
-    # Determine array type from the matrix type
-    array_type = Base.typename(typeof(onedim_ops[1])).wrapper
+    # Backend of the matrix, not its wrapper type: rebuilding the matrices with Adjoint or Symmetric would transpose or
+    # symmetrize them
+    array_type = backend_type(onedim_ops[1])
 
     for i in 1:total_sites
         c = arch.site_map[i]
@@ -429,6 +529,14 @@ function ndim_operator_sum_mpo(
     return MPO(mpo_tensors)
 end
 
+"""
+    onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:left) -> MPO
+
+Extend the operator `mpo` to the longer chain `site_inds` with identities on the extra sites, placed before it
+(`side = :left`, giving ``\\mathbb{I} \\otimes M``) or after it (`:right`, ``M \\otimes \\mathbb{I}``), by
+[`concatenate_mpos`](@ref). Returns `mpo` itself if no site is missing, and throws an `ArgumentError` if `site_inds` is
+shorter than `mpo` or if `side` is unknown.
+"""
 function onedim_eye_padding(mpo::MPO, site_inds::Vector{<:Index}, side::Symbol=:left)
     nsite = length(site_inds)
     mpo_len = length(mpo)

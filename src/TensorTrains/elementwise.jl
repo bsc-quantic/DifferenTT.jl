@@ -1,9 +1,13 @@
 """
     PivotSpace{P<:Pair}
 
-Space of an index whose values are labelled by pivots, as built by the cross interpolation of `interpolative`: entry
-`r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping the pivots in an owned type
-lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
+Space of an index whose values are labelled by pivots, as built by the cross interpolation of
+[`interpolative`](@ref): entry `r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping
+the pivots in an owned type lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
+
+# Fields
+
+  - `pivots::Vector{Vector{P}}`: the `site => value` pairs of every pivot.
 """
 struct PivotSpace{P<:Pair}
     pivots::Vector{Vector{P}}
@@ -13,6 +17,11 @@ Base.:(==)(a::PivotSpace, b::PivotSpace) = a.pivots == b.pivots
 Base.length(s::PivotSpace) = length(s.pivots)
 Base.copy(s::PivotSpace) = PivotSpace(copy(s.pivots))
 
+"""
+    PivotIndex
+
+Alias of `Index{<:PivotSpace}`, the type of the link indices that carry the pivots of a cross ([`pivot_index`](@ref)).
+"""
 const PivotIndex = Index{<:PivotSpace}
 
 """
@@ -25,6 +34,8 @@ function pivot_index(pivs::Vector{Vector{P}}; dir::Arrow=ITensors.Out, tags="", 
 end
 
 """
+    index_pivots(i::PivotIndex) -> Vector{Vector{<:Pair}}
+
 Return the pivots stored in the space of the pivot index `i`.
 """
 index_pivots(i::PivotIndex) = space(i).pivots
@@ -34,7 +45,9 @@ ITensors.NDTensors.dim(i::PivotIndex) = length(space(i))
 ITensors.hasqns(i::PivotIndex) = false
 
 """
-Return whether the index `i` carries pivots, i.e. whether it is an `Index{PivotSpace}`.
+    haspivots(i::Index) -> Bool
+
+Return whether the index `i` carries pivots, i.e. whether it is a [`PivotIndex`](@ref).
 """
 haspivots(i::PivotIndex) = true
 haspivots(i::Index) = false
@@ -48,6 +61,13 @@ function Base.show(io::IO, i::PivotIndex)
     end
 end
 
+"""
+    eye(Elt, R::Int, C::Int) -> Matrix{Elt}
+    eye(R::Int, C::Int) -> Matrix{Float64}
+
+Return the ``R \\times C`` matrix with ones on its main diagonal and zeros elsewhere, the starting point of the unit
+triangular factors of [`prrldu`](@ref).
+"""
 function eye(Elt, R::Int, C::Int)
     M = zeros(Elt, R, C)
     for j in 1:min(R, C)
@@ -59,15 +79,20 @@ end
 eye(R::Int, C::Int) = eye(Float64, R, C)
 
 """
-    backsolveL(L::AbstractMatrix)
+    backsolveL(L::AbstractMatrix) -> Matrix
 
-Compute the inverse of a lower-triangular matrix L whose
-diagonal entries are all equal to 1.0 using a stable
-back-solving algorithm.
+Return the inverse of the square, unit lower triangular matrix `L` by forward substitution, column by column, in
+``\\mathcal{O}(n^3)`` operations. Only the strictly lower triangular entries of `L` are read: its diagonal is taken to
+be 1. Throws a `DimensionMismatch` if `L` is not square.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 function backsolveL(L::AbstractMatrix)
     N = size(L, 1)
-    (size(L, 2) == N) || error("backsolveL and backsolveU only supported for square matrices")
+    (size(L, 2) == N) ||
+        throw(DimensionMismatch("backsolveL and backsolveU only support square matrices, got $(size(L))"))
     iL = eye(eltype(L), N, N)
     for j in 1:(N-1), i in (j+1):N
         iL[i, j] = -L[i, j]
@@ -79,27 +104,42 @@ function backsolveL(L::AbstractMatrix)
 end
 
 """
-    backsolveU(U::AbstractMatrix)
+    backsolveU(U::Matrix) -> Matrix
 
-Compute the inverse of an upper-triangular matrix U whose
-diagonal entries are all equal to 1.0 using a stable
-back-solving algorithm.
+Return the inverse of the square, unit upper triangular matrix `U`, as the transpose of [`backsolveL`](@ref) of its
+transpose.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
 """
 backsolveU(U::Matrix) = transpose(backsolveL(transpose(U)))
 
 """
-    prrldu(M::Matrix; cutoff, maxdim)
+    prrldu(M::Matrix; cutoff::Real=0.0, maxdim::Int=typemax(Int), mindim::Int=1) -> (L, d, U, pr, pc, inf_error)
 
-Compute the pivoted, rank-revealing LDU decomposition of an
-arbitrary matrix M (M can be non-invertible and/or rectangular).
-Returns L,d,U and permutations pr and pc such that
-L and U are lower- and upper-triangular matrices with diagonal
-values equal to 1 and L[pr,:]*Diagonal(d)*U[:,pc] ≈ M. The entries of
-d decrease in absolute value such that
-norm(L[pr,:]*Diagonal(d)*U[:,pc]-M,Inf) <= abs(d[k])
-where k=length(d). (Note that this inequality uses the infinity norm.)
-The value of k is determined dynamically such that `k <= maxdim`
-and `abs(d[k]) < cutoff`.
+Return the pivoted, rank-revealing LDU decomposition ``M \\approx L D U`` of any matrix `M`, rectangular or rank
+deficient, with `L[pr, :] * Diagonal(d) * U[:, pc] ≈ M`.
+
+The pivots are chosen by complete pivoting: at every step we take the entry of largest magnitude of the current Schur
+complement, and stop when it falls below `cutoff` or after ``\\min(n_r, n_c)`` steps. The approximation error is then
+the Schur complement that is left, whose largest entry is returned as `inf_error` (0 if the search did not stop on
+`cutoff`). We then build the factors along this pivot order, keeping at most `maxdim` pivots and at least `mindim`,
+even if they are zero, and stopping at the first pivot below `cutoff` after those. Note that `cutoff` is an
+absolute threshold on the entries, not a relative one, and that `inf_error` does not account for pivots dropped by
+`maxdim`.
+
+# Returns
+
+  - `L`: ``n_r \\times r`` unit lower triangular factor, in pivoted row order.
+  - `d`: the ``r`` pivots.
+  - `U`: ``r \\times n_c`` unit upper triangular factor, in pivoted column order.
+  - `pr`, `pc`: the permutations that undo the pivoting of the rows and columns.
+  - `inf_error`: the largest entry of the Schur complement where the pivot search stopped.
+
+# Throws
+
+  - `ArgumentError`: if `maxdim` or `mindim` is not positive.
 
 This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
@@ -168,16 +208,12 @@ function prrldu(M_::Matrix; cutoff::Real=0.0, maxdim::Int=typemax(Int), mindim::
 end
 
 """
-    interpolative(M::Matrix; cutoff, maxdim)
+    interpolative(::Algorithm"prrldu", M::Matrix; cols=nothing, kws...) -> (C, Z, piv_cols, inf_error)
 
-Returns `C, Z, piv_cols, inf_error` where
-C and Z are matrices such that `C*Z ≈ M`.
-The matrix C consists of columns of M, and
-which column is given by the integer entries of
-the array `piv_cols`. The number of columns of
-C is controlled by the approximate (SVD) rank of M,
-which is controlled by the parameters `cutoff`
-and `maxdim`.
+Return the interpolative decomposition ``M \\approx C Z`` computed from the [`prrldu`](@ref) of `M`, to which `kws`
+(`cutoff`, `maxdim`, `mindim`) are passed. ``C`` holds the pivot columns `M[:, piv_cols]` and ``Z = U_{11}^{-1} U``,
+where ``U_{11}`` is the leading square block of the unit upper factor, so that `Z[:, piv_cols]` is the identity. The
+error is that of [`prrldu`](@ref). Prescribed columns are not supported: `cols` must be `nothing`.
 
 This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
@@ -185,7 +221,7 @@ published.
 """
 function interpolative(::Algorithm"prrldu", M::Matrix; cols=nothing, kws...)
     if !isnothing(cols)
-        error("user-specified cols not yet supported for prrldu algorithm")
+        throw(ArgumentError("user-specified cols not yet supported for prrldu algorithm; use algorithm=\"nuclear\""))
     end
     # Compute interpolative decomposition (ID) from PRRLDU
     L, d, U, pr, pc, inf_error = prrldu(M; kws...)
@@ -200,6 +236,21 @@ function interpolative(::Algorithm"prrldu", M::Matrix; cols=nothing, kws...)
     return C, Z, piv_cols, inf_error
 end
 
+"""
+    interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0, maxdim=min(size(M)...), kws...)
+        -> (C, Z, cols, error)
+
+Return the interpolative decomposition ``M \\approx C Z`` with ``C = M_{:, \\text{cols}}``. If `cols` is `nothing`,
+the columns are chosen greedily on the Gram matrix ``K = M^\\top M``: at every step we add the column that most
+reduces the residual ``K_t = K - K_{:,c} K_{c,c}^{-1} K_{c,:}``, measured by ``(K_t^2)_{pp} / (K_t)_{pp}``, until the
+square root of that measure, returned as `error`, falls below `cutoff` or `maxdim` columns are taken. ``Z`` is the
+least-squares solution of ``C Z = M``, by `C \\ M`, or by the pseudo-inverse if `use_pinv = true` is passed in `kws`,
+and its pivot columns are then set to the identity exactly. With prescribed `cols`, `error` is `Inf`.
+
+This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
+published.
+"""
 function interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0, maxdim=min(size(M)...), kws...)
     error = Inf
     use_pinv = get(kws, :use_pinv, false)
@@ -232,17 +283,20 @@ function interpolative(::Algorithm"nuclear", M::Matrix; cols=nothing, cutoff=0.0
 end
 
 """
-Compute the interpolative decomposition M≈C*Z of a
-matrix M such that C consists of columns of M and
-Z is an "interpolating matrix".
+    interpolative(M::Matrix; algorithm="prrldu", kws...) -> (C, Z, piv_cols, error)
 
-Optional keyword arguments:
+Return the interpolative decomposition ``M \\approx C Z`` of the matrix `M`, where ``C`` consists of columns of `M`
+(those listed in `piv_cols`) and ``Z`` is an interpolating matrix, equal to the identity on those columns. The rank is
+set by `cutoff`, `maxdim` and `mindim`. An interpolative decomposition keeps actual entries of `M` in its factor
+``C``, which is what lets RSI rebuild a tensor train from sketched entries (Sec. 3.2 and Fig. 5 of Torrente et al.,
+*Factorized approximate inverse preconditioners in the tensor train format*).
 
-  - cols::Int[] (default: nothing) - array of columns to use for C. Other column or rank selection parameters (such as cutoff or maxdim) will be ignored.
-  - maxdim::Int - maximum number of columns to keep in factorization
-  - mindim::Int - minimum number of columns to keep in factorization
-  - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
-  - tags="Link" - tags to use for the Index connecting `C` to `Z`
+# Keywords
+
+  - `algorithm="prrldu"`: `"prrldu"` (pivoted LDU, [`prrldu`](@ref)) or `"nuclear"` (greedy Gram-matrix selection,
+    needed when `cols` is given).
+  - `cols=nothing`: columns to use for ``C``; then the rank parameters are ignored.
+  - `cutoff`, `maxdim`, `mindim`: rank selection; see the method of each algorithm.
 
 This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
@@ -253,26 +307,22 @@ function interpolative(M::Matrix; algorithm="prrldu", kws...)
 end
 
 """
-    interpolative(M::ITensor, col_inds; kws...)
+    interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Nothing,Index}=nothing, tags="Link", kws...)
+        -> (C, Z, error)
 
-Compute the interpolative decomposition of an ITensor, treated as a
-matrix with column indices given by the collection `col_inds`.
+Return the interpolative decomposition ``T \\approx C Z`` of the ITensor `T`, seen as a matrix whose columns are the
+indices `col_inds` and whose rows are the others. ``C`` holds the pivot columns of `T`, with the row indices of `T`,
+and ``Z`` interpolates them, with the indices `col_inds`; the two share a new [`PivotIndex`](@ref) that records, for
+every pivot, the values of `col_inds` that select it, with the values of the vertex `local_vert` written as
+`local_vert => value` and pivot indices among `col_inds` expanded into their own pivots. This is how the crosses of
+RSI keep track of the multi-indices behind each bond. The pivot columns are chosen by the [`prrldu`](@ref) algorithm,
+with `kws` (`cutoff`, `maxdim`, `mindim`); if `pivot_index` is given, its pivots fix the columns instead, which are
+then fitted by the `"nuclear"` algorithm, and the pivots are checked to be those of `pivot_index`. The decomposition
+runs on the CPU, and `C` and `Z` are moved back to the array backend of `T`.
 
-Return a tuple of the following:
+# Throws
 
-  - C - ITensor containing specific columns of `M`. Indices are the
-    row indices of `M` and index connecting to `Z`.
-  - Z - "interpolating" ITensor having `col_inds` and such that `C*Z ≈ M`
-  - error - estimate of error between `C*Z` and `M`
-
-Internally uses the pivoted, rank-revealing LDU matrix decomposition.
-
-Optional keyword arguments:
-
-  - maxdim::Int - maximum number of columns to keep in factorization
-  - mindim::Int - minimum number of columns to keep in factorization
-  - cutoff::Float64 - keep only as many columns such that the value of the infinity (max) norm difference from the original tensor is below this value
-  - tags="Link" - tags to use for the Index connecting `C` to `Z`
+  - `ArgumentError`: if the pivots of `pivot_index` do not match the columns they select.
 
 This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
@@ -308,7 +358,9 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     row_inds = setdiff(inds(T), col_inds)
     Cmb_row, Cmb_col = combiner(row_inds), combiner(col_inds)
     cr, cc = combinedind(Cmb_row), combinedind(Cmb_col)
-    T_matrix = matrix(Cmb_row * T * Cmb_col, cr, cc)
+    # The decomposition runs on the CPU (prrldu works entry by entry); C and Z go back to the backend of T
+    array_type = backend_type(T)
+    T_matrix = Array(matrix(Cmb_row * T * Cmb_col, cr, cc))
 
     # Interpolative decomp of t matrix
     if isnothing(cols)
@@ -357,38 +409,55 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     end
 
     # Make ITensors from C and Z matrices
-    C = ITensor(C_matrix, cr, pivot_index) * dag(Cmb_row)
-    Z = ITensor(Z_matrix, pivot_index, cc) * dag(Cmb_col)
+    C = adapt(array_type, ITensor(C_matrix, cr, pivot_index)) * dag(Cmb_row)
+    Z = adapt(array_type, ITensor(Z_matrix, pivot_index, cc)) * dag(Cmb_col)
 
     return C, Z, error
 end
 
+"""
+    sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng()) -> ITensor
+    positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng()) -> ITensor
+
+Return the random sketch of the sites `region_verts` of `M`: for each of the `dim(k)` values of the sketch index `k`,
+we contract every site of the region with an independent random vector, Gaussian for `sketch` and uniform in
+``[0, 1)`` for `positive_sketch`, so that the sketch of an entrywise-positive tensor train stays positive. The result
+keeps the link indices at the ends of the region and `k`; an empty region gives the scalar 1. The random vectors are
+drawn on the CPU from `rng`, so that a seed gives the same sketch on every backend, and moved to the backend of `M`.
+Each region costs
+``\\mathcal{O}(|\\text{region}| \\, k \\, d \\chi^2)``. The crosses use [`suffix_sketches`](@ref) instead, which
+builds the sketches of all suffixes in one pass; these single-region versions stay as the references the tests compare
+it with.
+"""
 function sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([random_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
-        S += P*onehot(k=>p)
+        P = prod([adapt(array_type, random_itensor(rng, sites[v]))*M[v] for v in reverse(region_verts)])
+        S += P*adapt(array_type, onehot(k=>p))
     end
     return S
 end
 
 """
-    suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng=Random.default_rng())
+    suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::AbstractRNG=Random.default_rng())
+        -> Vector{ITensor}
 
-Random sketches of every suffix of `M`, accumulated in a single right-to-left pass.
-
-`S[v]` is the sketch of the sites `v:length(M)`, i.e. what `sketch(M, v:length(M), k)` builds (or
-`positive_sketch(M, v:length(M), k)` with `positive = true`, which draws uniform, positive sketch vectors instead of
-Gaussian ones), and `S[length(M)+1]` is the empty (scalar) sketch. Building each suffix independently costs
-`O(N^2 k χ^2)`, while accumulating them once costs `O(N k χ^2)` with the same sketch distribution for every suffix.
-The crosses of `_rsi_tt_mul` and `elementwise_function` only ever rewrite tensors at or to the left of their current
-region, so the suffixes they need are always the ones of the untouched input MPS.
+Return the random sketches of every suffix of `M`, accumulated in a single right-to-left pass: `S[v]` is the sketch of
+the sites `v:length(M)`, distributed as [`sketch`](@ref)`(M, v:length(M), k)` builds it, or as [`positive_sketch`](@ref)
+with `positive = true` (uniform, positive sketch vectors instead of Gaussian ones), and `S[length(M)+1]` is the empty,
+scalar sketch. Building every suffix on its own would cost ``\\mathcal{O}(N^2 k d \\chi^2)``; extending one running
+contraction per sketch column costs ``\\mathcal{O}(N k d \\chi^2)``. Note that the sketches of different suffixes share
+their random vectors, which a sketch built per suffix would not. Both crosses, of [`_rsi_tt_mul`](@ref) and of
+[`elementwise_function`](@ref), use it: they only rewrite tensors at or to the left of their current region, so the
+suffixes they need are always those of the untouched input.
 """
 function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::AbstractRNG=Random.default_rng())
     N = length(M)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = Vector{ITensor}(undef, N + 1)
     S[N+1] = ITensor(1.0)
     # One running partial contraction per sketch column, extended site by site.
@@ -396,9 +465,10 @@ function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::Ab
     for v in N:-1:1
         Sv = ITensor()
         for p in 1:dim(k)
-            r = positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v])
+            # drawn on the CPU from `rng`, then moved to the backend of M
+            r = adapt(array_type, positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v]))
             cols[p] = r * M[v] * cols[p]
-            Sv += cols[p] * onehot(k => p)
+            Sv += cols[p] * adapt(array_type, onehot(k => p))
         end
         S[v] = Sv
     end
@@ -406,15 +476,14 @@ function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::Ab
 end
 
 """
-    pivot_cutoff(T::ITensor, rtol::Real)
+    pivot_cutoff(T::ITensor, rtol::Real) -> Float64
 
-Pivot threshold for the interpolative decomposition of `T`, relative to its largest entry.
-
-`prrldu` compares pivots against an absolute threshold and divides by every pivot it keeps, so
-an absolute cutoff behaves differently on operands of different magnitude (`p*dt`, RK4
-increments, a zero velocity component): it either discards every pivot, and the cross then
-throws, or it keeps - and inverts - round-off pivots. The `floatmin` floor keeps the threshold
-strictly positive, so the pivot search of an all-zero block stops instead of dividing 0/0.
+Return the pivot threshold `max(rtol * maximum(abs, T), floatmin(Float64))` for the interpolative decomposition of
+`T`, relative to its largest entry. [`prrldu`](@ref) compares pivots with an absolute threshold and divides by every
+pivot it keeps, so an absolute cutoff behaves differently on operands of different magnitude (`p*dt`, RK4 increments,
+a zero velocity component): it either discards every pivot, and the cross then throws, or it keeps, and inverts,
+round-off pivots. The `floatmin` floor keeps the threshold strictly positive, so that the pivot search of an all-zero
+block stops instead of dividing 0 by 0.
 """
 function pivot_cutoff(T::ITensor, rtol::Real)
     d = ITensors.NDTensors.data(ITensors.tensor(T))
@@ -423,36 +492,43 @@ function pivot_cutoff(T::ITensor, rtol::Real)
 end
 
 """
-    allfinite(M::AbstractMPS)
+    allfinite(M::AbstractMPS) -> Bool
 
-Whether every entry of every tensor of `M` is finite.
+Return whether every entry of every tensor of `M` is finite; [`tt_mul`](@ref) checks it to detect a failed cross.
 """
 allfinite(M::AbstractMPS) = all(t -> all(isfinite, ITensors.NDTensors.data(ITensors.tensor(t))), M)
 
 """
-    iszero_tt(M::AbstractMPS)
+    iszero_tt(M::AbstractMPS) -> Bool
 
-Whether `M` is identically zero, detected from a single all-zero tensor. Cheap (`O(Nχ²d)`) and
-sufficient for the zero fields the pipeline builds explicitly, unlike a full `norm`.
+Return whether one of the tensors of `M` is zero, which makes `M` zero. It costs ``\\mathcal{O}(N d \\chi^2)``, less
+than a full `norm`, and detects the zero fields that the package builds explicitly ([`zeros_mps`](@ref)), but it
+returns `false` for a tensor train that is zero only through cancellations between its tensors.
 """
 iszero_tt(M::AbstractMPS) = any(t -> iszero(norm(t)), M)
 
-# Number of times `tt_mul` had to fall back from the randomized cross to the direct product.
+"""
+    TT_MUL_FALLBACKS
+
+Atomic counter of the [`tt_mul`](@ref) calls that fell back from the randomized cross to the direct product; read it
+with [`tt_mul_fallbacks`](@ref).
+"""
 const TT_MUL_FALLBACKS = Threads.Atomic{Int}(0)
 
 """
-    tt_mul_fallbacks()
+    tt_mul_fallbacks() -> Int
 
-Number of `tt_mul` calls that fell back from the randomized cross (`_rsi_tt_mul`) to the direct
-product since the last [`reset_tt_mul_fallbacks!`](@ref). A run that quietly switches to the slow,
-`O(χ1 χ2)` path is otherwise invisible, since the fallback is only logged at `@debug` level.
+Return the number of MPS-MPS [`tt_mul`](@ref) calls that fell back from the randomized cross
+([`_rsi_tt_mul`](@ref)) to the direct product ([`_direct_tt_mul`](@ref)) since the last
+[`reset_tt_mul_fallbacks!`](@ref). The fallback is only logged at `@debug` level, so this counter is how a run reports
+that its products did not go through the cross. The counter is shared by all threads.
 """
 tt_mul_fallbacks() = TT_MUL_FALLBACKS[]
 
 """
-    reset_tt_mul_fallbacks!()
+    reset_tt_mul_fallbacks!() -> Nothing
 
-Reset the counter reported by [`tt_mul_fallbacks`](@ref).
+Reset the counter reported by [`tt_mul_fallbacks`](@ref) to zero.
 """
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
@@ -474,25 +550,34 @@ Return a dense ITensor with indices `inds` and independent entries uniform in [0
 uniform_itensor(rng::AbstractRNG, inds::Index...) = _rand_uniform!(rng, ITensor(undef, inds))
 uniform_itensor(inds::Index...) = uniform_itensor(Random.default_rng(), inds...)
 
+"""
+    positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng()) -> ITensor
+
+Return the sketch of the sites `region_verts` of `M` with random vectors uniform in ``[0, 1)``, the positive variant of
+[`sketch`](@ref).
+"""
 function positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([uniform_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
-        S += P*onehot(k=>p)
+        P = prod([adapt(array_type, uniform_itensor(rng, sites[v]))*M[v] for v in reverse(region_verts)])
+        S += P*adapt(array_type, onehot(k=>p))
     end
     return S
 end
 
 """
-    _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int))
+    _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) -> MPS
 
-Element-wise (Hadamard) product of two MPS, by applying `mps1` as a diagonal MPO to `mps2` and
-compressing the result with the relative Frobenius `cutoff` and `maxdim`.
+Return the element-wise (Hadamard) product of two MPS, by applying `mps1` as a diagonal MPO to `mps2` with
+`ITensorMPS.apply`, truncated to the relative Frobenius `cutoff` and `maxdim`. It is exact up to that truncation, and
+its cost grows with the product ``\\chi_1 \\chi_2`` of the bond dimensions. It is the fallback of [`tt_mul`](@ref).
 
-Exact up to that compression, but `O(χ1^3 χ2^3)`, so roughly 10x slower than the randomized cross
-of [`_rsi_tt_mul`](@ref). It is the fallback of [`tt_mul`](@ref).
+# Throws
+
+  - `ArgumentError`: if the site indices or the array backends of the two MPS differ.
 """
 function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64))
     siteinds(mps1) == siteinds(mps2) || throw(ArgumentError("Site indices between the two MPS must match"))
@@ -523,32 +608,42 @@ function _direct_tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int
     return output_mps
 end
 
-#TODO Update docstring with new default oversample value of 25 instead of 40
 """
-    _rsi_tt_mul(mps1::MPS, mps2::MPS; oversample=40, target_rank=0, pivot_rtol=1e-10, nsite=2)
+    _rsi_tt_mul(mps1::MPS, mps2::MPS; nsite=2, oversample=25, target_rank::Int=0, pivot_rtol::Real=1e-10,
+                outputlevel=0, rng::AbstractRNG=Random.default_rng(), kws...) -> MPS
 
-Element-wise (Hadamard) product of two MPS by a randomized sketch followed by an interpolative
-(pivoted, rank-revealing LDU) cross. About 10x faster than [`_direct_tt_mul`](@ref), but less
-robust: it can throw, so callers need a fallback.
+Return the element-wise (Hadamard) product of two MPS by randomized sketch-and-interpolate (RSI): at every bond, from
+left to right, we sketch the suffixes of both factors ([`suffix_sketches`](@ref)), multiply the two sketched blocks
+of `nsite` sites element-wise, and take the interpolative decomposition ([`interpolative`](@ref)) of the result,
+whose pivots give the next core of the product; both factors are then re-expressed on the same pivots before moving
+on (Fig. 5 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*).
+The output is not orthogonalized, and it can throw, so callers need a fallback ([`tt_mul`](@ref)). With fewer than
+`nsite` sites the product of the full tensors is returned instead.
 
-The cross is deliberately run *without* a rank cap. Capping it truncates on greedily chosen
-interpolation pivots instead of on singular values, which costs two to three orders of magnitude
-in accuracy at a given rank; `tt_mul` therefore caps the result once, by SVD, afterwards. The
-raw rank stays bounded by the sketch size anyway.
+The cross is deliberately run *without* a rank cap. Capping it truncates on greedily chosen interpolation pivots
+instead of on singular values, which costs two to three orders of magnitude in accuracy at a given rank, so
+[`tt_mul`](@ref) caps the result once, by SVD, afterwards. The raw rank stays bounded by the sketch size of
+`max(χ₁, χ₂, target_rank) + oversample` columns. This bound is also the main limitation: the product of two MPS can
+need a rank up to ``\\chi_1 \\chi_2``, and when it exceeds the sketch size the result is not merely truncated but can
+be far off. For two random MPS of bond dimension 16 on 16 sites, whose product has rank 256, the relative error was
+45 with the default sketch, 5 with `target_rank = 64`, and at round-off level from `target_rank = 128`. On the
+low-rank products of smooth fields it agrees with the direct product to the accuracy of the inputs.
 
 # Keywords
 
-  - `oversample::Int=25`: sketch columns on top of the input ranks. This is the accuracy knob of
-    the uncapped cross: the sketch spans the face-splitting product of the two factors, which is
-    larger than the range of their element-wise product, so the sketch size sets an error floor
-    (about 1e-4 at `oversample=5`, 1e-5 at 15, 1e-6 at 40, at +30-100% runtime).
-  - `target_rank::Int=0`: expected rank of the *product*, which can exceed both input ranks. The
-    sketch is sized as `max(χ1, χ2, target_rank) + oversample`. Pass the rank the same product had
-    at the previous step when it is known.
-  - `pivot_rtol::Real=1e-10`: pivot threshold of the cross, relative to the block being
-    decomposed (see [`pivot_cutoff`](@ref)).
-  - `nsite::Int=2`: number of sites decomposed at a time.
+  - `nsite=2`: number of sites decomposed at a time.
+  - `oversample=25`: sketch columns on top of the largest rank. This is the accuracy knob of the uncapped cross: the
+    sketch spans the face-splitting product of the two factors, which is larger than the range of their element-wise
+    product, so the sketch size sets an error floor (about 1e-4 at `oversample = 5`, 1e-5 at 15 and 1e-6 at 40, for
+    30 to 100 % more runtime).
+  - `target_rank::Int=0`: expected rank of the product, which can exceed both input ranks. Pass the rank that the same
+    product had at the previous step when it is known.
+  - `pivot_rtol::Real=1e-10`: pivot threshold of the cross, relative to the block being decomposed
+    ([`pivot_cutoff`](@ref)).
+  - `outputlevel=0`: print the ranks of the product if at least 1.
   - `rng::AbstractRNG=Random.default_rng()`: random number generator of the Gaussian sketches.
+
+Other keywords are ignored.
 
 The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
@@ -565,13 +660,15 @@ function _rsi_tt_mul(
     rng::AbstractRNG=Random.default_rng(),
     kws...,
 )
-    nsite ≥ 2 || error("nsite must be ≥ 2 in multiply")
+    nsite ≥ 2 || throw(ArgumentError("nsite must be ≥ 2 in multiply, got $nsite"))
     mps1, mps2 = copy(mps1), copy(mps2)
 
-    siteinds(mps1) != siteinds(mps2) && error("mps sites must match")
+    siteinds(mps1) != siteinds(mps2) && throw(ArgumentError("mps sites must match"))
 
     N = length(mps1)
     sites = siteinds(mps1)
+    # With fewer sites than one region, the sweep below would not run; the full tensors are small, so multiply them
+    N < nsite && return MPS(hadamard_product(prod(mps1), prod(mps2)), sites)
 
     max_χ = max(maxlinkdim(mps1), maxlinkdim(mps2), target_rank)
     nsketch = oversample+max_χ
@@ -620,7 +717,7 @@ function _rsi_tt_mul(
         # Some finalizer code
         if last(region) == N
             for v in region[2:(end-1)]
-                row_inds = [x, only(sites[v])]
+                row_inds = [x, sites[v]]
                 R, X, err = interpolative(R, row_inds, v; cutoff=pivot_cutoff(R, pivot_rtol))
                 x = commonind(X, R)
                 push!(ranks, dim(x))
@@ -651,35 +748,45 @@ function _rsi_tt_mul(
 end
 
 """
-    tt_mul(mps1::MPS, mps2::MPS; cutoff=1e-15, maxdim=typemax(Int), rng=Random.default_rng(), rsi_kwargs...)
-    tt_mul(mpo1::MPO, mpo2::MPO; cutoff=1e-15, maxdim=typemax(Int))
-    tt_mul(mps::MPS, mpo::MPO; cutoff=1e-15, maxdim=typemax(Int))
-    tt_mul(mpo::MPO, mps::MPS; cutoff=1e-15, maxdim=typemax(Int))
+    tt_mul(mps1::MPS, mps2::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64),
+           rng::AbstractRNG=Random.default_rng(), rsi_kwargs...) -> MPS
+    tt_mul(mpo1::MPO, mpo2::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) -> MPO
+    tt_mul(mps::MPS, mpo::MPO; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) -> MPO
+    tt_mul(mpo::MPO, mps::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) -> MPO
 
-Element-wise (Hadamard) multiplication of tensor-train objects.
+Return the element-wise (Hadamard) product of two tensor trains on the same sites and array backend, truncated to the
+relative Frobenius `cutoff` and to `maxdim`.
 
-Supported combinations are MPS-MPS, MPO-MPO, and mixed MPS-MPO/MPO-MPS products.
-Inputs must share the same physical site indexing and array backend.
+Element-wise products appear wherever a nonlinear or variable-coefficient term is evaluated in the TT format, such as
+the advection term of the Navier–Stokes equations. Their exact bond dimension is the product ``\\chi_1 \\chi_2`` of
+those of the factors, although the result usually needs far less. For two MPS we therefore use the randomized
+sketch-and-interpolate (RSI) cross of [`_rsi_tt_mul`](@ref), whose raw rank is bounded by its sketch size, and
+compress its non-orthogonal output once by SVD. Both steps matter: truncating inside the cross is far from optimal at
+a given rank, and the raw output carries two to four times the rank that the product needs, which every later `apply`,
+`sum` and time-stepper stage would pay for. If either factor has a zero tensor ([`iszero_tt`](@ref)), the zero MPS is
+returned. If the cross throws or returns a non-finite result, the product is computed by [`_direct_tt_mul`](@ref)
+instead, and the fallback is counted by [`tt_mul_fallbacks`](@ref).
 
-The MPS-MPS product is computed by the randomized cross [`_rsi_tt_mul`](@ref), which is run
-uncapped and whose raw, non-orthogonal output is then compressed once by SVD. Both matter:
-truncating inside the cross is far from optimal at a given rank, and the raw output carries two
-to four times the rank the product needs, which every downstream `apply`, `sum` and time-stepper
-stage would then pay for. `_direct_tt_mul` is used instead whenever the cross throws or returns a
-non-finite result; such fallbacks are counted by [`tt_mul_fallbacks`](@ref).
+Note the limits of this choice. The cross is accurate only if the rank of the product fits in its sketch: when it does
+not, the result can be far off without any error being raised (see [`_rsi_tt_mul`](@ref), and pass `target_rank`).
+Nor is it always faster: on ``2^{18}`` to ``2^{20}`` points, with smooth factors of bond dimension 5 to 10, or with
+one factor of bond dimension 2 and the other of 16 to 64, the direct product was 5 to 12 times faster in our tests.
+
+The products that involve an MPO are computed exactly and then truncated. For two MPO, every site is contracted with
+delta tensors that identify the indices of both, which gives the entrywise product
+``(A \\circ B)_{ij} = A_{ij} B_{ij}``. For an MPS ``\\mathbf{x}`` and an MPO ``M``, in either order, the result is
+``\\mathrm{Diagonal}(\\mathbf{x}) M``, i.e. row ``i`` of ``M`` scaled by ``x_i``.
 
 # Keywords
 
-  - `cutoff::Float64=1e-15`: relative Frobenius truncation cutoff of the final compression.
-  - `maxdim::Int=typemax(Int64)`: maximum allowed bond dimension of the result.
-  - `rsi_kwargs...` (MPS-MPS only): forwarded to [`_rsi_tt_mul`](@ref), e.g. `oversample`,
-    `target_rank` and `pivot_rtol`.
+  - `cutoff::Float64=1e-15`: relative Frobenius cutoff of the final truncation.
+  - `maxdim::Int=typemax(Int64)`: maximum bond dimension of the result.
   - `rng::AbstractRNG=Random.default_rng()` (MPS-MPS only): random number generator of the sketches.
+  - `rsi_kwargs...` (MPS-MPS only): passed to [`_rsi_tt_mul`](@ref), e.g. `oversample`, `target_rank` and `pivot_rtol`.
 
-# Returns
+# Throws
 
-  - `MPS` for MPS-MPS products.
-  - `MPO` for MPO-MPO and mixed MPS-MPO/MPO-MPS products.
+  - `ArgumentError` (products with an MPO): if the site indices or the array backends differ.
 
 The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
@@ -790,13 +897,61 @@ function tt_mul(mpo::MPO, mps::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(I
 end
 
 """
-    elementwise_function(func::Function, mps::MPS, positive_domain::Bool=true; cutoff=0.0, nsite=2, maxdim=typemax(Int), oversample=15, outputlevel=0, rng=Random.default_rng()) -> MPS
+    elementwise_function(func::Function, mps::MPS, positive_domain::Bool=true; cutoff=0.0, nsite=2,
+                         maxdim=typemax(Int), oversample=15, outputlevel=0, rng::AbstractRNG=Random.default_rng(),
+                         kws...) -> MPS
 
-Return an MPS approximation of the element-wise map `func.(mps)`, built by a randomized sketch of `mps` followed by a
-cross (interpolative decomposition) of the mapped sketch. With `positive_domain = true` the sketches have uniform,
-positive entries, so that a sketch of an entrywise-positive MPS stays in the domain of `func` (e.g. `x -> x^(-1/2)`).
-The sketches of every suffix of `mps` are built once, in one right-to-left pass, as in [`_rsi_tt_mul`](@ref), so
-sketching costs ``\\mathcal{O}(N k \\chi^2)`` for a sketch of `k = oversample + χ` columns.
+Return an MPS approximation of the element-wise map `func.(x)` of the vector ``\\mathbf{x}`` represented by `mps`,
+built by randomized sketch-and-interpolate (RSI), as in Sec. 3.2 of Torrente et al., *Factorized approximate inverse
+preconditioners in the tensor train format*.
+
+A nonlinear function cannot be applied to a tensor train core by core, and forming the dense vector costs
+``\\mathcal{O}(d^N)``. RSI avoids both: at every bond, from left to right, it contracts the sites to the right of the
+current block of `nsite` sites with random vectors (a sketch), which leaves a small array of size
+``\\chi \\times d^{\\text{nsite}} \\times k`` on which `func` can be applied entry by entry. An interpolative
+decomposition of the mapped array ([`interpolative`](@ref)) then gives the next core of the result, and `mps` is
+re-expressed on the same pivots before moving on (Fig. 5). The sketches of every suffix are built once, in one
+right-to-left pass, as in [`_rsi_tt_mul`](@ref) ([`suffix_sketches`](@ref)), so the sketching costs
+``\\mathcal{O}(N k d \\chi^2)`` for ``k`` = `oversample` ``+ \\chi`` sketch columns, and each block then costs
+``\\mathcal{O}(d^2 \\chi^2 k)`` to contract and map and ``\\mathcal{O}(d^3 \\chi k \\min(\\chi, k))`` to decompose. With
+fewer than `nsite` sites, `func` is applied to the full tensor instead.
+
+The original RSI draws Gaussian sketches, whose contraction with a positive tensor train can have entries of any sign.
+For functions defined only on positive arguments, such as the ``x^{-1/2}`` that gives the rescaling ``D`` of the
+FAI, we draw uniform sketches in ``[0, 1)`` instead (`positive_domain = true`), so that the sketched entries of an
+entrywise-positive `mps` stay positive (Sec. 3.2). In that case the pivot columns are also fitted with a
+pseudo-inverse. With `positive_domain = false` they are fitted by `C \\ M`, which throws a `SingularException` for a
+part of the Gaussian draws (about half of them for `exp` of a signed function on
+``2^8`` points in our tests); the result is approximate in both cases, with an accuracy set by the sketch size.
+
+# Arguments
+
+  - `func::Function`: scalar function applied to every entry.
+  - `mps::MPS`: the vector ``\\mathbf{x}``; it must be entrywise positive if `positive_domain` is `true` and `func` is
+    only defined for positive arguments.
+  - `positive_domain::Bool=true`: draw uniform, positive sketches instead of Gaussian ones.
+
+# Keywords
+
+  - `cutoff=0.0`: absolute pivot threshold of the interpolative decompositions ([`prrldu`](@ref)).
+  - `nsite=2`: number of sites decomposed at a time.
+  - `maxdim=typemax(Int)`: maximum number of pivots, i.e. bond dimension, of every decomposition.
+  - `oversample=15`: sketch columns on top of the bond dimension of `mps`.
+  - `outputlevel=0`: print the ranks of the result if at least 1.
+  - `rng::AbstractRNG=Random.default_rng()`: random number generator of the sketches.
+
+Other keywords are ignored.
+
+# Throws
+
+  - `ArgumentError`: if `nsite < 2`.
+
+# Examples
+
+```julia
+using StableRNGs
+D = elementwise_function(x -> inv(sqrt(x)), diag_mps, true; cutoff=1e-12, rng=StableRNG(1))
+```
 
 The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
@@ -814,11 +969,13 @@ function elementwise_function(
     rng::AbstractRNG=Random.default_rng(),
     kws...,
 )
-    nsite ≥ 2 || error("nsite must be ≥ 2 in order to apply elementwise functions")
+    nsite ≥ 2 || throw(ArgumentError("nsite must be ≥ 2 in order to apply elementwise functions, got $nsite"))
     mps1 = copy(mps)
 
     N = length(mps1)
     sites = siteinds(mps1)
+    # With fewer sites than one region, the sweep below would not run; the full tensor is small, so map it directly
+    N < nsite && return MPS(map(func, prod(mps1)), sites; maxdim)
 
     max_χ = maxlinkdim(mps1)
     nsketch = oversample+max_χ
@@ -826,7 +983,8 @@ function elementwise_function(
     G = copy(mps1)
     x = nothing
 
-    # TODO Check if the QR inverse fails due to using Uniformly sampled sketches instead of Gaussian sketches
+    # TODO(release): find out why the least-squares fit fails (SingularException) for about half of the Gaussian
+    # sketches, and whether the pseudo-inverse used with the uniform sketches would fix it
     use_pinv = positive_domain
 
     # One sketch index for the whole sweep, and one right-to-left pass to build every suffix sketch of the input, as
@@ -862,7 +1020,7 @@ function elementwise_function(
         # Some finalizer code
         if last(region) == N
             for v in region[2:(end-1)]
-                row_inds = [x, only(sites[v])]
+                row_inds = [x, sites[v]]
                 R, X, err = interpolative(R, row_inds, v; maxdim, cutoff)
                 x = commonind(X, R)
                 push!(ranks, dim(x))

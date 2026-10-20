@@ -40,6 +40,17 @@ using .TestUtils
         mpo_d = DifferenTT.toeplitz_mpo(sites, coeffs, bc_dirichlet)
         @test mpo_d isa MPO
         @test length(mpo_d) == n
+
+        # Regression test: two sites with three coefficients threw a DimensionMismatch (one tensor too many), and too
+        # few sites threw an ErrorException
+        s2 = siteinds(2, 2)
+        toeplitz4 = [2.0 -1.0 0.0 0.0; -1.0 2.0 -1.0 0.0; 0.0 -1.0 2.0 -1.0; 0.0 0.0 -1.0 2.0]
+        @test contract_mpo(DifferenTT.toeplitz_mpo(s2, short_coeffs, bc_dirichlet)) ≈ toeplitz4
+        circulant4 = copy(toeplitz4)
+        circulant4[1, 4] = circulant4[4, 1] = -1.0
+        @test contract_mpo(DifferenTT.toeplitz_mpo(s2, short_coeffs, bc_periodic)) ≈ circulant4
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(siteinds(2, 1), short_coeffs, bc_dirichlet)
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(siteinds(2, 3), coeffs, bc_dirichlet)
     end
 
     @testset "column_pick_mpo" begin
@@ -51,6 +62,9 @@ using .TestUtils
         # Test vector version
         mpo_sum = DifferenTT.column_pick_mpo(sites, [1, 2])
         @test mpo_sum isa MPO
+
+        @test_throws ArgumentError DifferenTT.column_pick_mpo(sites, 0)
+        @test_throws ArgumentError DifferenTT.column_pick_mpo(sites, 2^n + 1)
 
         # Test MPO entries
         # Since col_idx = 2, reverse(digits(1, base=2, pad=6)) = [0, 0, 0, 0, 0, 1]
@@ -123,5 +137,81 @@ using .TestUtils
             @test full[row, col] == 1.0
             @test count(!iszero, full) == 1
         end
+    end
+
+    # Dense references: A[i, i+k] = c_k, wrapped around (circulant) for periodic boundary conditions. The coefficients
+    # are random, so a transposed or shifted operator would not match
+    @testset "toeplitz_mpo against dense Toeplitz and circulant matrices" begin
+        r = rng()
+        function dense_toeplitz(c::Dict, n::Int, periodic::Bool)
+            A = zeros(n, n)
+            for i in 1:n, (k, ck) in c
+                j = i + k
+                if periodic
+                    A[i, mod1(j, n)] += ck
+                elseif 1 <= j <= n
+                    A[i, j] += ck
+                end
+            end
+            return A
+        end
+        bcs = (
+            BoundaryCond1d(PeriodicBC(), PeriodicBC()),
+            BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)),
+            BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)),
+        )
+        for (offsets, nsites) in ((-1:1, 2:5), (-4:4, 4:6)), nsite in nsites, bc in bcs
+            c = Dict(k => randn(r) for k in offsets)
+            periodic = bc.left isa PeriodicBC
+            A = DifferenTT.toeplitz_mpo(siteinds(2, nsite), c, bc)
+            @test todense(A) ≈ dense_toeplitz(c, 2^nsite, periodic)
+            @test maxlinkdim(A) <= length(offsets)
+            # the method that creates its own sites
+            @test todense(DifferenTT.toeplitz_mpo(nsite, c, bc)) ≈ todense(A)
+        end
+        bc = bcs[1]
+        @test_throws KeyError DifferenTT.toeplitz_mpo(siteinds(2, 3), Dict(-1 => 1.0, 0 => 1.0, 2 => 1.0), bc)
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(siteinds(2, 4), Dict(k => 1.0 for k in -2:2), bc)
+        @test_throws ArgumentError DifferenTT.toeplitz_mpo(1, Dict(k => 1.0 for k in -1:1), bc)
+    end
+
+    @testset "column_pick_mpo, row_pick_mpo and entry_mpo against dense references" begin
+        s = siteinds(2, 4)
+        N = 16
+        e(k) = (v=zeros(N); v[k]=1.0; v)
+        for c in (1, 6, 16)
+            @test todense(DifferenTT.column_pick_mpo(s, c)) == ones(N) * e(c)'
+            @test todense(DifferenTT.row_pick_mpo(s, c)) == e(c) * ones(N)'
+        end
+        cols = [2, 7, 7, 16]
+        Cv = DifferenTT.column_pick_mpo(s, cols)
+        @test todense(Cv) ≈ sum(ones(N) * e(c)' for c in cols)
+        @test maxlinkdim(Cv) <= length(cols)
+        @test todense(DifferenTT.row_pick_mpo(s, cols)) ≈ sum(e(c) * ones(N)' for c in cols)
+        @test todense(DifferenTT.column_pick_mpo(s)) == ones(N) * e(1)'
+        @test todense(DifferenTT.row_pick_mpo(s)) == e(1) * ones(N)'
+        # applied to a vector: the column pick copies entry c everywhere, the row pick writes the sum into entry r
+        x = randn(rng(), N)
+        @test todense(DifferenTT.column_pick_mpo(s, 6)) * x ≈ fill(x[6], N)
+        @test todense(DifferenTT.row_pick_mpo(s, 6)) * x ≈ sum(x) * e(6)
+        # one site
+        s1 = siteinds(2, 1)
+        @test todense(DifferenTT.column_pick_mpo(s1, 2)) == [0.0 1.0; 0.0 1.0]
+        @test todense(DifferenTT.entry_mpo(s1, 2, 1)) == [0.0 0.0; 1.0 0.0]
+
+        @test_throws ArgumentError DifferenTT.column_pick_mpo(s, [1, 17])
+        @test_throws ArgumentError DifferenTT.row_pick_mpo(s, 0)
+        @test_throws ArgumentError DifferenTT.row_pick_mpo(s, [3, 0])
+        @test_throws ArgumentError DifferenTT.entry_mpo(s, 1, 17)
+        @test_throws ArgumentError DifferenTT.entry_mpo(s, 0, 1)
+    end
+
+    @testset "corner_pick_mpo on two sites and errors" begin
+        c = [1.0, 2.0, 3.0, 4.0]
+        s2 = siteinds(2, 2)
+        @test todense(DifferenTT.corner_pick_mpo(c, s2)) ≈ [1 2 3 4; 0 1 2 3; 0 0 1 2; 0 0 0 1]
+        @test todense(DifferenTT.corner_pick_mpo(c, s2, :lower)) ≈ [1 0 0 0; 2 1 0 0; 3 2 1 0; 4 3 2 1]
+        @test_throws ArgumentError DifferenTT.corner_pick_mpo(c, s2, :middle)
+        @test_throws ArgumentError DifferenTT.corner_pick_mpo(c, siteinds(2, 1))
     end
 end

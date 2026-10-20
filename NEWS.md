@@ -34,6 +34,13 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - User input is validated with `ArgumentError` or `DimensionMismatch` instead of `@assert`, so the exception types of
   invalid architectures, array sets, `tt_mul` operands, initial pivots, sinc and exact inverse-Laplacian inputs and
   field constructors change from `AssertionError`.
+- Invalid arguments that used to throw an `ErrorException` throw `ArgumentError` or `DimensionMismatch`:
+  `toeplitz_mpo` with too few sites for its stencil, `column_pick_mpo`, `row_pick_mpo` and `entry_mpo` with an index
+  outside `1:2^N` (an index above `2^N` threw a `DimensionMismatch` from `arrays2mpo`), `triang_projector_mpo` with a
+  number of combiners different from the number of sites, `TensorCrossInterpolation.optfirstpivot` when every value it
+  tries is zero, `_rsi_tt_mul` and `elementwise_function` with `nsite < 2` (`tt_mul` still falls back to the direct
+  product), `backsolveL`/`backsolveU` on a non-square matrix, and `interpolative` with prescribed `cols` for the
+  `"prrldu"` algorithm.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
   docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
@@ -80,6 +87,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `error("Not implemented yet")`) and the unused `onedim_neumann_boundary_correction` are removed.
 - `VectorField(components)` needs a non-empty tuple of one concrete `ScalarField{N}` type, with `N` components; a
   tuple of the wrong length throws `DimensionMismatch`.
+- `vec2tensor(v, leg_dims)` and `mat2tensor(m, leg_dims)` take the leg dimensions in site order (most significant
+  first, as `siteinds` and `contract_mps`/`contract_mpo`), and return a `d₁ × … × d_N` array (for `mat2tensor`, the row
+  axes followed by the column axes). They used to take them least significant first and return the axes reversed:
+  `vec2tensor(collect(1:6), [2, 3])` is now `[1 2 3; 4 5 6]` instead of the 3 × 2 `[1 2; 3 4; 5 6]`. Results change
+  only when the dimensions are not a palindrome, so QTT (all sites of dimension 2) is unaffected.
 
 ### Fixed
 
@@ -110,6 +122,36 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `enable_debug_timings!` and `disable_debug_timings!` are now defined.
 - Since the paper data were produced: the forward-Euler CFL bound no longer carries a dimension factor.
 - `disable_debug_timings!` had no effect when called in the same world as `enable_debug_timings!`.
+- `tt_mul` (MPS-MPS) and `elementwise_function` returned their (first) input unchanged, with no error, for an MPS with
+  fewer sites than `nsite` (e.g. a single site); the product or map is now computed on the full tensor. Any
+  `nsite > 2` threw.
+- `site_dims(::TTArchitecture)` returned the dimensions in variable order instead of site order, so for a `var_map`
+  that permutes variables of different sizes, `siteinds(arch)` built sites of the wrong dimension (and the TCI
+  wrappers sampled with the wrong local dimensions).
+- `ndim_operator_mpo` on a `TTArchitecture` returned the identity, with no error, for an `axis` outside `1:N`; it
+  throws `ArgumentError`.
+- `ndim_operator_mpo` on a `QTTArchitecture` threw a `BoundsError` for a variable with a single site.
+- `zeros_padding` transposed the operator it pads when its tensors store the site indices as `(s, s')`. Its callers
+  (`corner_pick_mpo` and the QTT Neumann corrections) store `(s', s)`, so their operators are unchanged.
+- `upper_triang_mpo` and `lower_triang_mpo` threw a `BoundsError` on a single site, and so did `arrays2mps` and
+  `arrays2mpo`.
+- `toeplitz_mpo` accepted two sites with three coefficients but threw a `DimensionMismatch`; it now returns the
+  4 × 4 Toeplitz (or circulant) matrix.
+- `vec2mps` and `mat2mpo` scrambled the entries of the vector or matrix whenever the site dimensions were not a
+  palindrome (e.g. sites of dimensions `[2, 3]`), with no error. QTT sites all have dimension 2, so their QTT uses were
+  correct.
+- `ndim_operator_mpo` and `ndim_operator_sum_mpo` on a `TTArchitecture` rebuilt the matrices with the wrapper type of
+  the (first) operator, with no error: an `Adjoint` or `Transpose` operator was transposed back, and a `Symmetric`,
+  `Diagonal` or triangular first operator symmetrized, diagonalized or truncated the other operators of the sum (a
+  view threw). `backend_type` of an array now looks through such wrappers to the array that stores the data. The
+  library's own callers pass dense matrices, so their operators are unchanged.
+- `ones_mps` and `ones_mpo` on a single site ignored `array_type`.
+- Array backends (found by code review; there is no GPU test yet): the interpolative decompositions of the RSI crosses
+  called `prrldu` on the device matrix, which has no method for it, so on a GPU `elementwise_function` threw and
+  `tt_mul` always fell back to the direct product; they now run on the CPU and move their factors back. The sketches
+  of `sketch`, `positive_sketch` and `suffix_sketches`, the delta tensors of `diagmpo`, `diagmps` and
+  `triang_projector_mpo`, and the link tensors of `zeros_padding` were created on the CPU; they now follow the backend
+  of their input. `sample` contracts on the CPU. Results on the CPU are unchanged.
 
 ### Deprecated
 
