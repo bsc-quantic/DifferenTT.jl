@@ -156,6 +156,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   mismatch in a later component threw, which left the components with different numbers of stored states; they now
   check every component first. `push!` and `setindex!` on a `ScalarField` or `VectorField` return the field (they
   returned its internal vector of states, or `nothing`).
+- The QTT Neumann corrections of the differential operators (`left_neumann_boundary_correction`,
+  `right_neumann_boundary_correction`) ignored `array_type` and built their corner block on the CPU, so a Neumann side
+  could not be used on a GPU (found by code review). Results on the CPU are unchanged.
 
 ### Deprecated
 
