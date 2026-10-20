@@ -18,7 +18,20 @@
 # Implicit time evolution schemes will go here.
 # For example, abstract type AbstractImplicitStepper <: AbstractTimeStepper end
 
+"""
+    abstract type AbstractImplicitStepper <: AbstractTimeStepper
+
+Work in progress, not part of the API: supertype of the implicit time steppers ([`ImplicitEuler`](@ref),
+[`CrankNicolson`](@ref)), whose `timestep` solves a linear system per step.
+"""
 abstract type AbstractImplicitStepper <: AbstractTimeStepper end
+
+"""
+    abstract type AbstractImplicitSystem
+
+Work in progress, not part of the API: supertype of the problems an implicit stepper advances, which must provide
+`build_lhs_operator`, `build_rhs_vector` and `solve_linear_system` (not defined yet; see the comment below).
+"""
 abstract type AbstractImplicitSystem end
 
 """
