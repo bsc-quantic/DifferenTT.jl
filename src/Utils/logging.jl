@@ -34,17 +34,46 @@ function disable_debug_timings!()
     return nothing
 end
 
+"""
+    abstract type Logger
+
+Supertype of the data loggers of the evolutions ([`chorin_evolve!`](@ref), [`vorticity_evolve!`](@ref)), which store
+their fields and residuals with [`log_data`](@ref). Not to be confused with `Logging.AbstractLogger`: these loggers
+write data files, not log messages.
+"""
 abstract type Logger end
 
+"""
+    SimpleLogger(log_dir::String)
+
+[`Logger`](@ref) that writes JLD2 files into the directory `log_dir`; build it with [`init_logger`](@ref), which
+creates the directory.
+
+Note that the standard library `Logging` also exports a `SimpleLogger` (a log-message handler). After
+`using DifferenTT, Logging` the unqualified name is ambiguous and throws an `UndefVarError`, so it must be written
+`DifferenTT.SimpleLogger` or `Logging.SimpleLogger`. The functions of DifferenTT only need the object that
+`init_logger` returns, so most scripts never write the name.
+
+# Fields
+
+  - `log_dir::String`: the directory of the files.
+"""
 struct SimpleLogger <: Logger
     log_dir::String
 end
 
 """
-    init_logger(log_dir::String)
+    init_logger(log_dir::String) -> SimpleLogger
 
-Initialize a logger that stores data in the specified directory `log_dir`.
-If the directory does not exist, it will be created.
+Return a [`SimpleLogger`](@ref) that writes into the directory `log_dir`, creating it (and its parents) if it does not
+exist.
+
+# Examples
+
+```julia
+logger = init_logger(joinpath("results", "cavity"))
+vorticity_evolve!(experiment, solver, stepper, 10, logger, "run1")  # writes results/cavity/run1.jld2
+```
 """
 function init_logger(log_dir::String)
     if !isdir(log_dir)
@@ -55,9 +84,22 @@ end
 
 """
     log_data(logger::SimpleLogger, filename::String, key::String, value)
+    log_data(logger::SimpleLogger, filename::String, data::Dict)
+    log_data(logger::Nothing, filename::String, key::String, value)
+    log_data(logger::Nothing, filename::String, data::Dict)
 
-Log a value with a specific key to a JLD2 file named `filename` in the logger's directory.
-If the file exists, the value is appended/updated.
+Write `value` under `key`, or every pair of `data`, into the JLD2 file `filename` (with the extension `.jld2` added
+if it is missing) in the directory of `logger`. If the file exists, the other keys are kept and an existing key is
+overwritten; otherwise the file is created. With `logger = nothing` nothing is written, so that the evolutions can
+call it unconditionally.
+
+# Examples
+
+```julia
+logger = init_logger(mktempdir())
+log_data(logger, "run", "residuals", [1e-3, 1e-6])
+log_data(logger, "run", Dict("Re" => 100.0, "dt" => 1e-3))   # same file, run.jld2
+```
 """
 function log_data(logger::SimpleLogger, filename::String, key::String, value)
     path = joinpath(logger.log_dir, filename)
@@ -69,6 +111,7 @@ function log_data(logger::SimpleLogger, filename::String, key::String, value)
 
     if isfile(path)
         jldopen(path, "r+") do file
+            haskey(file, key) && delete!(file, key) # JLD2 does not overwrite a dataset in place
             file[key] = value
         end
     else
@@ -76,11 +119,6 @@ function log_data(logger::SimpleLogger, filename::String, key::String, value)
     end
 end
 
-"""
-    log_data(logger::SimpleLogger, filename::String, data::Dict)
-
-Log a dictionary of data to a JLD2 file named `filename`.
-"""
 function log_data(logger::SimpleLogger, filename::String, data::Dict)
     path = joinpath(logger.log_dir, filename)
 
@@ -91,6 +129,7 @@ function log_data(logger::SimpleLogger, filename::String, data::Dict)
     if isfile(path)
         jldopen(path, "r+") do file
             for (k, v) in data
+                haskey(file, k) && delete!(file, k)
                 file[k] = v
             end
         end

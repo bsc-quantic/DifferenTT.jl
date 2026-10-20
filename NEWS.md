@@ -25,6 +25,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code.
 - Plotting moved to the package extension `DifferenTTPlotsExt`: `visualize_scalar`, `visualize_vector` and
   `visualize_vorticity` need `using Plots`, and print a hint otherwise.
+- `Grid(arch, box_size; periodic)`, `interior_grid(...; periodic)` and `periodic_axes(bcs)`: a periodic axis gets
+  the spacing `L/n`, so that its wrapped stencils have period `L` (without the flag the period is `L + h`), and
+  `Grid` stores the flags in a new field `periodic`. `vorticity_grid` sets them from the faces, and `INSExperiment` and
+  `INSVorticityExperiment` throw `ArgumentError` when a periodic grid axis has non-periodic boundary conditions. The
+  default, and every existing grid, is unchanged.
 
 ### Changed
 
@@ -41,6 +46,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   tries is zero, `_rsi_tt_mul` and `elementwise_function` with `nsite < 2` (`tt_mul` still falls back to the direct
   product), `backsolveL`/`backsolveU` on a non-square matrix, and `interpolative` with prescribed `cols` for the
   `"prrldu"` algorithm.
+- `visualize_vector` and `visualize_vorticity` throw `ArgumentError` instead of `ErrorException` for a
+  one-dimensional field, and `visualize_vorticity` throws it for more than three components, for which it used to plot
+  the vorticity of the first three.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
   docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
@@ -152,6 +160,29 @@ The first public release. Version 0.0.1 is the state of the library that produce
   of `sketch`, `positive_sketch` and `suffix_sketches`, the delta tensors of `diagmpo`, `diagmps` and
   `triang_projector_mpo`, and the link tensors of `zeros_padding` were created on the CPU; they now follow the backend
   of their input. `sample` contracts on the CPU. Results on the CPU are unchanged.
+- `push!` and `setindex!` on a `VectorField` appended or replaced the states of the first components before a site
+  mismatch in a later component threw, which left the components with different numbers of stored states; they now
+  check every component first. `push!` and `setindex!` on a `ScalarField` or `VectorField` return the field (they
+  returned its internal vector of states, or `nothing`).
+- The QTT Neumann corrections of the differential operators (`left_neumann_boundary_correction`,
+  `right_neumann_boundary_correction`) ignored `array_type` and built their corner block on the CPU, so a Neumann side
+  could not be used on a GPU (found by code review). Results on the CPU are unchanged.
+- `chorin_evolve!` and `vorticity_evolve!` with `save_every > 1` also stored the state of step `nsteps - 1` whenever
+  `nsteps - 1` was not a multiple of `save_every`, and the `k`-th entry of the logged `linsolve_errorlog` was the
+  residual of a different step than the `k`-th stored pressure or stream function. The fields now store the initial
+  state and the steps `save_every`, `2 save_every`, … and `nsteps`, with one residual per stored step; `save_every < 1`
+  throws `ArgumentError`. The paper's workers run their own step loop and are not affected.
+- `log_data` threw an `ArgumentError` from JLD2 when it wrote a key that the file already had, although it was
+  documented to update it (e.g. when an evolution was logged twice to the same file); it now overwrites the key and
+  keeps the others.
+- `visualize_scalar`, `visualize_vector` and `visualize_vorticity` sliced a field at index `div(npoints, 2)` along the
+  axes that are not plotted, which is the sample before the middle one for an odd `npoints` (and index 0 for
+  `npoints = 1`), although they are documented to use the middle sample; they now use `cld(npoints, 2)`. The figures of
+  an even `npoints` (including the defaults of 50 and 20) are unchanged.
+- The one-dimensional differential operator of a periodic `TTArchitecture` axis with at most `q` nodes (`n = 8` for
+  `stencil_order = 8`) overwrote the coefficients of offsets that wrap onto the same node instead of adding them, and
+  threw a `BoundsError` for fewer than 5 nodes. Axes of more than `q` nodes, including every QTT axis (at least 16
+  nodes), are unchanged.
 
 ### Deprecated
 
@@ -164,3 +195,12 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)`
   instead of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also
   changes the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2.
+- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places
+  the Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
+  first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
+  projection. A second-order closure by odd reflection is planned for v0.2.
+- `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`; the
+  paper's Chorin runs use it.
+- `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity it returns, and that
+  `chorin_evolve!` stores, is the provisional field `u*` of the next step rather than the projected one. The order
+  predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version.

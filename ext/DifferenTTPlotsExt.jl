@@ -1,3 +1,13 @@
+"""
+    DifferenTTPlotsExt
+
+Package extension of DifferenTT, loaded together with Plots.jl, that defines the plotting methods of
+[`visualize_scalar`](@ref DifferenTT.visualize_scalar), [`visualize_vector`](@ref DifferenTT.visualize_vector) and
+[`visualize_vorticity`](@ref DifferenTT.visualize_vorticity). The fields are sampled on a regular grid with
+`DifferenTT.samples`, which contracts the MPS at every sample, so the cost grows with `npoints^N` and the plots are
+meant for small figures, not for dense evaluation of large fields. Headless runs (e.g. CI) need the environment
+variable `GKSwstype=100` for the GR backend.
+"""
 module DifferenTTPlotsExt
 
 using DifferenTT
@@ -64,7 +74,7 @@ function visualize_scalar(
         for d in 1:N
             if d ∉ slice_dims
                 if isnothing(slice_vals) || length(slice_vals) < (d - count(x -> x < d, slice_dims))
-                    slice_idx = div(npoints, 2)
+                    slice_idx = cld(npoints, 2)
                     push!(val_strs, "mid")
                 else
                     val_idx = d - count(x -> x < d, slice_dims)
@@ -85,7 +95,7 @@ function visualize_scalar(
 
         plot = heatmap(x_range, y_range, slice_data'; title=title_str, kwargs...)
     else
-        error("Visualization not implemented for N=$N")
+        throw(ArgumentError("visualize_scalar needs a field with N ≥ 1 dimensions, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))
@@ -194,7 +204,7 @@ function visualize_vector(
         val_strs = String[]
         for d in 1:N
             if d ∉ slice_dims
-                slice_idx = div(npoints, 2)
+                slice_idx = cld(npoints, 2)
                 slice_indices[d] = slice_idx
                 push!(val_strs, "mid")
             end
@@ -221,7 +231,7 @@ function visualize_vector(
         q_slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
-                q_slice_indices[d] = div(quiver_npoints, 2)
+                q_slice_indices[d] = cld(quiver_npoints, 2)
             end
         end
 
@@ -233,7 +243,7 @@ function visualize_vector(
 
         quiver!(X[:], Y[:]; quiver=(arrow_scale .* q_slice_u[:], arrow_scale .* q_slice_v[:]), color=:red, kwargs...)
     else
-        error("Visualization not implemented for N=$N")
+        throw(ArgumentError("visualize_vector needs a field with N ≥ 2 components, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))
@@ -302,6 +312,8 @@ function visualize_vorticity(
     slice_dims=(1, 2),
     kwargs...,
 ) where {N}
+    # The vorticity is defined for two components (scalar) and three (vector); sampling comes after this check
+    N in (2, 3) || throw(ArgumentError("visualize_vorticity needs a velocity field with 2 or 3 components, got N = $N"))
     ranges, all_data = [], []
     for i in 1:N
         rngs, d = samples(fields_mps[i], grid, arch, npoints)
@@ -363,7 +375,7 @@ function visualize_vorticity(
             end
         end
 
-        slice_idx = div(npoints, 2)
+        slice_idx = cld(npoints, 2)
         slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
@@ -372,9 +384,6 @@ function visualize_vorticity(
         end
 
         slice_data = vort_mag[slice_indices[1:3]...]
-
-        # If N > 3 we only computed vorticity for the first 3 dims currently! 
-        # (Since 3D vorticity is only well defined for 3 dims). We'll assume the N>3 case only uses first 3 dims for vorticity calculation.
 
         plot = heatmap(
             ranges[slice_dims[1]],
@@ -398,7 +407,7 @@ function visualize_vorticity(
         q_slice_indices = Any[Colon() for _ in 1:N]
         for d in 1:N
             if d ∉ slice_dims
-                q_slice_indices[d] = div(quiver_npoints, 2)
+                q_slice_indices[d] = cld(quiver_npoints, 2)
             end
         end
 
@@ -410,7 +419,7 @@ function visualize_vorticity(
 
         quiver!(X[:], Y[:]; quiver=(arrow_scale .* q_slice_u[:], arrow_scale .* q_slice_v[:]), color=:white, kwargs...)
     else
-        error("Vorticity not implemented for N=$N")
+        throw(ArgumentError("visualize_vorticity needs a field with N ≥ 2 components, got N = $N"))
     end
     if !isnothing(save_path)
         mkpath(dirname(save_path))

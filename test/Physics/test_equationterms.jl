@@ -2,6 +2,7 @@ using Test
 using ITensors
 using ITensorMPS
 using LinearAlgebra
+using Random
 using DifferenTT
 
 include(joinpath(@__DIR__, "..", "testutils.jl"))
@@ -131,7 +132,7 @@ try
 
     @testset "symmetrized_laplacian with Neumann faces" begin
         # Mirrored (unsymmetrized) Kronecker sum, built term by term as in the directsum reference above
-        function mirrored_laplacian_dense(field::ScalarField{N}, grid::Grid{N}) where {N}
+        function mirrored_laplacian_dense(field::ScalarField{N}, grid::Grid{N}; stencil_order::Int=2) where {N}
             terms = ntuple(
                 i -> begin
                     onedim_op = DifferenTT.onedim_differential_operator(
@@ -140,7 +141,7 @@ try
                         i,
                         field.bcu[i],
                         DifferenTT.backend_type(field);
-                        stencil_order=2,
+                        stencil_order=stencil_order,
                         cutoff=0.0,
                         maxdim=100,
                     )
@@ -159,19 +160,21 @@ try
         )
 
         # toeplitz_mpo needs at least 4 qubits per axis
-        @testset "Whole rows weighted ($label)" for (label, arch) in (
-            ("QTT sequential", QTTArchitecture((4, 4))),
-            ("QTT reversed", QTTArchitecture((4, -4))),
-            ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
-            ("TT", TTArchitecture((16, 16))),
-        )
+        @testset "Whole rows weighted ($label, q=$q)" for (label, arch) in (
+                ("QTT sequential", QTTArchitecture((4, 4))),
+                ("QTT reversed", QTTArchitecture((4, -4))),
+                ("QTT interleaved", QTTArchitecture((4, 4); interleaved=true)),
+                ("TT", TTArchitecture((16, 16))),
+            ),
+            q in (2, 8)
+
             grid = Grid(arch, (1.0, 1.0))
             field = ScalarField(siteinds(arch), arch, neumann_bcs)
 
-            Δ = symmetrized_laplacian(field, grid; stencil_order=2)
+            Δ = symmetrized_laplacian(field, grid; stencil_order=q)
             Δ_dense = DifferenTT.contract_mpo(Δ)
             W_dense = DifferenTT.contract_mpo(neumann_weight_mpo(field))
-            A_dense = mirrored_laplacian_dense(field, grid)
+            A_dense = mirrored_laplacian_dense(field, grid; stencil_order=q)
 
             # The weight multiplies the whole mirrored operator, so the system keeps its solution
             @test norm(Δ_dense - W_dense * A_dense) < 1e-10 * norm(A_dense)
@@ -233,6 +236,137 @@ try
             @test errors[1] < 1.0
             @test errors[2] < errors[1] / 3.5 # h = 1/7 → 1/15: second order gives a ratio ≈ 4.6
         end
+    end
+
+    @testset "One-dimensional Laplacians against a hand ghost elimination ($label)" for (label, arch) in (
+            ("TT", TTArchitecture((16,))), ("QTT", QTTArchitecture((4,)))
+        ),
+        (name, bc) in (
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+            ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
+            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))),
+            ("periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
+        ),
+        q in (2, 8)
+
+        n = 16
+        grid = Grid(arch, (2.0,))
+        h = grid.dx[1]
+        field = ScalarField(siteinds(arch), arch, BoundaryConditions(bc))
+        # Hand-built second-derivative stencil, with the ghost values eliminated term by term
+        coeffs = DifferenTT.derivative_coefficients(2; stencil_order=q)
+        A = zeros(n, n)
+        for i in 1:n, (k, c) in coeffs
+            j = i + k
+            if j < 1
+                bc.left isa NeumannBC && (A[i, 2-j] += c)
+                bc.left isa PeriodicBC && (A[i, j+n] += c)
+            elseif j > n
+                bc.right isa NeumannBC && (A[i, 2n-j] += c)
+                bc.right isa PeriodicBC && (A[i, j-n] += c)
+            else
+                A[i, j] += c
+            end
+        end
+        A ./= h^2
+        w = ones(n)
+        bc.left isa NeumannBC && (w[1] = 0.5)
+        bc.right isa NeumannBC && (w[n] = 0.5)
+
+        K = DifferenTT.contract_mpo(kronecker_laplacian(field, grid; stencil_order=q))
+        @test K ≈ A atol = 1e-8 * norm(A) # QTT truncation with the ITensors cutoff 1e-15 leaves ~1e-10 relative
+        S = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=q))
+        @test S ≈ Diagonal(w) * A atol = 1e-8 * norm(A)
+        @test S ≈ S' atol = 1e-8 * norm(A)
+    end
+
+    @testset "gradient, divergence, advection and diffusion against dense operators ($label, q=$q)" for (label, arch) in
+                                                                                                        (
+            ("TT", TTArchitecture((9, 8))), ("QTT", QTTArchitecture((4, 5)))
+        ),
+        q in (2, 8)
+
+        n1, n2 = variable_dims(arch)
+        dims = (n1, n2)
+        grid = Grid(arch, (1.0, 2.0))
+        h = grid.dx
+        sites = siteinds(arch)
+        # Each component has its own boundary conditions along each axis: the operators use those of the component
+        walls = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+        mirror = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+        wrap = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+        component_bcs = (BoundaryConditions(walls, wrap), BoundaryConditions(mirror, walls))
+        side_symbol(bc) = bc isa NeumannBC ? :mirror : (bc isa PeriodicBC ? :wrap : :truncate)
+        function ghost_op(order, n, bc)
+            coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+            D = zeros(n, n)
+            for i in 1:n, (k, c) in coeffs
+                j = i + k
+                if j < 1
+                    side_symbol(bc.left) == :mirror && (D[i, 2-j] += c)
+                    side_symbol(bc.left) == :wrap && (D[i, j+n] += c)
+                elseif j > n
+                    side_symbol(bc.right) == :mirror && (D[i, 2n-j] += c)
+                    side_symbol(bc.right) == :wrap && (D[i, j-n] += c)
+                else
+                    D[i, j] += c
+                end
+            end
+            return D
+        end
+        # Dense derivative operator of order `order` along `axis` for the boundary conditions `bcs`, spacing included
+        function dense_derivative(order, axis, bcs)
+            ops = [Matrix(1.0I, dims[1], dims[1]), Matrix(1.0I, dims[2], dims[2])]
+            ops[axis] = ghost_op(order, dims[axis], bcs[axis]) ./ h[axis]^order
+            return kron(ops...)
+        end
+        as_vector(F) = vec(F') # [i₁, i₂] → site 1 is the most significant index
+        ux_dense, uy_dense, p_dense = (randn(rng(k), n1, n2) for k in (11, 12, 13))
+        function as_mps(F)
+            if arch isa TTArchitecture
+                return MPS(ITensor(F, sites[1], sites[2]), sites)
+            else
+                return vec2mps(as_vector(F), sites)
+            end
+        end
+        ux, uy, pm = as_mps(ux_dense), as_mps(uy_dense), as_mps(p_dense)
+        u = (ux, uy)
+        U = (as_vector(ux_dense), as_vector(uy_dense))
+
+        u_fields = VectorField(u, arch, component_bcs)
+        diff_ops = DifferenTT.DifferentialOps(grid, u_fields; stencil_order=q)
+        tol(x) = 1e-8 * norm(x) # the MPOs are truncated with the ITensors cutoff 1e-15
+
+        # gradient of a scalar: the first derivatives with the pressure's own boundary conditions
+        p_bcs = BoundaryConditions(mirror, wrap)
+        p_ops = DifferenTT.DifferentialOpsScalar(grid, ScalarField(sites, arch, p_bcs); stencil_order=q)
+        P = as_vector(p_dense)
+        grad = gradient(pm, p_ops)
+        @test length(grad) == 2
+        for axis in 1:2
+            @test DifferenTT.contract_mps(grad[axis]) ≈ dense_derivative(1, axis, p_bcs) * P atol = tol(P) * 10
+        end
+
+        # divergence: ∂₁u₁ + ∂₂u₂, each with the boundary conditions of its own component
+        expected_div = dense_derivative(1, 1, component_bcs[1]) * U[1] + dense_derivative(1, 2, component_bcs[2]) * U[2]
+        @test DifferenTT.contract_mps(divergence(u, diff_ops)) ≈ expected_div atol = tol(expected_div) * 10
+
+        # diffusion: Σⱼ ∂ⱼ² uᵢ with the boundary conditions of component i
+        diff = diffusion(u, diff_ops)
+        for i in 1:2
+            expected = sum(dense_derivative(2, j, component_bcs[i]) * U[i] for j in 1:2)
+            @test DifferenTT.contract_mps(diff[i]) ≈ expected atol = tol(expected) * 10
+        end
+
+        # advection: Σⱼ uⱼ ∂ⱼ uᵢ, a Hadamard product of the velocity with the derivative
+        Random.seed!(5) # tt_mul draws its sketches from the default generator
+        adv = advection(u, diff_ops)
+        for i in 1:2
+            expected = sum(U[j] .* (dense_derivative(1, j, component_bcs[i]) * U[i]) for j in 1:2)
+            @test DifferenTT.contract_mps(adv[i]) ≈ expected atol = tol(expected) * 10
+        end
+        # The truncation keywords are honoured
+        @test all(maxlinkdim(m) <= 2 for m in diffusion(u, diff_ops; maxdim=2))
     end
 
     @testset "ndim_operator_sum_mpo pairwise FSM" begin
@@ -305,6 +439,48 @@ try
         qtt_arch = QTTArchitecture((3, 3); interleaved=false)
         qtt_field = ScalarField(siteinds(2, 6), qtt_arch, BoundaryConditions(dirichlet, dirichlet))
         @test_throws ArgumentError equicorrelated_laplacian(qtt_field, Grid(qtt_arch, (1.0, 1.0)); correlation=0.5)
+    end
+    @testset "equicorrelated_laplacian against the dense formula and the condition-number floor F(ρ, N)" begin
+        # -L(ρ) = Σ_ℓ ∂_ℓ² + 2ρ Σ_{ℓ<m} ∂_ℓ ∂_m (Eq. (28)), written out densely from the three-point stencils on the
+        # interior grid h = 1/(n+1) of the paper's Appendix A, with homogeneous Dirichlet sides
+        d2(n, h) = (diagm(1 => ones(n - 1)) + diagm(-1 => ones(n - 1)) - 2I(n)) / h^2
+        d1(n, h) = (diagm(1 => ones(n - 1)) - diagm(-1 => ones(n - 1))) / (2h)
+        # Kronecker product with `factors[ℓ]` on axis ℓ and the identity elsewhere (site 1 is the most significant)
+        dense_kron(N, n, factors) = reduce(kron, [get(factors, ℓ, Matrix(1.0I, n, n)) for ℓ in 1:N])
+        dirichlet = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+
+        @testset "N = $N" for (N, n) in ((2, 8), (3, 6))
+            arch = TTArchitecture(ntuple(_ -> n, N))
+            grid = interior_grid(arch, ntuple(_ -> 1.0, N))
+            h = 1 / (n + 1)
+            @test all(≈(h), grid.dx)
+            field = ScalarField(siteinds(arch), arch, BoundaryConditions(ntuple(_ -> dirichlet, N)...))
+            laplacian = sum(dense_kron(N, n, Dict(ℓ => d2(n, h))) for ℓ in 1:N)
+            mixed = sum(dense_kron(N, n, Dict(ℓ => d1(n, h), m => d1(n, h))) for ℓ in 1:N for m in (ℓ+1):N)
+
+            for ρ in (0.0, 0.25, 0.5, 0.9)
+                mpo = equicorrelated_laplacian(field, grid; correlation=ρ, stencil_order=2)
+                L = DifferenTT.contract_mpo(mpo)
+                @test L ≈ laplacian + 2ρ * mixed rtol = 1e-10
+                @test maxlinkdim(mpo) == (iszero(ρ) ? 2 : 3) # Eq. (29), whatever N
+
+                # Eq. (30): κ(L₀⁻¹ L) ≤ F(ρ, N) = (1 + (N-1)ρ)/(1 - ρ), from the extreme generalized eigenvalues
+                λ = eigvals(Symmetric(-L), Symmetric(-laplacian))
+                @test minimum(λ) >= (1 - ρ) - 1e-10
+                @test maximum(λ) <= (1 + (N - 1) * ρ) + 1e-10
+                @test maximum(λ) / minimum(λ) <= (1 + (N - 1) * ρ) / (1 - ρ) * (1 + 1e-10)
+            end
+        end
+
+        # A negative correlation (N = 2, -1 < ρ < 1) is still SPD, and q = 8 builds the same structure
+        arch = TTArchitecture((6, 6))
+        grid = interior_grid(arch, (1.0, 1.0))
+        field = ScalarField(siteinds(arch), arch, BoundaryConditions(dirichlet, dirichlet))
+        L_neg = DifferenTT.contract_mpo(equicorrelated_laplacian(field, grid; correlation=-0.5, stencil_order=2))
+        @test isposdef(Symmetric(-L_neg))
+        mpo8 = equicorrelated_laplacian(field, grid; correlation=0.4, stencil_order=8)
+        @test maxlinkdim(mpo8) == 3
+        @test DifferenTT.contract_mpo(mpo8) ≈ DifferenTT.contract_mpo(mpo8)' rtol = 1e-10
     end
 finally
     ITensors.set_warn_order(previous_warn_order)

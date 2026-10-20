@@ -115,6 +115,43 @@ using .TestUtils
         @test length(out[2]) == n_sites
     end
 
+    @testset "mask_correction with a mask against the dense Hadamard product ($label)" for (label, arch) in (
+        ("TT", TTArchitecture((6, 5))), ("QTT", QTTArchitecture((3, 3)))
+    )
+        sites = siteinds(arch)
+        dims = variable_dims(arch)
+        grid_m = Grid(arch, (1.0, 1.0))
+        values_of(mps) = [
+            DifferenTT.sample(mps, ((i - 1) * grid_m.dx[1], (j - 1) * grid_m.dx[2]), grid_m, arch) for
+            i in 1:dims[1], j in 1:dims[2]
+        ]
+        # 0 inside a disc, 1 outside, like the cylinder of the paper's channel, stored as an MPS of the sites
+        disc = [hypot(x - 0.5, y - 0.5) < 0.3 ? 0.0 : 1.0 for x in grid_m.points[1], y in grid_m.points[2]]
+        mask = if arch isa TTArchitecture
+            MPS(ITensor(disc, sites[1], sites[2]), sites)
+        else
+            vec2mps(vec(disc'), sites)  # site 1 (axis 1) is the most significant index
+        end
+        @test values_of(mask) ≈ disc
+
+        u = (random_mps(rng(5), sites; linkdims=3), random_mps(rng(6), sites; linkdims=3))
+        U = values_of.(u)
+        masked = DifferenTT.mask_correction(u, mask)
+        @test length(masked) == 2
+        for c in 1:2
+            @test values_of(masked[c]) ≈ U[c] .* disc atol = 1e-10
+            # nothing survives inside the obstacle
+            @test all(iszero, round.(values_of(masked[c])[disc .== 0]; digits=10))
+        end
+        # The truncation keywords are honoured, and the input is untouched
+        capped = DifferenTT.mask_correction(u, mask; maxdim=2)
+        @test all(maxlinkdim(c) <= 2 for c in capped)
+        @test values_of(u[1]) ≈ U[1]
+        # Applying the mask twice is the same as once, since the mask is 0 or 1
+        twice = DifferenTT.mask_correction(masked, mask)
+        @test values_of(twice[1]) ≈ values_of(masked[1]) atol = 1e-10
+    end
+
     @testset "regularization_check" begin
         # 
         sites = siteinds(TTArchitecture(arch_2d))
@@ -136,6 +173,21 @@ using .TestUtils
 
         exp_dirichlet = INSExperiment(grid, u_fields, p_field_dirichlet, Re, nothing; stencil_order=2)
         @test DifferenTT.regularization_check(exp_dirichlet) == false
+
+        # One Dirichlet side anywhere is enough to remove the null space; Neumann or open sides alone are not
+        neumann_bc1d = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+        open_bc1d = BoundaryCond1d(OpenBC(), OpenBC())
+        outlet_bc1d = BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))
+        for (bcs_p, singular) in (
+            (BoundaryConditions(neumann_bc1d, neumann_bc1d), true),
+            (BoundaryConditions(open_bc1d, neumann_bc1d), true),
+            (BoundaryConditions(neumann_bc1d, outlet_bc1d), false),
+            (BoundaryConditions(outlet_bc1d, bc1d), false),
+        )
+            p_field_mixed = ScalarField(TTArchitecture(arch_2d), bcs_p)
+            exp_mixed = quietly(() -> INSExperiment(grid, u_fields, p_field_mixed, Re, nothing; stencil_order=2))
+            @test DifferenTT.regularization_check(exp_mixed) == singular
+        end
     end
 
     @testset "check_cfl 2D" begin
@@ -244,6 +296,7 @@ using .TestUtils
             updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true),
         )
         n_u, n_p = length(experiment.u_fields), length(experiment.p_field)
+        u_before = (copy(ux), copy(uy))
         u_next, p_next, linsolve_error = chorin_step(experiment, cache, last(experiment.u_fields), solver, stepper, 0.0)
         @test length(u_next) == 2
         @test all(u -> siteinds(u) == qsites, u_next)
@@ -252,6 +305,9 @@ using .TestUtils
         # chorin_step leaves the experiment untouched
         @test length(experiment.u_fields) == n_u
         @test length(experiment.p_field) == n_p
+        @test mps_equal(last(experiment.u_fields), (ux, uy))
+        @test mps_equal((ux, uy), u_before)
+        @test u_next[1] !== ux && u_next[2] !== uy
     end
 
     @testset "symmetrize_rhs" begin
@@ -302,6 +358,92 @@ using .TestUtils
 
         # Interior has 0 boundaries, so 1.0
         @test isapprox(dense_sym_rhs_2d[2, 2], 1.0; atol=1e-14)
+    end
+end
+
+# The Poisson system of the projection against the full stencil on the ghost-extended array. For a pressure with a
+# Dirichlet outlet of value g, a Neumann inlet and Neumann walls, the solution p dt of A (p dt) = b satisfies the full
+# second-derivative stencil with ghost values g dt, and equals the divergence of the velocity on every row that is not
+# next to a Dirichlet face of its component; the projection subtracts dt times the full-stencil gradient of p.
+@testset "Chorin projection with a Dirichlet pressure against the ghost-extended stencil (q=$q)" for q in (2, 8)
+    arch = TTArchitecture((10, 9))
+    n1, n2 = variable_dims(arch)
+    grid = Grid(arch, (1.0, 1.5))
+    h = grid.dx
+    sites = siteinds(arch)
+    walls = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
+    mirror = BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))
+    wrap = BoundaryCond1d(PeriodicBC(), PeriodicBC())
+    outlet_value = 0.8
+    outlet = BoundaryCond1d(NeumannBC(0.0), DirichletBC(outlet_value))
+    # u₁ has walls along x (its own axis, so the divergence rows next to them are removed) and wraps along y; u₂ is
+    # Neumann along y (its own axis): nothing is removed there
+    u_bcs = (BoundaryConditions(walls, wrap), BoundaryConditions(walls, mirror))
+    p_bcs = BoundaryConditions(outlet, mirror)
+    u = (random_mps(rng(31), sites; linkdims=9), random_mps(rng(32), sites; linkdims=9))
+    u_fields = VectorField(u, arch, u_bcs)
+    experiment = quietly(
+        () -> INSExperiment(
+            grid,
+            u_fields,
+            ScalarField(sites, arch, p_bcs),
+            100.0,
+            nothing;
+            stencil_order=q,
+            cutoff=1e-14,
+            maxdim=256,
+        ),
+    )
+    cache = quietly(() -> ChorinCache(experiment))
+    @test !cache.regularize
+    dt = 0.05
+
+    ghost_stencil(F, order, axis, g_left, g_right) = begin
+        coeffs = DifferenTT.derivative_coefficients(order; stencil_order=q)
+        n = size(F, axis)
+        out = zeros(size(F))
+        for idx in CartesianIndices(F), (k, c) in coeffs
+            j = idx[axis] + k
+            ghost = j < 1 ? g_left : (j > n ? g_right : nothing)
+            value = if isnothing(ghost)
+                F[CartesianIndex(Base.setindex(Tuple(idx), j, axis))]
+            elseif ghost === :mirror
+                F[CartesianIndex(Base.setindex(Tuple(idx), j < 1 ? 2 - j : 2n - j, axis))]
+            elseif ghost === :wrap
+                F[CartesianIndex(Base.setindex(Tuple(idx), mod1(j, n), axis))]
+            else
+                ghost
+            end
+            out[idx] += c * value
+        end
+        return out ./ h[axis]^order
+    end
+    as_array(mps) = reshape(DifferenTT.contract_mps(mps), n2, n1)' # [i₁, i₂]: site 1 is the most significant index
+    U = as_array.(u)
+
+    # Divergence of u* with the closures of each component along its own axis (walls: truncated; Neumann: mirrored)
+    divergence_dense = ghost_stencil(U[1], 1, 1, 0.0, 0.0) + ghost_stencil(U[2], 1, 2, :mirror, :mirror)
+    keep = ones(n1, n2) # the projector Z: zero on the q/2 rows next to the x walls
+    keep[1:(q÷2), :] .= 0.0
+    keep[(n1-q÷2+1):n1, :] .= 0.0
+
+    b = DifferenTT.poisson_rhs(experiment, cache, u, dt)
+    A = todense(cache.poisson_op)
+    pdt = A \ todense(b)
+    PDT = reshape(pdt, n2, n1)'
+    @test norm(A * pdt - todense(b)) < 1e-9 * norm(todense(b))
+
+    # Full stencil of p dt, with the Dirichlet ghost value g dt beyond the outlet and the mirror elsewhere
+    laplacian_full = ghost_stencil(PDT, 2, 1, :mirror, outlet_value * dt) + ghost_stencil(PDT, 2, 2, :mirror, :mirror)
+    @test laplacian_full ≈ keep .* divergence_dense rtol = 1e-8 atol = 1e-8 * norm(divergence_dense)
+
+    # The projected velocity: u - dt (grad p + lift), with the full-stencil gradient of p = (p dt) / dt
+    p = MPS(ITensor(PDT ./ dt, sites[1], sites[2]), sites)
+    P = PDT ./ dt
+    projected = DifferenTT.∇p_correction(u, experiment, cache, p, dt)
+    for (axis, expected_gradient) in
+        ((1, ghost_stencil(P, 1, 1, :mirror, outlet_value)), (2, ghost_stencil(P, 1, 2, :mirror, :mirror)))
+        @test as_array(projected[axis]) ≈ U[axis] .- dt .* expected_gradient rtol = 1e-8 atol = 1e-8 * norm(U[axis])
     end
 end
 

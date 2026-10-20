@@ -1,18 +1,34 @@
 """
-    ChorinCache
+    ChorinCache(experiment::INSExperiment{N}) where N
+    ChorinCache(u_diff_ops, p_diff_ops, u_boundary_null, poisson_op::MPO, regularize::Bool)
 
-Operators of Chorin's projection method that only depend on the experiment and are built once per run.
+Operators of the Chorin projection that depend only on the experiment, built once per run.
+
+The pressure operator is the same at every time step, since the obstacle only enters through the mask on the
+velocity, so it is built once, together with the velocity and pressure derivatives and the boundary projectors. The
+Poisson system for ``p\\,dt`` is
+
+```math
+A = -W\\Delta + c\\,\\mathbf{1}\\mathbf{1}^\\top,
+```
+
+where ``W\\Delta`` is [`symmetrized_laplacian`](@ref) and the rank-1 term, with ``c = 2^{-N_s}`` for ``N_s`` sites,
+is only added when the pressure has no `DirichletBC` side ([`regularization_check`](@ref)). Without it, ``A`` would
+have the constant null space; with it, ``A`` is SPD and the solution of a consistent system is the one of zero mean
+(for any ``c > 0``). Note that ``2^{-N_s}`` is the inverse number of nodes in QTT only. The first method builds every
+operator with the stencil order and the truncation of `experiment`; the second takes them directly, to reuse
+operators built elsewhere.
 
 # Fields
 
-  - `u_diff_ops`: Velocity differential operators (`DifferentialOps`).
-  - `p_diff_ops`: Pressure differential operators (`DifferentialOpsScalar`).
-  - `u_boundary_null`: Velocity boundary nullifiers (`BoundaryNull`).
-  - `poisson_op::MPO`: Operator `A` of the pressure Poisson system `A pdt = rhs`, i.e. `-Δ`, including the
-    rank-1 pressure pinning when `regularize` is true.
-  - `regularize::Bool`: Whether the Poisson problem needs regularization (no Dirichlet pressure boundaries).
+  - `u_diff_ops`: the velocity derivatives ([`DifferentialOps`](@ref)).
+  - `p_diff_ops`: the pressure derivatives ([`DifferentialOpsScalar`](@ref)).
+  - `u_boundary_null`: the velocity boundary projectors ([`BoundaryNull`](@ref)).
+  - `poisson_op::MPO`: the operator ``A`` above.
+  - `regularize::Bool`: whether the rank-1 term was added.
 
-Besides `ChorinCache(experiment)`, the fields can be given directly to reuse operators built elsewhere.
+See also [`poisson_rhs`](@ref), [`chorin_step`](@ref), and the boundary-condition tutorial [Velocity–pressure
+formulation](@ref bc_velocity_pressure).
 """
 struct ChorinCache{D,P,B}
     u_diff_ops::D
@@ -22,11 +38,6 @@ struct ChorinCache{D,P,B}
     regularize::Bool
 end
 
-"""
-    ChorinCache(experiment::INSExperiment{N}) where N
-
-Build the operators of Chorin's projection method for `experiment`, using its stencil order and TT truncation.
-"""
 function ChorinCache(experiment::INSExperiment{N}) where {N}
     stencil_order = experiment.stencil_order
     cutoff = experiment.cutoff
@@ -55,8 +66,8 @@ function ChorinCache(experiment::INSExperiment{N}) where {N}
     @debug "regularization = $regularize"
 
     if regularize
-        # Exact Pressure Pinning (Rank-1 Deflation)
-        # TODO Implement pressure pinning
+        # Rank-1 regularization of the constant null space (see the docstring)
+        # TODO(release): implement pressure pinning (fixing p at one node) as an alternative to the rank-1 shift
         N_sites = length(experiment.p_field.usites)
         c_shift = 1.0 / (2^N_sites)
         mean_pin_mpo = ones_mpo(experiment.p_field.usites, backend_type(Δ))
@@ -67,18 +78,32 @@ function ChorinCache(experiment::INSExperiment{N}) where {N}
 end
 
 """
-    poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_mpss::NTuple{N, MPS}, dt::Real) where N
+    poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_mpss::NTuple{N,MPS}, dt::Real) where N -> MPS
 
-Build the right-hand side of the pressure Poisson system `-Δ pdt = -∇ ⋅ u*`, with `pdt = dt * p`.
-Includes the Dirichlet corrections of the divergence and the Laplacian, the Neumann symmetrization and,
-if `cache.regularize`, the removal of the mean divergence.
+Build the right-hand side of the pressure Poisson system of the Chorin projection, Eq. (34) of Torrente et al.,
+*Factorized approximate inverse preconditioners in the tensor train format*, solved for ``p\\,dt``.
+
+Imposing ``\\nabla \\cdot \\mathbf{u}_{n+1} = 0`` on the projected velocity gives
+``\\Delta (p\\,dt) = \\nabla \\cdot \\mathbf{u}^*``. The truncated Laplacian misses the Dirichlet values of the pressure
+on the ghost nodes, and the rows of the divergence next to the Dirichlet velocity faces are not consistent, so the
+right-hand side of the system ``A\\,(p\\,dt) = \\mathbf{b}`` of [`ChorinCache`](@ref) is
+
+```math
+\\mathbf{b} = W \\left( -Z\\, \\nabla \\cdot \\mathbf{u}^* + dt\\, C\\mathbf{1} \\right),
+```
+
+where ``Z`` is the projector of [`divergence_dirichlet_correction`](@ref), ``C`` the Dirichlet lift operator of
+[`scalar_dirichlet_correction`](@ref) for the second derivative (the ghost values of ``p\\,dt`` are ``dt`` times the
+pressure values), and ``W`` the Neumann weight of [`symmetrize_rhs`](@ref). If `cache.regularize`, a constant is then
+subtracted to make the singular system consistent, which is one of the known limitations of [`INSExperiment`](@ref)
+(the constant is not the node mean).
 
 # Arguments
 
-  - `experiment::INSExperiment{N}`: The experimental setup.
-  - `cache::ChorinCache`: Precomputed Chorin operators.
-  - `masked_u_mpss::NTuple{N,MPS}`: Velocity field after applying mask/boundary corrections.
-  - `dt::Real`: Time step.
+  - `experiment::INSExperiment{N}`: the experiment, whose truncation is used.
+  - `cache::ChorinCache`: the operators of the experiment.
+  - `masked_u_mpss::NTuple{N,MPS}`: the velocity ``\\mathbf{u}^*``, already multiplied by the obstacle mask.
+  - `dt::Real`: the time step.
 """
 function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_mpss::NTuple{N,MPS}, dt::Real) where {N}
     cutoff = experiment.cutoff
@@ -93,7 +118,7 @@ function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_
     Δp_correction_mpo = scalar_dirichlet_correction(
         experiment.p_field, experiment.grid, 2; stencil_order=experiment.stencil_order, cutoff=cutoff, maxdim=maxdim
     )
-    # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
+    # The pressure is constant on each Dirichlet side, so the lift operator acts on the all-ones MPS
     Δp_correction = if (isnothing(Δp_correction_mpo))
         nothing
     else
@@ -108,7 +133,8 @@ function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_
 
     ∇u = isnothing(∇u_correction) ? ∇u : apply(∇u_correction, ∇u; cutoff=cutoff, maxdim=maxdim)
 
-    # TODO Clarify what is the right sign for this correction
+    # Δ_full (p dt) = Δ (p dt) + dt C 1, since the ghost values of p dt are dt times those of p, so -Δ (p dt) = -∇⋅u* +
+    # dt C 1 (checked against the full stencil on the ghost-extended vector)
     ∇u = isnothing(Δp_correction) ? ∇u : +(∇u, (-1.0 * dt) * Δp_correction; cutoff=cutoff, maxdim=maxdim)
 
     rhs = symmetrize_rhs(experiment.p_field, -1.0 * ∇u; cutoff=cutoff, maxdim=maxdim)
@@ -132,22 +158,13 @@ function poisson_rhs(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_
 end
 
 """
-    poisson_pressure(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_mpss::NTuple{N, MPS}, dt::Real, solver::AbstractLinearSolver) where N
+    poisson_pressure(experiment::INSExperiment{N}, cache::ChorinCache, masked_u_mpss::NTuple{N,MPS}, dt::Real,
+                     solver::AbstractLinearSolver) where N -> Tuple{MPS,Float64}
 
-Solve the pressure Poisson equation `-Δ pdt = -∇ ⋅ u*` for `pdt = dt * p`, using the previous pressure (if any) as initial guess.
-
-# Arguments
-
-  - `experiment::INSExperiment{N}`: The experimental setup.
-  - `cache::ChorinCache`: Precomputed Chorin operators.
-  - `masked_u_mpss::NTuple{N,MPS}`: Velocity field after applying mask/boundary corrections.
-  - `dt::Real`: Time step.
-  - `solver::AbstractLinearSolver`: Linear solver for the Poisson system. A `ResidualObserver` without `A`/`b` in its
-    `SweepingArgs` is bound to this step's system.
-
-# Returns
-
-  - The physical pressure `p = pdt / dt` and the l2 norm of the residual `||A pdt - rhs||`.
+Solve the pressure system ``A\\,(p\\,dt) = \\mathbf{b}`` of [`ChorinCache`](@ref) and [`poisson_rhs`](@ref) with
+`solver`, starting from ``dt`` times the last stored pressure, if any (a `ResidualObserver` without `A` and `b` in the
+`SweepingArgs` of `solver` is bound to this system). Returns the pressure ``p`` and the residual norm
+``\\lVert A\\,(p\\,dt) - \\mathbf{b} \\rVert_2``, evaluated with inner products.
 """
 function poisson_pressure(
     experiment::INSExperiment{N},
@@ -177,6 +194,30 @@ function poisson_pressure(
     return pdt * (1 / dt), res_l2norm
 end
 
+"""
+    NavierStokesPredictorRHS(experiment::INSExperimentBase, u_diff_ops, u_boundary_null) <: AbstractRHS
+
+Right-hand side of the predictor of the Chorin projection, Eq. (33) of Torrente et al., *Factorized approximate inverse
+preconditioners in the tensor train format*,
+
+```math
+\\partial_t \\mathbf{u} = \\frac{1}{Re} \\nabla^2 \\mathbf{u} - (\\mathbf{u} \\cdot \\nabla)\\mathbf{u},
+```
+
+as a callable for the explicit time steppers: `rhs(u::Tuple, t, stage)` returns, for every component ``i``,
+``Z_i \\left( \\frac{1}{Re} \\nabla^2 u_i - (\\mathbf{u} \\cdot \\nabla) u_i \\right)``, with the [`advection`](@ref)
+and [`diffusion`](@ref) of `u_diff_ops` and the projector ``Z_i`` of `u_boundary_null` (see
+[`BoundaryNullScalar`](@ref)), which keeps the Dirichlet boundary rows of the velocity fixed. It does not depend on `t`
+or `stage`. The truncation is that of `experiment`.
+
+# Fields
+
+  - `experiment::E`: the experiment (`Re`, `cutoff`, `maxdim`).
+  - `u_diff_ops::D`: the velocity derivatives ([`DifferentialOps`](@ref)).
+  - `u_boundary_null::B`: the velocity boundary projectors ([`BoundaryNull`](@ref)).
+
+See also [`AbstractRHS`](@ref), [`chorin_step`](@ref).
+"""
 struct NavierStokesPredictorRHS{E<:INSExperimentBase,D,B} <: AbstractRHS
     experiment::E
     u_diff_ops::D
@@ -217,16 +258,10 @@ end
 """
     ∇p_correction(u_mpss::NTuple{N,MPS}, experiment::INSExperiment{N}, cache::ChorinCache, p::MPS, dt::Real) where N
 
-Project the velocity field to be divergence-free by subtracting the pressure gradient: `u = u* - dt * ∇p`.
-Includes Dirichlet boundary corrections for the pressure gradient.
-
-# Arguments
-
-  - `u_mpss::NTuple{N, MPS}`: The intermediate velocity field.
-  - `experiment::INSExperiment{N}`: The experimental setup.
-  - `cache::ChorinCache`: Precomputed Chorin operators.
-  - `p::MPS`: The pressure field.
-  - `dt::Real`: Time step.
+Return the projected velocity ``u_i = u_i^* - dt\\, (\\partial_i p + C_i \\mathbf{1})``, where ``\\partial_i p`` uses
+the pressure derivatives of `cache` and ``C_i`` the Dirichlet lift of the first derivative along axis ``i``
+([`scalar_dirichlet_correction_dim`](@ref)). The correction acts on every row, including the Dirichlet boundary rows of
+the velocity, which is one of the known limitations of [`INSExperiment`](@ref).
 """
 function ∇p_correction(
     u_mpss::NTuple{N,MPS}, experiment::INSExperiment{N}, cache::ChorinCache, p::MPS, dt::Real
@@ -249,7 +284,7 @@ function ∇p_correction(
                     maxdim=maxdim,
                 )
 
-                # We assume that the pressure field is contstant at the Dirichlet boundaries -> Identity MPS (one could encode an arbitrary field)
+                # The pressure is constant on each Dirichlet side, so the lift operator acts on the all-ones MPS
                 dirichlet_correction = if (isnothing(dirichlet_correction_mpo))
                     nothing
                 else
@@ -277,12 +312,14 @@ function ∇p_correction(
 end
 
 """
-Apply a geometric mask to the velocity field (e.g., for obstacles) by element-wise multiplication. If isnothing(mask) == true, no correction is applied.
+    mask_correction(u_mpss::NTuple{N,MPS}, mask::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
+    mask_correction(u_mpss::NTuple{N,MPS}, mask::Nothing; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
 
-# Arguments
-
-  - `u_mpss::NTuple{N, MPS}`: Velocity field.
-  - `mask::MPS`: Mask MPS (1.0 = fluid, 0.0 = obstacle).
+Return the velocity multiplied element-wise by the obstacle mask, ``u_i \\odot m`` for every component, which immerses
+the obstacle in the fluid (Sec. 5.2 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor
+train format*). The mask is 1 in the fluid and 0 inside the obstacle, e.g. the smoothed indicator of a cylinder computed
+by `crossinterpolate2`, and the products are computed by [`tt_mul`](@ref) with `cutoff` and `maxdim`. With
+`mask = nothing`, `u_mpss` is returned unchanged.
 """
 function mask_correction(u_mpss::NTuple{N,MPS}, mask::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where {N}
     return ntuple(i -> tt_mul(u_mpss[i], mask; cutoff=cutoff, maxdim=maxdim), N)
@@ -295,10 +332,11 @@ function mask_correction(
 end
 
 """
-    regularization_check(experiment::INSExperiment{N}) where N
+    regularization_check(experiment::INSExperiment{N}) where N -> Bool
 
-Check whether the pressure Poisson equation requires regularization (mean subtraction + small shift).
-Returns `true` if no Dirichlet BCs are present on any pressure dimension (i.e. all periodic or Neumann).
+Return whether the pressure Poisson system of `experiment` is singular, i.e. whether no side of the pressure is a
+`DirichletBC` (every side periodic, Neumann or open). The Laplacian then has the constant null space, which
+[`ChorinCache`](@ref) removes with a rank-1 term and [`poisson_rhs`](@ref) compensates by subtracting a constant.
 """
 function regularization_check(experiment::INSExperiment{N}) where {N}
     for i in 1:N
@@ -310,24 +348,52 @@ function regularization_check(experiment::INSExperiment{N}) where {N}
 end
 
 """
-    chorin_step(experiment::INSExperiment{N}, cache::ChorinCache, u_mpss::NTuple{N,MPS}, solver::AbstractLinearSolver, stepper::AbstractExplicitStepper, t::Real) where N
+    chorin_step(experiment::INSExperiment{N}, cache::ChorinCache, u_mpss::NTuple{N,MPS}, solver::AbstractLinearSolver,
+                stepper::AbstractExplicitStepper, t::Real) where N -> Tuple
 
-Advance the velocity `u_mpss` by one time step `stepper.time_evol_kwargs.dt` with Chorin's projection method:
-mask correction, pressure Poisson solve, divergence-free projection and explicit advection-diffusion predictor.
-Does not modify `experiment`; storing the results is left to the caller.
+Advance the velocity `u_mpss` by one time step ``dt`` = `stepper.time_evol_kwargs.dt` with the Chorin projection
+(Chorin, 1967), as in the QTT pipeline of Peddinti et al. (2024) and Sec. 5.2 of Torrente et al., *Factorized
+approximate inverse preconditioners in the tensor train format*.
+
+The step proceeds as follows. We first multiply the velocity by the obstacle mask ([`mask_correction`](@ref)). We then
+solve the pressure Poisson system of [`poisson_rhs`](@ref) with `solver`, starting from the last pressure stored in
+`experiment`, and project the masked velocity, ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`).
+Finally, we advance the projected velocity over ``dt`` with the explicit predictor of
+[`NavierStokesPredictorRHS`](@ref) and `stepper`. Note the order: each step projects the velocity it receives and then
+predicts, so the velocity it returns is the provisional field ``\\mathbf{u}^*`` of the next step, which is not
+projected, and the pressure is the one of the projection at the start of the step. This order follows the pipeline
+of Peddinti et al. (2024), where the mask is applied right before the projection. We are aware that the order
+predict, mask, project, which returns the projected velocity, is the more natural one; since it applies the same
+sequence of operations, shifted by a projection of the initial velocity, it would solve the same pressure systems, and
+it may replace the current order in a future version. The splitting is first-order
+accurate in ``dt`` whatever `stepper` is, and the projected velocity is only approximately divergence-free (see
+[`INSExperiment`](@ref), including its known limitations). `experiment` is not modified; storing the results is left
+to the caller.
 
 # Arguments
 
-  - `experiment::INSExperiment{N}`: The experimental setup. Its last pressure (if any) is used as the Poisson initial guess.
-  - `cache::ChorinCache`: Precomputed Chorin operators.
-  - `u_mpss::NTuple{N,MPS}`: Velocity field at time `t`.
-  - `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation.
-  - `stepper::AbstractExplicitStepper`: Time integrator for the predictor.
-  - `t::Real`: Time at the start of the step.
+  - `experiment::INSExperiment{N}`: the experiment. Its last pressure, if any, is the initial guess of the solve.
+  - `cache::ChorinCache`: the operators of the experiment.
+  - `u_mpss::NTuple{N,MPS}`: the velocity at time `t`.
+  - `solver::AbstractLinearSolver`: the solver of the pressure system (`ALS`, `ResidualALS`, `GlobalCG`, …).
+  - `stepper::AbstractExplicitStepper`: the time integrator of the predictor.
+  - `t::Real`: the time at the start of the step.
 
 # Returns
 
-  - `(u_next, p, linsolve_error)`: The velocity at `t + dt`, the pressure and the l2 residual norm of the Poisson solve.
+  - `(u_next, p, linsolve_error)`: the velocity at `t + dt` (before its projection), the pressure, and the residual
+    norm of the pressure solve.
+
+# Examples
+
+```julia
+cache = ChorinCache(experiment)
+stepper = RK4(; time_evol_kwargs=TimeEvolArgs(0.0, 1.0, 1000), cutoff=1e-10, maxdim=64)
+u = last(experiment.u_fields)
+for s in 1:10
+    u, p, residual = chorin_step(experiment, cache, u, solver, stepper, (s - 1) * stepper.time_evol_kwargs.dt)
+end
+```
 """
 function chorin_step(
     experiment::INSExperiment{N},
@@ -338,6 +404,9 @@ function chorin_step(
     t::Real,
 ) where {N}
     dt = stepper.time_evol_kwargs.dt
+    # TODO(v0.2): reconsider the order of the step. Predict -> mask -> project, with chorin_evolve! masking and
+    # projecting the initial velocity once, applies the same operations (step k becomes P(M(old step k))), solves the
+    # same pressure systems, and returns the projected velocity instead of the provisional u*
 
     @timeit_debug timeit_to "mask correction" begin
         masked_u_mpss = mask_correction(
@@ -359,19 +428,50 @@ function chorin_step(
 end
 
 """
-    chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, stepper::AbstractExplicitStepper, save_every::Int=1, logger=nothing, log_filename::String="chorin_log") where N
+    chorin_evolve!(experiment::INSExperiment{N}, solver::AbstractLinearSolver, stepper::AbstractExplicitStepper,
+                   save_every::Int=1, logger=nothing, log_filename::String="chorin_log") where N
 
-Run the time evolution of the Incompressible Navier-Stokes experiment using Chorin's projection method.
-Updates the fields in `experiment` in-place (appends to time series).
+Run the time evolution of `experiment` with the Chorin projection, storing the velocity and the pressure in its fields.
+
+We check the CFL condition ([`check_cfl`](@ref)), build the [`ChorinCache`](@ref) once, and advance the last stored
+velocity `stepper.time_evol_kwargs.nsteps` times with [`chorin_step`](@ref). The fields keep the initial velocity and
+the velocity and pressure of the steps `save_every`, `2 save_every`, … and of the last step, which is always stored;
+the last stored state is also the input of the next step. As explained in `chorin_step`, the stored velocities are
+the provisional fields of the next step. If `logger` is given, the fields and the residual norms of the stored pressure
+solves (`linsolve_errorlog`) are written to `log_filename` with [`log_data`](@ref).
 
 # Arguments
 
-  - `experiment::INSExperiment{N}`: The experiment object to evolve.
-  - `solver::AbstractLinearSolver`: Linear solver for the pressure Poisson equation (`ALS`, `ResidualALS`, `GlobalCG`, ...). Truncation and stopping criteria come from its `sweep_kwargs` / `updater_kwargs`.
-  - `stepper::AbstractExplicitStepper`: Time integrator for the explicit advection-diffusion predictor (`ExplicitEuler`, `RK4`, ...). Its `TimeEvolArgs` set the time step and the number of steps.
-  - `save_every::Int`: MPS saving frequency. Defaults to 1 (save every step).
-  - `logger`: Optional logger for data persistence.
-  - `log_filename::String`: Filename prefix for logged data.
+  - `experiment::INSExperiment{N}`: the experiment, with its initial velocity stored and its pressure empty.
+  - `solver::AbstractLinearSolver`: the solver of the pressure system (`ALS`, `ResidualALS`, `GlobalCG`, …), with its
+    truncation and stopping criteria in its `sweep_kwargs` and `updater_kwargs`.
+  - `stepper::AbstractExplicitStepper`: the integrator of the predictor (`ExplicitEuler`, `RK4`); its `TimeEvolArgs`
+    set the time step and the number of steps.
+  - `save_every::Int=1`: the interval, in steps, between stored states.
+  - `logger=nothing`: a [`SimpleLogger`](@ref), or `nothing` to write nothing.
+  - `log_filename::String="chorin_log"`: the name of the JLD2 file in the directory of `logger`.
+
+# Throws
+
+  - `ArgumentError`: if the velocity has no stored state, if the pressure has one, or if `save_every < 1`.
+
+# Known limitations
+
+The Chorin projection of v0.1 has two known limitations, which are recorded as `@test_broken` in the test suite and
+will be fixed in a later version:
+
+  - **Mean removal.** When the pressure has no `DirichletBC` side, the Poisson system is singular and
+    [`poisson_rhs`](@ref) makes its right-hand side consistent by subtracting a constant. That constant is
+    ``\\sum_j b_j\\, \\prod_i h_i / \\prod_i L_i = \\sum_j b_j / \\prod_i (n_i - 1)`` instead of the node mean
+    ``\\sum_j b_j / \\prod_i n_i``, so the mean of the right-hand side becomes ``1 - \\prod_i n_i/(n_i - 1)`` times its
+    original value instead of zero, and the regularized system is not exactly consistent. This is inactive whenever the
+    pressure has a Dirichlet side, as in the channel of Sec. 5.2 of the paper (Dirichlet outlet pressure).
+  - **Wall rows.** The projection ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to
+    every row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep
+    fixed ([`BoundaryNull`](@ref)). The tangential pressure gradient therefore changes the boundary velocity a little at
+    every step, which in the setup of Sec. 5.2 acts on the inlet rows.
+
+See also [`INSExperiment`](@ref).
 """
 function chorin_evolve!(
     experiment::INSExperiment{N},
@@ -387,12 +487,11 @@ function chorin_evolve!(
     time_evol_kwargs = stepper.time_evol_kwargs
     check_cfl(experiment, stepper)
 
-    save_checkpoints = collect(1:save_every:time_evol_kwargs.nsteps)
-    save_checkpoints = if save_checkpoints[end] == time_evol_kwargs.nsteps
-        save_checkpoints
-    else
-        push!(save_checkpoints, time_evol_kwargs.nsteps)
-    end
+    save_every >= 1 || throw(ArgumentError("save_every must be at least 1, got $save_every"))
+    # A new slot is pushed at the steps 1, 1 + save_every, …, which freezes the previous one (the initial state, then
+    # the states of the steps save_every, 2 save_every, …). Between checkpoints the last slot is overwritten, so it
+    # always holds the latest step, which is the input of the next one, and the last step is always stored
+    save_checkpoints = 1:save_every:time_evol_kwargs.nsteps
 
     cache = ChorinCache(experiment)
     linsolve_errorlog = Float64[]
@@ -408,6 +507,7 @@ function chorin_evolve!(
         else
             experiment.p_field[length(experiment.p_field)] = p
             experiment.u_fields[length(experiment.u_fields)] = u_next
+            linsolve_errorlog[end] = linsolve_error
         end
     end
 

@@ -1,7 +1,18 @@
 """
-    lower_toeplitz_matrix(coefficients::Vector{<:Number})
+    lower_toeplitz_matrix(coefficients::Vector{<:Number}) -> Matrix
 
-Construct a lower Toeplitz matrix from a vector of coefficients.
+Return the ``n \\times n`` lower triangular Toeplitz matrix ``L_{ij} = c_{i-j+1}``, ``i \\ge j``, of the
+coefficients ``(c_1, \\dots, c_n)``, i.e. the matrix with first column `coefficients`.
+
+# Examples
+
+```jldoctest
+julia> DifferenTT.lower_toeplitz_matrix([1, 2, 3])
+3×3 Matrix{Int64}:
+ 1  0  0
+ 2  1  0
+ 3  2  1
+```
 """
 function lower_toeplitz_matrix(coefficients::Vector{<:Number})
     n = length(coefficients)
@@ -17,7 +28,8 @@ end
 """
     upper_toeplitz_matrix(coefficients::Vector{<:Number})
 
-Construct an upper Toeplitz matrix from a vector of coefficients.
+Return the upper triangular Toeplitz matrix with first row `coefficients`, the (lazy) transpose of
+[`lower_toeplitz_matrix`](@ref).
 """
 function upper_toeplitz_matrix(coefficients::Vector{<:Number})
     return transpose(lower_toeplitz_matrix(coefficients))
@@ -28,9 +40,73 @@ end
 # -------------------------------------------------------------------------------------------------
 
 """
-    onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8, cutoff=1e-15, maxdim=typemax(Int64))
+    onedim_differential_operator(derivative_order::Int, arch::QTTArchitecture, dim::Int, [n_eyepad::Int,]
+                                 boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array;
+                                 stencil_order::Int=8, cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) -> MPO
+    onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, [n_eyepad::Int,]
+                                 boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array;
+                                 stencil_order::Int=8, kwargs...) -> AbstractMatrix
 
-Construct the 1D differential operator MPO for QTT Architecture, including boundary corrections.
+Build the unscaled (``h = 1``) one-dimensional finite-difference operator of order `derivative_order` along the axis
+`dim`, closed with the boundary conditions of that axis.
+
+The operator is the central stencil of order ``q`` = `stencil_order`, with the coefficients ``c_k``, ``|k| \\le q/2``,
+of [`derivative_coefficients`](@ref), placed as the band Toeplitz matrix ``D_{ij} = c_{j-i}``. Its rows near the
+boundaries are then completed as the boundary conditions prescribe. A periodic axis wraps the band into a circulant. A
+Dirichlet or open side truncates it, i.e. takes the ghost values as zero, and the lifts of
+[`scalar_dirichlet_correction`](@ref) restore nonzero Dirichlet data on the right-hand side. A homogeneous Neumann side
+mirrors the ghost values, ``u_{-k} = u_k``, by subtracting the corner block of [`neumann_correction_matrix`](@ref). In
+QTT, the operator is an MPO on new sites of dimension 2 built by [`toeplitz_mpo`](@ref), whose bond dimension does not
+depend on the number of sites (Kazeev & Khoromskij, 2012); in TT, it is a dense ``n \\times n`` matrix. Dividing it by
+``h^k`` gives the derivative on a grid of spacing ``h``, and [`ndim_operator_mpo`](@ref) lifts it to ``N`` dimensions.
+
+With `n_eyepad` ``= p > 0``, the operator acts on part of the axis only, and the identity on the rest (eye padding).
+The two architectures read this differently. In QTT, the operator is built on the ``N_i - p`` most significant bits
+and the identity acts on the ``p`` least significant ones, ``D \\otimes \\mathbb{I}_{2^p}``: it is the derivative on
+a grid of ``2^{N_i - p}`` nodes, applied to each of the ``2^p`` subsets of nodes whose indices have the same remainder
+modulo ``2^p``. In TT, the operator acts on the first ``n - p`` nodes and the identity on the last ``p``,
+``\\mathrm{diag}(D, \\mathbb{I}_p)``. In both cases the boundary closures are those of the shorter operator ``D``.
+On a periodic TT axis of at most ``q`` nodes, a stencil wraps onto itself, and the coefficients that land on the
+same node add up.
+
+# Arguments
+
+  - `derivative_order::Int`: 1, 2 or 4.
+  - `arch`: the architecture, which gives the number of sites (QTT) or nodes (TT) of the axis.
+  - `dim::Int`: the axis.
+  - `n_eyepad::Int`: the number of padded sites (QTT) or nodes (TT); 0 when omitted.
+  - `boundary_conditions::BoundaryCond1d`: the conditions of the two sides of the axis.
+  - `array_type::Type{<:AbstractArray}=Array`: the array backend.
+
+# Keywords
+
+  - `stencil_order::Int=8`: ``q``, 2 or 8.
+  - `cutoff::Float64=1e-15`, `maxdim::Int=typemax(Int64)`: truncation of the QTT sums (not used in TT).
+
+# Returns
+
+  - `MPO` (QTT), on new sites of dimension 2 with site 1 the most significant bit, or a matrix (TT).
+
+# Throws
+
+  - `ArgumentError`: for a derivative order other than 1, 2 or 4, or a stencil order other than 2 or 8.
+
+# Examples
+
+```jldoctest
+julia> bc = BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0));
+
+julia> DifferenTT.onedim_differential_operator(2, TTArchitecture((5,)), 1, bc; stencil_order=2)
+5×5 Matrix{Float64}:
+ -2.0   2.0   0.0   0.0   0.0
+  1.0  -2.0   1.0   0.0   0.0
+  0.0   1.0  -2.0   1.0   0.0
+  0.0   0.0   1.0  -2.0   1.0
+  0.0   0.0   0.0   1.0  -2.0
+```
+
+See also [`DifferentialOpsScalar`](@ref), and the boundary-condition tutorial [Velocity–pressure formulation](@ref
+bc_velocity_pressure).
 """
 function onedim_differential_operator(
     derivative_order::Int,
@@ -113,11 +189,6 @@ function onedim_differential_operator(
     end
 end
 
-"""
-    onedim_differential_operator(derivative_order::Int, arch::TTArchitecture, dim::Int, boundary_conditions::BoundaryCond1d, array_type::Type{<:AbstractArray}=Array; stencil_order=8)
-
-Construct the 1D differential operator dense matrix for TT Architecture, including boundary corrections.
-"""
 function onedim_differential_operator(
     derivative_order::Int,
     arch::TTArchitecture,
@@ -150,12 +221,8 @@ function onedim_differential_operator(
         for (offset, val) in coeffs
             j = i + offset
             if boundary_conditions.left isa PeriodicBC # If periodic
-                if j < 1
-                    j += noneye_dim
-                elseif j > noneye_dim
-                    j -= noneye_dim
-                end
-                mat[i, j] = val
+                # Offsets that wrap onto the same node (an axis of at most q nodes) add up
+                mat[i, mod1(j, noneye_dim)] += val
             else
                 if 1 <= j <= noneye_dim
                     mat[i, j] = val
@@ -204,19 +271,54 @@ end
 # DifferentialOps Structs
 # -------------------------------------------------------------------------------------------------
 
-# Grid spacing of the operator that `onedim_differential_operator` builds with `n_eyepad` padded sites or nodes. In
-# QTT the identity pads the last `n_eyepad` bits, so the operator acts on the coarse grid of 2^(n - n_eyepad) nodes
-# that spans the same box (with nodes at both ends, as `Grid`). In TT the identity pads the last `n_eyepad` nodes, so
-# the operator acts on the first n - n_eyepad nodes at the original spacing.
+"""
+    _eyepad_step_size(grid::Grid, arch::QTTArchitecture, dim::Int, n_eyepad::Int) -> Float64
+    _eyepad_step_size(grid::Grid, arch::TTArchitecture, dim::Int, n_eyepad::Int) -> Float64
+
+Return the spacing by which [`DifferentialOpsScalar`](@ref) scales an operator eye-padded by `n_eyepad` sites or
+nodes: in QTT, ``L/(2^{N_i - p} - 1)``, the spacing of the coarse grid of ``2^{N_i - p}`` nodes over the same box
+(nodes at both ends, as in [`Grid`](@ref)); in TT, the original spacing, since the operator acts on the first
+``n - p`` nodes.
+"""
 function _eyepad_step_size(grid::Grid, arch::QTTArchitecture, dim::Int, n_eyepad::Int)
     return grid.box_size[dim] / (2^(abs(arch.var_nsites[dim]) - n_eyepad) - 1)
 end
 _eyepad_step_size(grid::Grid, arch::TTArchitecture, dim::Int, n_eyepad::Int) = grid.dx[dim]
 
 """
-    struct DifferentialOpsScalar{N}
+    DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}; stencil_order::Int=8, cutoff::Float64=1e-15,
+                          maxdim::Int=typemax(Int64)) where N
+    DifferentialOpsScalar(grid::Grid{N}, fields::ScalarField{N}, n_eyepad::NTuple{N,Int}; stencil_order::Int=8,
+                          cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where N
 
-Container for 1st and 2nd derivative operators (MPOs) for a scalar field in N dimensions.
+First and second derivative operators of a scalar field along each axis, as MPOs on the sites of the field.
+
+Each operator is the one-dimensional operator of [`onedim_differential_operator`](@ref), closed with the boundary
+conditions of `fields` on that axis, scaled by ``1/h_i^k`` with the spacing ``h_i`` of `grid` and lifted to ``N``
+dimensions by [`ndim_operator_mpo`](@ref). Therefore `d_ops[i]` approximates ``\\partial_i`` and `d2_ops[i]`
+approximates ``\\partial_i^2``, with truncated rows at Dirichlet and open sides (see [`DirichletBC`](@ref)). They are
+built on the backend of `fields`. With `n_eyepad`, axis ``i`` is eye-padded by `n_eyepad[i]` sites (QTT) or nodes (TT),
+and its operators are scaled by the spacing of the grid that the shorter operator acts on: ``L_i/(2^{N_i - p} - 1)`` in
+QTT, for a grid of ``2^{N_i - p}`` nodes over the same box, and ``h_i`` in TT.
+
+# Fields
+
+  - `d_ops::NTuple{N,MPO}`: the first derivatives ``\\partial_1, \\dots, \\partial_N``.
+  - `d2_ops::NTuple{N,MPO}`: the second derivatives ``\\partial_1^2, \\dots, \\partial_N^2``.
+
+# Examples
+
+```julia
+arch = QTTArchitecture((5, 4))
+bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC()))
+p = ScalarField(siteinds(arch), arch, bcs)
+ops = DifferentialOpsScalar(Grid(arch, (2.0, 1.0)), p; stencil_order=8)
+q = ones_mps(p.usites, 1)
+∂x_q = apply(ops.d_ops[1], q)   # zero up to round-off, except on the truncated Dirichlet rows
+```
+
+See also [`DifferentialOps`](@ref), [`kronecker_laplacian`](@ref), and the boundary-condition tutorial
+[Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 struct DifferentialOpsScalar{N}
     d_ops::NTuple{N,MPO}   # First derivatives Dx, Dy, Dz...
@@ -306,9 +408,16 @@ function DifferentialOpsScalar(
 end
 
 """
-    struct DifferentialOps{N}
+    DifferentialOps(grid::Grid{N}, fields::VectorField{N}; stencil_order::Int=8, cutoff::Float64=1e-15,
+                    maxdim::Int=typemax(Int64)) where N
 
-Container for differential operators for a vector field (N components).
+The [`DifferentialOpsScalar`](@ref) of every component of a vector field, each built with the boundary conditions of
+its own component. `ops[i]` returns those of component `i`, so `ops[i].d_ops[j]` approximates ``\\partial_j`` acting
+on component ``i``.
+
+# Fields
+
+  - `ops::NTuple{N,DifferentialOpsScalar{N}}`: the operators of the components.
 """
 struct DifferentialOps{N}
     ops::NTuple{N,DifferentialOpsScalar{N}}
@@ -326,6 +435,11 @@ function DifferentialOps(
     return DifferentialOps{N}(ops)
 end
 
+"""
+    getindex(ops::DifferentialOps, i::Int) -> DifferentialOpsScalar
+
+Return the operators of component `i`.
+"""
 function Base.getindex(ops::DifferentialOps{N}, i::Int) where {N}
     return ops.ops[i]
 end

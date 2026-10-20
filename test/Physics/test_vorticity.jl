@@ -225,12 +225,15 @@ end
     end
     periodic_faces = ((PeriodicFace(), PeriodicFace()), (PeriodicFace(), PeriodicFace()))
 
+    # The residual of the TT-CG stagnates at about 1e-7 ‖b‖ (the truncation floor of the arithmetic) after about 100
+    # iterations on these 16 × 16 systems, so a larger `maxiter` only repeats iterations at the floor: 2000 of them
+    # took 14 s per solve and gave the same error against the dense solution (1.1e-7) as 200 do
     exact_solver() = GlobalCG(
         updater_kwargs=GlobalUpdaterArgs(
             ishermitian=true,
             isposdef=true,
             rtol=1e-13,
-            maxiter=2000,
+            maxiter=200,
             maxdim=256,
             cutoff=1e-15,
             orth_maxdim=256,
@@ -344,6 +347,10 @@ end
         # One ghost side for inflow + outflow and for periodic axes, two for walls, none for two outflows
         @test all(vorticity_grid(arch, (2.0, 1.0), faces).dx .≈ (2.0 / K1, 1.0 / K2))
         @test vorticity_grid(arch, (1.0, 1.0), cavity_faces(1.0)).dx == interior_grid(arch, (1.0, 1.0)).dx
+        # Periodic faces flag their axis as periodic in the grid
+        periodic_x_faces = ((PeriodicFace(), PeriodicFace()), (NoSlipWall(), NoSlipWall()))
+        @test vorticity_grid(arch, (1.0, 1.0), periodic_x_faces).periodic == (true, false)
+        @test vorticity_grid(arch, (1.0, 1.0), cavity_faces(1.0)).periodic == (false, false)
         @test vorticity_grid(arch, (1.0, 1.0), ((OutflowFace(), OutflowFace()), (SlipWall(), NoSlipWall()))).dx[1] ≈
             1 / (K1 - 1)
     end
@@ -625,9 +632,9 @@ end
         @test isnothing(check_cfl(experiment, stepper; vmax=experiment.vmax))
 
         vorticity_evolve!(experiment, tt_direct_solver(1e-10), stepper, 10)
-        # Checkpoints at steps 1, 11, 21 and 30
-        @test length(experiment.omega_field) == 5
-        @test length(experiment.psi_field) == 4
+        # Stored: the initial vorticity and the steps 10, 20 and 30 (the stream function of the same steps)
+        @test length(experiment.omega_field) == 4
+        @test length(experiment.psi_field) == 3
         @test all(m -> all(isfinite, dense_field(m, experiment.grid, arch)), experiment.omega_field.u)
 
         # Clockwise vortex below the lid
@@ -673,6 +680,37 @@ end
                 @test errorlog[2] < 1e-6
             end
         end
+    end
+
+    # Regression test: with nsteps - 1 not a multiple of save_every, the evolution also stored the state of step
+    # nsteps - 1, and the k-th residual of the log was that of the step of the k-th push, not of the k-th stored
+    # stream function. The stored states and residuals must be those of a save_every = 1 run at the steps
+    # save_every, 2 save_every, … and nsteps.
+    @testset "vorticity_evolve! stores every save_every-th step and the last one" begin
+        arch = TTArchitecture((8, 8))
+        stepper = ExplicitEuler(time_evol_kwargs=TimeEvolArgs(0.0, 0.005, 5), cutoff=1e-12, maxdim=32)
+        function run(save_every)
+            experiment = cavity_experiment(arch; Re=10.0, maxdim=32, cutoff=1e-12)
+            errorlog = mktempdir() do dir
+                Random.seed!(1234) # The advection products are randomized (RSI)
+                vorticity_evolve!(experiment, tt_direct_solver(1e-12), stepper, save_every, init_logger(dir), "run")
+                jldopen(file -> file["linsolve_errorlog"], joinpath(dir, "run.jld2"))
+            end
+            return experiment, errorlog
+        end
+        every, every_log = run(1)
+        sparse, sparse_log = run(3)
+        @test length(sparse.omega_field) == 3 # steps 0, 3 and 5
+        @test length(sparse.psi_field) == length(sparse_log) == 2 # steps 3 and 5
+        @test sparse_log ≈ every_log[[3, 5]]
+        dense(m) = dense_field(m, every.grid, arch) # The two experiments have different site indices
+        for (k, step) in enumerate((3, 5))
+            @test dense(sparse.psi_field[k]) ≈ dense(every.psi_field[step]) rtol = 1e-10
+        end
+        for (k, step) in enumerate((0, 3, 5))
+            @test dense(sparse.omega_field[k]) ≈ dense(every.omega_field[step+1]) rtol = 1e-10
+        end
+        @test_throws ArgumentError vorticity_evolve!(cavity_experiment(arch), tt_direct_solver(1e-12), stepper, 0)
     end
 
     @testset "CFL and Kolmogorov checks" begin
