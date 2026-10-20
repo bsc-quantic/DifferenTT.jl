@@ -263,10 +263,11 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
         A = [1.0 2 3; 4 5 6; 7 8 10]
         B = [1.0 2; 3 4]
         for W in (A', transpose(A), Symmetric(A), UpperTriangular(A), Diagonal(diag(A)), view(A, :, :))
+            sum_ref = kron(Matrix(W), I(2)) + kron(I(3), B)
             @test todense(DifferenTT.ndim_operator_mpo(W, 1, sites, arch)) ≈ kron(Matrix(W), I(2))
-            @test todense(DifferenTT.ndim_operator_sum_mpo((W, B), sites, arch)) ≈ kron(Matrix(W), I(2)) + kron(I(3), B)
+            @test todense(DifferenTT.ndim_operator_sum_mpo((W, B), sites, arch)) ≈ sum_ref
             @test todense(DifferenTT.ndim_operator_sum_mpo((W, B), sites, arch; pair_ops=((W, B), (W, B')))) ≈
-                kron(Matrix(W), I(2)) + kron(I(3), B) + kron(Matrix(W), Matrix(B'))
+                sum_ref + kron(Matrix(W), Matrix(B'))
         end
         @test backend_type(A') == backend_type(Diagonal([1.0])) == backend_type(view(A, :, 1)) == Array
     end
