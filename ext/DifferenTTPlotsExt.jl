@@ -312,6 +312,8 @@ function visualize_vorticity(
     slice_dims=(1, 2),
     kwargs...,
 ) where {N}
+    # The vorticity is defined for two components (scalar) and three (vector); sampling comes after this check
+    N in (2, 3) || throw(ArgumentError("visualize_vorticity needs a velocity field with 2 or 3 components, got N = $N"))
     ranges, all_data = [], []
     for i in 1:N
         rngs, d = samples(fields_mps[i], grid, arch, npoints)
@@ -382,9 +384,6 @@ function visualize_vorticity(
         end
 
         slice_data = vort_mag[slice_indices[1:3]...]
-
-        # If N > 3 we only computed vorticity for the first 3 dims currently! 
-        # (Since 3D vorticity is only well defined for 3 dims). We'll assume the N>3 case only uses first 3 dims for vorticity calculation.
 
         plot = heatmap(
             ranges[slice_dims[1]],

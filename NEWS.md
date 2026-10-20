@@ -47,7 +47,8 @@ The first public release. Version 0.0.1 is the state of the library that produce
   product), `backsolveL`/`backsolveU` on a non-square matrix, and `interpolative` with prescribed `cols` for the
   `"prrldu"` algorithm.
 - `visualize_vector` and `visualize_vorticity` throw `ArgumentError` instead of `ErrorException` for a
-  one-dimensional field.
+  one-dimensional field, and `visualize_vorticity` throws it for more than three components, for which it used to plot
+  the vorticity of the first three.
 - The library prints nothing by default. `DirichletBC` no longer logs at construction (the note moved to its
   docstring). The `ChorinCache` regularization flag, `linsolve_preconditioner` and the `ResidualObserver` early stop are
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their

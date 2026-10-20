@@ -70,14 +70,13 @@ Plot the vorticity of a velocity field as a heatmap, overlaid with a quiver plot
 
 We sample the velocity on `npoints` points per dimension and evaluate the vorticity on the interior samples by
 second-order central differences, with spacing `box_size[i] / (npoints - 1)`; the boundary samples are set to zero.
-In two dimensions we plot the scalar vorticity ``\\partial_x v - \\partial_y u``, and for ``N \\geq 3`` the magnitude
-of the vorticity of the first three components, on the slice spanned by `slice_dims` through the middle sample. The
-`VectorField` methods plot the last stored time step, or the time step `step`. If `save_path` is a `String`, the
-figure is also saved there. The remaining keywords are passed to Plots.jl.
+In two dimensions we plot the scalar vorticity ``\\partial_x v - \\partial_y u``, and in three the magnitude of the
+vorticity vector, on the slice spanned by `slice_dims` through the middle sample. The `VectorField` methods plot the
+last stored time step, or the time step `step`. If `save_path` is a `String`, the figure is also saved there. The
+remaining keywords are passed to Plots.jl.
 
-These methods are defined in the package extension `DifferenTTPlotsExt` and require `using Plots`. One-dimensional
-fields throw an `ArgumentError`, and for ``N \\geq 4`` only the first three components and coordinates enter the
-vorticity, which is then not meaningful.
+These methods are defined in the package extension `DifferenTTPlotsExt` and require `using Plots`. The vorticity is
+only defined for two or three components, so any other `N` throws an `ArgumentError`.
 
 # Returns
 

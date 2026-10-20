@@ -227,10 +227,22 @@ quiver_vectors(p) = p.series_list[2][:quiver]
         @test_throws BoundsError visualize_vector(field, 3, grid)
     end
 
-    @testset "N = 1 has no vector or vorticity" begin
+    @testset "N = 1 has no vector or vorticity, and the vorticity needs 2 or 3 components" begin
         mps, _, arch, grid = tt_field(x -> x, 1, 8)
         @test_throws ArgumentError visualize_vector((mps,), grid, arch)
         @test_throws ArgumentError visualize_vorticity((mps,), grid, arch)
+        # Four components: the vorticity is not defined (it used to plot that of the first three)
+        comps = [tt_field(f, 4, 4) for _ in 1:4]
+        @test_throws ArgumentError visualize_vorticity(
+            Tuple(c[1] for c in comps), comps[1][4], comps[1][3]; npoints=4, quiver_npoints=4
+        )
+        # and the check comes before any sampling: the error message names N
+        err = try
+            visualize_vorticity(Tuple(c[1] for c in comps), comps[1][4], comps[1][3]; npoints=4)
+        catch e
+            e
+        end
+        @test err isa ArgumentError && occursin("N = 4", err.msg)
     end
 
     @testset "Saving: the file is written, in a directory that may not exist" begin
