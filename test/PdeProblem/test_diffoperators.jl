@@ -45,6 +45,27 @@ function expected_diff_matrix(derivative_order::Int, dim::Int, bcs::BoundaryCond
     return mat
 end
 
+# Dense reference by explicit ghost elimination (spacing 1, nodes 1:n): a stencil entry that lands on a ghost node is dropped
+# (`:truncate`), moved to the mirror node (`:mirror`) or wrapped around (`:wrap`)
+function ghost_operator(order::Int, n::Int, left::Symbol, right::Symbol; stencil_order::Int)
+    coeffs = DifferenTT.derivative_coefficients(order; stencil_order=stencil_order)
+    D = zeros(n, n)
+    for i in 1:n, (k, c) in coeffs
+        j = i + k
+        if j < 1
+            left == :mirror && (D[i, 2-j] += c)
+            left == :wrap && (D[i, j+n] += c)
+        elseif j > n
+            right == :mirror && (D[i, 2n-j] += c)
+            right == :wrap && (D[i, j-n] += c)
+        else
+            D[i, j] += c
+        end
+    end
+    return D
+end
+side_symbol(bc) = bc isa NeumannBC ? :mirror : (bc isa PeriodicBC ? :wrap : :truncate)
+
 @testset "diffoperators.jl" begin
     @testset "1D Differential Operators" begin
         nsite = 6
@@ -181,6 +202,37 @@ end
                 # The 1/h^order scaling applies to the whole padded operator, the identity block included
                 @test M[7:8, 7:8] ≈ I(2) / h^order
             end
+        end
+    end
+
+    @testset "Eye padding against a hand ghost elimination ($name, q=$q, order $order)" for (name, bc) in (
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+            ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
+            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))),
+            ("periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
+        ),
+        q in (2, 8),
+        order in (1, 2)
+
+        # The operator acts on the first n - p nodes (TT) or on the coarse grid of 2^(n-p) nodes (QTT, kron with the
+        # identity of the p padded bits); the padded rows are the identity
+        left, right = side_symbol(bc.left), side_symbol(bc.right)
+        n_tt, n_qtt = 20, 6 # toeplitz_mpo needs 4 non-padded sites
+        for p in (1, 2)
+            reduced = ghost_operator(order, n_tt - p, left, right; stencil_order=q)
+            expected_tt = zeros(n_tt, n_tt)
+            expected_tt[1:(n_tt-p), 1:(n_tt-p)] .= reduced
+            expected_tt[(n_tt-p+1):n_tt, (n_tt-p+1):n_tt] .= I(p)
+            tt = DifferenTT.onedim_differential_operator(
+                order, TTArchitecture((n_tt,)), 1, p, bc, Array; stencil_order=q
+            )
+            @test tt ≈ expected_tt
+
+            coarse = ghost_operator(order, 2^(n_qtt - p), left, right; stencil_order=q)
+            qtt = DifferenTT.onedim_differential_operator(
+                order, QTTArchitecture((n_qtt,)), 1, p, bc, Array; stencil_order=q
+            )
+            @test DifferenTT.contract_mpo(qtt) ≈ kron(coarse, Matrix(1.0I, 2^p, 2^p)) atol = 1e-10
         end
     end
 end

@@ -237,6 +237,48 @@ try
         end
     end
 
+    @testset "One-dimensional Laplacians against a hand ghost elimination ($label)" for (label, arch) in (
+            ("TT", TTArchitecture((16,))), ("QTT", QTTArchitecture((4,)))
+        ),
+        (name, bc) in (
+            ("Dirichlet", BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))),
+            ("Neumann", BoundaryCond1d(NeumannBC(0.0), NeumannBC(0.0))),
+            ("Neumann-Dirichlet", BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0))),
+            ("periodic", BoundaryCond1d(PeriodicBC(), PeriodicBC())),
+        ),
+        q in (2, 8)
+
+        n = 16
+        grid = Grid(arch, (2.0,))
+        h = grid.dx[1]
+        field = ScalarField(siteinds(arch), arch, BoundaryConditions(bc))
+        # Hand-built second-derivative stencil, with the ghost values eliminated term by term
+        coeffs = DifferenTT.derivative_coefficients(2; stencil_order=q)
+        A = zeros(n, n)
+        for i in 1:n, (k, c) in coeffs
+            j = i + k
+            if j < 1
+                bc.left isa NeumannBC && (A[i, 2-j] += c)
+                bc.left isa PeriodicBC && (A[i, j+n] += c)
+            elseif j > n
+                bc.right isa NeumannBC && (A[i, 2n-j] += c)
+                bc.right isa PeriodicBC && (A[i, j-n] += c)
+            else
+                A[i, j] += c
+            end
+        end
+        A ./= h^2
+        w = ones(n)
+        bc.left isa NeumannBC && (w[1] = 0.5)
+        bc.right isa NeumannBC && (w[n] = 0.5)
+
+        K = DifferenTT.contract_mpo(kronecker_laplacian(field, grid; stencil_order=q))
+        @test K ≈ A atol = 1e-8 * norm(A) # QTT truncation with the ITensors cutoff 1e-15 leaves ~1e-10 relative
+        S = DifferenTT.contract_mpo(symmetrized_laplacian(field, grid; stencil_order=q))
+        @test S ≈ Diagonal(w) * A atol = 1e-8 * norm(A)
+        @test S ≈ S' atol = 1e-8 * norm(A)
+    end
+
     @testset "ndim_operator_sum_mpo pairwise FSM" begin
         # Non-trivial variable -> site mapping: variable 2 on site 1, 3 on site 2, 1 on site 3
         arch = TTArchitecture((3, 4, 5), Dict(2 => 1, 3 => 2, 1 => 3))
