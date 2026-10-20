@@ -361,7 +361,11 @@ solve the pressure Poisson system of [`poisson_rhs`](@ref) with `solver`, starti
 Finally, we advance the projected velocity over ``dt`` with the explicit predictor of
 [`NavierStokesPredictorRHS`](@ref) and `stepper`. Note the order: each step projects the velocity it receives and then
 predicts, so the velocity it returns is the provisional field ``\\mathbf{u}^*`` of the next step, which is not
-projected, and the pressure is the one of the projection at the start of the step. The splitting is first-order
+projected, and the pressure is the one of the projection at the start of the step. This order follows the pipeline
+of Peddinti et al. (2024), where the mask is applied right before the projection. We are aware that the order
+predict, mask, project, which returns the projected velocity, is the more natural one; since it applies the same
+sequence of operations, shifted by a projection of the initial velocity, it would solve the same pressure systems, and
+it may replace the current order in a future version. The splitting is first-order
 accurate in ``dt`` whatever `stepper` is, and the projected velocity is only approximately divergence-free (see
 [`INSExperiment`](@ref), including its known limitations). `experiment` is not modified; storing the results is left
 to the caller.
@@ -400,6 +404,9 @@ function chorin_step(
     t::Real,
 ) where {N}
     dt = stepper.time_evol_kwargs.dt
+    # TODO(v0.2): reconsider the order of the step. Predict -> mask -> project, with chorin_evolve! masking and
+    # projecting the initial velocity once, applies the same operations (step k becomes P(M(old step k))), solves the
+    # same pressure systems, and returns the projected velocity instead of the provisional u*
 
     @timeit_debug timeit_to "mask correction" begin
         masked_u_mpss = mask_correction(
