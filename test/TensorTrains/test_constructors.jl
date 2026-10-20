@@ -154,10 +154,10 @@ using .TestUtils
         nsite = 4
         sites = siteinds(2, nsite)
         mps_arrays = [
-            rand(2, 3), # Left end
-            rand(2, 3, 5), # Bulk
-            rand(2, 5, 4), # Bulk
-            rand(2, 4), # Right end
+            rand(rng(), 2, 3), # Left end
+            rand(rng(), 2, 3, 5), # Bulk
+            rand(rng(), 2, 5, 4), # Bulk
+            rand(rng(), 2, 4), # Right end
         ]
 
         mps = DifferenTT.arrays2mps(sites, mps_arrays)
@@ -170,7 +170,7 @@ using .TestUtils
 
         # Test error conditions
         @test_throws DimensionMismatch DifferenTT.arrays2mps(siteinds(2, 3), mps_arrays) # Mismatched length
-        bad_mps_arrays = [rand(2, 2), rand(2, 3)] # Mismatched bond dim
+        bad_mps_arrays = [rand(rng(), 2, 2), rand(rng(), 2, 3)] # Mismatched bond dim
         @test_throws DimensionMismatch DifferenTT.arrays2mps(siteinds(2, 2), bad_mps_arrays)
     end
 
@@ -178,9 +178,9 @@ using .TestUtils
         nsite = 3
         sites = siteinds(2, nsite)
         mpo_arrays = [
-            rand(2, 2, 4), # Left end
-            rand(2, 2, 4, 5), # Bulk
-            rand(2, 2, 5),  # Right end
+            rand(rng(), 2, 2, 4), # Left end
+            rand(rng(), 2, 2, 4, 5), # Bulk
+            rand(rng(), 2, 2, 5),  # Right end
         ]
 
         mpo = DifferenTT.arrays2mpo(sites, mpo_arrays)
@@ -192,7 +192,7 @@ using .TestUtils
 
         # Test error conditions
         @test_throws DimensionMismatch DifferenTT.arrays2mpo(siteinds(2, 2), mpo_arrays) # Mismatched length
-        bad_mpo_arrays = [rand(2, 2, 2), rand(2, 2, 3)] # Mismatched bond dim
+        bad_mpo_arrays = [rand(rng(), 2, 2, 2), rand(rng(), 2, 2, 3)] # Mismatched bond dim
         @test_throws DimensionMismatch DifferenTT.arrays2mpo(siteinds(2, 2), bad_mpo_arrays)
     end
 
@@ -224,7 +224,7 @@ using .TestUtils
     @testset "vec2mps" begin
         n = 4
         sites = siteinds(2, n)
-        v = rand(2^n)
+        v = rand(rng(), 2^n)
 
         mps = DifferenTT.vec2mps(v, sites)
         @test mps isa MPS
@@ -236,12 +236,12 @@ using .TestUtils
 
     @testset "mat2tensor" begin
         # 4x4-element matrix → 2×2x2x2 tensor
-        m4 = randn(4, 4)
+        m4 = randn(rng(), 4, 4)
         t4 = DifferenTT.mat2tensor(m4, [2, 2])
         @test size(t4) == (2, 2, 2, 2)
 
         # 8x8-element matrix → 2×2×2x2x2x2 tensor
-        m8 = randn(8, 8)
+        m8 = randn(rng(), 8, 8)
         t8 = DifferenTT.mat2tensor(m8, [2, 2, 2])
         @test size(t8) == (2, 2, 2, 2, 2, 2)
 
@@ -254,7 +254,7 @@ using .TestUtils
     @testset "mat2mpo" begin
         n = 4
         sites = siteinds(2, n)
-        m = rand(2^n, 2^n)
+        m = rand(rng(), 2^n, 2^n)
 
         mpo = DifferenTT.mat2mpo(m, sites)
         @test mpo isa MPO

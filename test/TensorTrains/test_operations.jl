@@ -20,7 +20,7 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
         nsite = 4
         old_sites = siteinds(2, nsite)
         new_sites = siteinds(2, nsite)
-        mpo = random_mpo(old_sites)
+        mpo = DifferenTT.mat2mpo(randn(rng(), 16, 16), old_sites)
         M_old = contract_mpo(mpo)
 
         # The non-mutating version leaves its argument untouched
@@ -42,7 +42,7 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
     @testset "transpose_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
-        mpo = random_mpo(sites)
+        mpo = DifferenTT.mat2mpo(randn(rng(), 16, 16), sites)
         transposed_mpo = DifferenTT.transpose_mpo(mpo)
         @test transposed_mpo isa MPO
         @test contract_mpo(transposed_mpo) ≈ transpose(contract_mpo(mpo))
@@ -52,7 +52,7 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
     @testset "reverse_mpo" begin
         nsite = 4
         sites = siteinds(2, nsite)
-        mpo = random_mpo(sites)
+        mpo = DifferenTT.mat2mpo(randn(rng(), 16, 16), sites)
         reversed_mpos = DifferenTT.reverse_mpo(mpo)
         @test reversed_mpos isa MPO
         # Reversing the site order permutes the Kronecker factors: compare as tensors with the site axes reversed
@@ -71,8 +71,8 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
 
     @testset "_nothing_sum_handler" begin
         sites = siteinds(2, 4)
-        a = random_mps(sites)
-        b = random_mps(sites)
+        a = random_mps(rng(1), sites)
+        b = random_mps(rng(2), sites)
 
         # All nothing → nothing
         @test isnothing(DifferenTT._nothing_sum_handler(nothing, nothing))
@@ -88,8 +88,8 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
 
     @testset "_nothing_apply_handler" begin
         sites = siteinds(2, 3)
-        A = random_mpo(sites)
-        B = random_mpo(sites)
+        A = DifferenTT.mat2mpo(randn(rng(1), 8, 8), sites)
+        B = DifferenTT.mat2mpo(randn(rng(2), 8, 8), sites)
         @test isnothing(DifferenTT._nothing_apply_handler(nothing, nothing))
         @test DifferenTT._nothing_apply_handler(nothing, A, nothing) === A
         AB = DifferenTT._nothing_apply_handler(A, nothing, B)
@@ -100,10 +100,10 @@ reverse_sites_dense(M::AbstractMatrix, d::Vector{Int}) = reshape(DifferenTT.mat2
     @testset "ndim_operator_mpo (TT) validates the axis" begin
         arch = TTArchitecture((2, 3))
         sites = siteinds(arch)
-        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 3, sites, arch)
-        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 0, sites, arch)
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(ones(2, 2), 3, sites, arch)
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(ones(2, 2), 0, sites, arch)
         arch1 = TTArchitecture((2,))
-        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(rand(2, 2), 2, siteinds(arch1), arch1)
+        @test_throws ArgumentError DifferenTT.ndim_operator_mpo(ones(2, 2), 2, siteinds(arch1), arch1)
     end
 
     @testset "transpose_mpo and reverse_mpo with unequal site dimensions" begin

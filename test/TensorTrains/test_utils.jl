@@ -6,9 +6,9 @@ using ITensorMPS
 
 @testset "utils.jl" begin
     @testset "backend_type" begin
-        cpu_array = rand(2, 2)
+        cpu_array = zeros(2, 2)
         cpu_itensor = ITensor(cpu_array, Index(2), Index(2))
-        cpu_mps = random_mps(siteinds(2, 2))
+        cpu_mps = zeros_mps(siteinds(2, 2))
 
         @test backend_type(cpu_array) == Array
         @test backend_type(cpu_itensor) == Array
