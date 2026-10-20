@@ -467,7 +467,7 @@ function triang_projector_mpo(
 
     for i in 1:n
         operator[i] = operator[i] * helper_combiners[i]
-        operator[i] = operator[i] * delta(hcombiner_inds[i], combiner_inds[i], combiner_inds[i]')
+        operator[i] = operator[i] * adapt(array_type, delta(hcombiner_inds[i], combiner_inds[i], combiner_inds[i]'))
     end
     return operator
 end

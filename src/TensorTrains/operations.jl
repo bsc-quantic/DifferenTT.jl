@@ -151,7 +151,10 @@ function diagmpo(mpo::MPO)
     out_sites = only.(siteinds(mpo; plev=0))
     placeholder_sites = sim(out_sites)
 
-    deltas = [delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
+    array_type = backend_type(mpo)
+    deltas = [
+        adapt(array_type, delta(out_sites[i], out_sites[i]', placeholder_sites[i], placeholder_sites[i]')) for i in 1:n
+    ]
     out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n
@@ -180,7 +183,8 @@ function diagmps(mpo::MPO)
     out_sites = only.(siteinds(mpo; plev=0))
     placeholder_sites = sim(out_sites)
 
-    deltas = [delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]') for i in 1:n]
+    array_type = backend_type(mpo)
+    deltas = [adapt(array_type, delta(out_sites[i], placeholder_sites[i], placeholder_sites[i]')) for i in 1:n]
     out_mpo = replace_mpo_siteinds(mpo, placeholder_sites)
 
     for i in 1:n

@@ -121,6 +121,12 @@ The first public release. Version 0.0.1 is the state of the library that produce
   view threw). `backend_type` of an array now looks through such wrappers to the array that stores the data. The
   library's own callers pass dense matrices, so their operators are unchanged.
 - `ones_mps` and `ones_mpo` on a single site ignored `array_type`.
+- Array backends (found by code review; there is no GPU test yet): the interpolative decompositions of the RSI crosses
+  called `prrldu` on the device matrix, which has no method for it, so on a GPU `elementwise_function` threw and
+  `tt_mul` always fell back to the direct product; they now run on the CPU and move their factors back. The sketches
+  of `sketch`, `positive_sketch` and `suffix_sketches`, the delta tensors of `diagmpo`, `diagmps` and
+  `triang_projector_mpo`, and the link tensors of `zeros_padding` were created on the CPU; they now follow the backend
+  of their input. `sample` contracts on the CPU. Results on the CPU are unchanged.
 
 ### Deprecated
 

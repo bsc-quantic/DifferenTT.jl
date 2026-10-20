@@ -372,11 +372,11 @@ function zeros_padding(mpo::MPO, site_inds::Vector{<:Index}, corner::Symbol=:upl
 
         if n == 1
             # First site: Only has a Right link
-            T *= onehot(pad_links[n] => 1)
+            T *= adapt(array_type, onehot(pad_links[n] => 1))
         else
             # Middle pad sites: Left link from (n-1) and Right link to (n)
-            T *= onehot(pad_links[n-1] => 1)
-            T *= onehot(pad_links[n] => 1)
+            T *= adapt(array_type, onehot(pad_links[n-1] => 1))
+            T *= adapt(array_type, onehot(pad_links[n] => 1))
         end
         new_mpo[n] = T
     end

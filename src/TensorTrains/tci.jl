@@ -340,8 +340,9 @@ end
 
 Return the entry of `mps` at the grid node closest to `point`. We select that entry on every site
 ([`point_sequence`](@ref)) and contract the chain, which costs ``\\mathcal{O}(N d \\chi^2)`` instead of the
-``\\mathcal{O}(d^N)`` of a dense contraction. The value is not interpolated between nodes. The second method first
-looks the point up in `sample_cache` and stores the value it computes there.
+``\\mathcal{O}(d^N)`` of a dense contraction. The value is not interpolated between nodes, and the cores are copied to
+the CPU one at a time. The second method first looks the point up in `sample_cache` and stores the value it computes
+there.
 
 # Throws
 
@@ -363,7 +364,8 @@ function sample(mps::MPS, point::NTuple{N,Float64}, grid::Grid{N}, arch::Archite
 
     out = ITensor(1.0)
     for i in 1:nsite
-        out *= (mps[i] * state(s[i], state_vals[i]))
+        # on the CPU: one core at a time is copied from the backend, and the result is a scalar
+        out *= (adapt(Array, mps[i]) * state(s[i], state_vals[i]))
     end
     return scalar(out)
 end

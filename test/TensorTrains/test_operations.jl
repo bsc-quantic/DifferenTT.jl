@@ -8,7 +8,8 @@ include(joinpath(@__DIR__, "..", "testutils.jl"))
 using .TestUtils
 
 # TODO(release): test that the array_type arguments and adapt calls keep every tensor on the backend of the inputs, with
-# a GPU-like array type that runs on the CPU (e.g. JLArrays, which needs a test dependency); see the WP3a report
+# a GPU-like array type that runs on the CPU (e.g. JLArrays, which needs a test dependency) or on CUDA. Until then the
+# pipelines are checked by reading the code; see the WP3a report
 
 # Dense reference for reversing the site order of an operator on sites of dimensions d: mat2tensor splits the row and
 # column indices into digits, site 1 first; reading the same array back in column-major order makes the last site the

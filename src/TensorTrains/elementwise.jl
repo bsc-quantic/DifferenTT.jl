@@ -317,7 +317,8 @@ every pivot, the values of `col_inds` that select it, with the values of the ver
 `local_vert => value` and pivot indices among `col_inds` expanded into their own pivots. This is how the crosses of
 RSI keep track of the multi-indices behind each bond. The pivot columns are chosen by the [`prrldu`](@ref) algorithm,
 with `kws` (`cutoff`, `maxdim`, `mindim`); if `pivot_index` is given, its pivots fix the columns instead, which are
-then fitted by the `"nuclear"` algorithm, and the pivots are checked to be those of `pivot_index`.
+then fitted by the `"nuclear"` algorithm, and the pivots are checked to be those of `pivot_index`. The decomposition
+runs on the CPU, and `C` and `Z` are moved back to the array backend of `T`.
 
 # Throws
 
@@ -357,7 +358,9 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     row_inds = setdiff(inds(T), col_inds)
     Cmb_row, Cmb_col = combiner(row_inds), combiner(col_inds)
     cr, cc = combinedind(Cmb_row), combinedind(Cmb_col)
-    T_matrix = matrix(Cmb_row * T * Cmb_col, cr, cc)
+    # The decomposition runs on the CPU (prrldu works entry by entry); C and Z go back to the backend of T
+    array_type = backend_type(T)
+    T_matrix = Array(matrix(Cmb_row * T * Cmb_col, cr, cc))
 
     # Interpolative decomp of t matrix
     if isnothing(cols)
@@ -406,8 +409,8 @@ function interpolative(T::ITensor, col_inds, local_vert; pivot_index::Union{Noth
     end
 
     # Make ITensors from C and Z matrices
-    C = ITensor(C_matrix, cr, pivot_index) * dag(Cmb_row)
-    Z = ITensor(Z_matrix, pivot_index, cc) * dag(Cmb_col)
+    C = adapt(array_type, ITensor(C_matrix, cr, pivot_index)) * dag(Cmb_row)
+    Z = adapt(array_type, ITensor(Z_matrix, pivot_index, cc)) * dag(Cmb_col)
 
     return C, Z, error
 end
@@ -419,7 +422,9 @@ end
 Return the random sketch of the sites `region_verts` of `M`: for each of the `dim(k)` values of the sketch index `k`,
 we contract every site of the region with an independent random vector, Gaussian for `sketch` and uniform in
 ``[0, 1)`` for `positive_sketch`, so that the sketch of an entrywise-positive tensor train stays positive. The result
-keeps the link indices at the ends of the region and `k`; an empty region gives the scalar 1. Each region costs
+keeps the link indices at the ends of the region and `k`; an empty region gives the scalar 1. The random vectors are
+drawn on the CPU from `rng`, so that a seed gives the same sketch on every backend, and moved to the backend of `M`.
+Each region costs
 ``\\mathcal{O}(|\\text{region}| \\, k \\, d \\chi^2)``. The crosses use [`suffix_sketches`](@ref) instead, which
 builds the sketches of all suffixes in one pass; these single-region versions stay as the references the tests compare
 it with.
@@ -427,10 +432,11 @@ it with.
 function sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([random_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
-        S += P*onehot(k=>p)
+        P = prod([adapt(array_type, random_itensor(rng, sites[v]))*M[v] for v in reverse(region_verts)])
+        S += P*adapt(array_type, onehot(k=>p))
     end
     return S
 end
@@ -451,6 +457,7 @@ suffixes they need are always those of the untouched input.
 function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::AbstractRNG=Random.default_rng())
     N = length(M)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = Vector{ITensor}(undef, N + 1)
     S[N+1] = ITensor(1.0)
     # One running partial contraction per sketch column, extended site by site.
@@ -458,9 +465,10 @@ function suffix_sketches(M::AbstractMPS, k::Index; positive::Bool=false, rng::Ab
     for v in N:-1:1
         Sv = ITensor()
         for p in 1:dim(k)
-            r = positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v])
+            # drawn on the CPU from `rng`, then moved to the backend of M
+            r = adapt(array_type, positive ? uniform_itensor(rng, sites[v]) : random_itensor(rng, sites[v]))
             cols[p] = r * M[v] * cols[p]
-            Sv += cols[p] * onehot(k => p)
+            Sv += cols[p] * adapt(array_type, onehot(k => p))
         end
         S[v] = Sv
     end
@@ -551,10 +559,11 @@ Return the sketch of the sites `region_verts` of `M` with random vectors uniform
 function positive_sketch(M::AbstractMPS, region_verts, k::Index; rng::AbstractRNG=Random.default_rng())
     (length(region_verts) == 0) && return ITensor(1.0)
     sites = siteinds(M)
+    array_type = backend_type(M)
     S = ITensor()
     for p in 1:dim(k)
-        P = prod([uniform_itensor(rng, sites[v])*M[v] for v in reverse(region_verts)])
-        S += P*onehot(k=>p)
+        P = prod([adapt(array_type, uniform_itensor(rng, sites[v]))*M[v] for v in reverse(region_verts)])
+        S += P*adapt(array_type, onehot(k=>p))
     end
     return S
 end
