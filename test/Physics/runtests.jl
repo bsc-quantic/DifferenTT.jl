@@ -6,7 +6,6 @@ end
 @safetestset "vorticity" begin
     include("test_vorticity.jl")
 end
-# TODO: expand empty test in a future PR
 @safetestset "equationterms" begin
     include("test_equationterms.jl")
 end

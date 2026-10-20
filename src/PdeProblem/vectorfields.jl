@@ -127,8 +127,13 @@ function Base.last(fields::VectorField{N}) where {N}
     return map(c -> last(c), fields.components)
 end
 
-# Validate the site indices of every component before mutating any, so that a mismatch cannot leave the components
-# with different numbers of stored states
+"""
+    _check_vectorfield_sites(fields::VectorField{N}, states::NTuple{N,MPS}) where N
+
+Throw an `ArgumentError` if the site indices of any of `states` are not those of `fields`. `push!` and `setindex!`
+call it before mutating any component, so that a mismatch cannot leave the components with different numbers of
+stored states.
+"""
 function _check_vectorfield_sites(fields::VectorField{N}, states::NTuple{N,MPS}) where {N}
     all(siteinds(state) == fields.usites for state in states) ||
         throw(ArgumentError("MPS site indices do not match field site indices."))
