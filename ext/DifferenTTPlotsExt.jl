@@ -1,3 +1,13 @@
+"""
+    DifferenTTPlotsExt
+
+Package extension of DifferenTT, loaded together with Plots.jl, that defines the plotting methods of
+[`visualize_scalar`](@ref DifferenTT.visualize_scalar), [`visualize_vector`](@ref DifferenTT.visualize_vector) and
+[`visualize_vorticity`](@ref DifferenTT.visualize_vorticity). The fields are sampled on a regular grid with
+`DifferenTT.samples`, which contracts the MPS at every sample, so the cost grows with `npoints^N` and the plots are
+meant for small figures, not for dense evaluation of large fields. Headless runs (e.g. CI) need the environment
+variable `GKSwstype=100` for the GR backend.
+"""
 module DifferenTTPlotsExt
 
 using DifferenTT

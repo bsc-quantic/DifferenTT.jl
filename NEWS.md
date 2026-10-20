@@ -164,6 +164,9 @@ The first public release. Version 0.0.1 is the state of the library that produce
   residual of a different step than the `k`-th stored pressure or stream function. The fields now store the initial
   state and the steps `save_every`, `2 save_every`, … and `nsteps`, with one residual per stored step; `save_every < 1`
   throws `ArgumentError`. The paper's workers call `chorin_step` and are not affected.
+- `log_data` threw an `ArgumentError` from JLD2 when it wrote a key that the file already had, although it was
+  documented to update it (e.g. when an evolution was logged twice to the same file); it now overwrites the key and
+  keeps the others.
 
 ### Deprecated
 

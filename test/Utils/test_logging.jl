@@ -45,6 +45,19 @@ using TimerOutputs
         @test file["dict_key3"] == "world"
     end
 
+    # Regression test: an existing key was not updated, JLD2 threw "already present"
+    log_data(logger, "test_file.jld2", "test_key", 43)
+    log_data(logger, "test_dict", Dict("dict_key1" => 2.0, "dict_key4" => 4))
+    jldopen(joinpath(log_dir, "test_file.jld2"), "r") do file
+        @test file["test_key"] == 43
+        @test file["test_key2"] == "hello"
+    end
+    jldopen(joinpath(log_dir, "test_dict.jld2"), "r") do file
+        @test file["dict_key1"] == 2.0
+        @test file["dict_key3"] == "world"
+        @test file["dict_key4"] == 4
+    end
+
     # Test Nothing logger
     nothing_logger = nothing
     # Should not throw errors
