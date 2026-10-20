@@ -1,14 +1,41 @@
 """
     abstract type BoundaryCond
 
-Abstract type for all boundary condition types.``
+Supertype of the boundary conditions of one side of one axis.
+
+Every closure in DifferenTT is the interior central stencil of order ``q``, completed by values at nodes that are not
+stored (ghost nodes). A boundary condition is a rule that gives those ghost values: when the rule involves the
+unknowns, substituting it changes the operator (periodic wrapping, the Neumann mirror), and when it involves only data,
+it adds a known vector to the right-hand side (the Dirichlet lifts). The subtypes are [`PeriodicBC`](@ref),
+[`OpenBC`](@ref), [`DirichletBC`](@ref) and [`NeumannBC`](@ref). Each holds a field `value`, which
+[`BoundaryCond1d`](@ref) returns through `getindex`.
+
+See also [`BoundaryCond1d`](@ref), [`BoundaryConditions`](@ref), and the boundary-condition tutorials
+[Velocity–pressure formulation](@ref bc_velocity_pressure) and
+[Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """
 abstract type BoundaryCond end
 
 """
-    struct PeriodicBC <: BoundaryCond
+    PeriodicBC()
 
-Periodic boundary conditions.
+Periodic boundary condition: the ghost node beyond one end of the axis is the image of the stored node at the other
+end, so the stencil wraps around and the one-dimensional operator is a circulant. No correction of the operator or of
+the right-hand side is needed. It must be set on both sides of an axis, which [`BoundaryCond1d`](@ref) checks; its
+`value` field is `nothing`.
+
+Note that [`Grid`](@ref) places nodes at both ends of every axis, periodic or not, with spacing ``h = L/(n - 1)``, so
+on that grid the period of the wrapped stencil is ``n h = L + h`` rather than ``L``. The three-argument
+[`interior_grid`](@ref) with one ghost side on the axis gives ``h = L/n``, for which the period is ``L``.
+
+# Examples
+
+```jldoctest
+julia> BoundaryCond1d(PeriodicBC(), PeriodicBC())[1] === nothing
+true
+```
+
+See also the boundary-condition tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 struct PeriodicBC <: BoundaryCond
     value::Nothing
@@ -18,9 +45,14 @@ struct PeriodicBC <: BoundaryCond
 end
 
 """
-    struct OpenBC <: BoundaryCond
+    OpenBC()
 
-Open/free boundary conditions.
+Open boundary condition: the stencil entries that fall outside the grid are dropped, i.e. the ghost values are taken as
+zero. This is the same truncation that the operators apply on a [`DirichletBC`](@ref) side, but nothing else acts on
+an `OpenBC` side: its boundary rows are neither held fixed by the time steppers ([`BoundaryNullScalar`](@ref)) nor
+completed by a lift on the right-hand side. Its `value` field is `nothing`.
+
+See also the boundary-condition tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 struct OpenBC <: BoundaryCond
     value::Nothing
@@ -30,33 +62,71 @@ struct OpenBC <: BoundaryCond
 end
 
 """
-    struct DirichletBC{T <: Number} <: BoundaryCond
+    DirichletBC(value::Number)
 
-Dirichlet boundary condition with a specific value.
+Dirichlet boundary condition with boundary value `value`.
 
-Currently only homogeneous Dirichlet conditions are supported.
+The differential operators truncate the stencil at a Dirichlet side, i.e. they take the ``q/2`` ghost nodes beyond the
+last stored node as zero, and the value then enters in a different way depending on where the condition is used:
 
-Note that the explicit time steppers do not impose `value`: they keep the boundary rows of the field at the values of
-the initial field, so the boundary values are set by the initial condition, not by this object.
+  - In the pressure equation of the Chorin projection, [`scalar_dirichlet_correction`](@ref) moves the ghost values
+    ``g`` = `value` to the right-hand side: it restores the dropped stencil coefficients applied to ghost nodes that all
+    hold ``g``. The stored boundary node is therefore an unknown, and the value sits on the ghost nodes beyond it.
+  - In the explicit time steppers, the value is **not** imposed. [`BoundaryNullScalar`](@ref) zeroes the right-hand
+    side on the ``q/2`` rows next to a Dirichlet side, so those rows keep the values of the initial field, and the
+    boundary values are set by the initial condition, not by this object.
+  - In the vorticity–streamfunction formulation, the value is not read: the [`VorticityFace`](@ref) of each side holds
+    the boundary data, and [`vorticity_boundary_conditions`](@ref) only uses `DirichletBC` to mark ghost faces.
 
 # Fields
 
-  - `value::T`: The value of the field at the boundary.
+  - `value::T`: the boundary value, of any `Number` type `T`.
+
+# Examples
+
+```jldoctest
+julia> BoundaryCond1d(DirichletBC(1.5), DirichletBC(0))[1]
+1.5
+```
+
+See also [`NeumannBC`](@ref), and the boundary-condition tutorial
+[Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 struct DirichletBC{T<:Number} <: BoundaryCond
     value::T
 end
 
 """
-    struct NeumannBC{T <: Number} <: BoundaryCond
+    NeumannBC(value::Number)
 
-Neumann boundary condition with a specific derivative value.
+Homogeneous Neumann boundary condition, ``\\partial u / \\partial n = 0``.
 
-Currently only homogeneous Neumann conditions equal to 0 are supported.
+The boundary lies on the stored node ``u_0``, and the ghost values are its mirror images, ``u_{-k} = u_k``.
+Eliminating them adds the mirrored coefficients to the ``q/2`` boundary rows of every one-dimensional operator
+(`neumann_correction_matrix`). This makes the first-derivative row of the boundary node zero, and it counts the
+boundary row of the second derivative twice, so the operator is no longer symmetric; the weight of
+[`neumann_weight_mpo`](@ref) restores the symmetry of the linear systems. Only `value ≈ 0` is supported.
 
 # Fields
 
-  - `value::T`: The value of the normal derivative at the boundary.
+  - `value::T`: the normal derivative at the boundary (zero).
+
+# Throws
+
+  - `ArgumentError`: if `value` is not approximately zero.
+
+# Examples
+
+```jldoctest
+julia> NeumannBC(0.0).value
+0.0
+
+julia> NeumannBC(1.0)
+ERROR: ArgumentError: NeumannBC with value != 0.0 are not yet implemented.
+```
+
+See also [`DirichletBC`](@ref), and the boundary-condition tutorial
+[Velocity–pressure formulation](@ref bc_velocity_pressure).
 """
 struct NeumannBC{T<:Number} <: BoundaryCond
     value::T
@@ -67,14 +137,29 @@ struct NeumannBC{T<:Number} <: BoundaryCond
 end
 
 """
-    struct BoundaryCond1d{BCL <: BoundaryCond, BCR <: BoundaryCond}
+    BoundaryCond1d(left::BoundaryCond, right::BoundaryCond)
 
-Pair of boundary conditions (left and right) for a 1D domain.
+Pair of boundary conditions of one axis: `left` at the first node (coordinate 0) and `right` at the last node.
 
 # Fields
 
-  - `left::BCL`: Boundary condition at the left end.
-  - `right::BCR`: Boundary condition at the right end.
+  - `left::BCL`: boundary condition at the left end.
+  - `right::BCR`: boundary condition at the right end.
+
+# Throws
+
+  - `ArgumentError`: if only one of the two sides is a [`PeriodicBC`](@ref).
+
+# Examples
+
+```jldoctest
+julia> bc = BoundaryCond1d(NeumannBC(0.0), DirichletBC(2.0));
+
+julia> bc.left isa NeumannBC, bc[2]
+(true, 2.0)
+```
+
+See also [`BoundaryConditions`](@ref).
 """
 struct BoundaryCond1d{BCL<:BoundaryCond,BCR<:BoundaryCond}
     left::BCL
@@ -88,6 +173,13 @@ struct BoundaryCond1d{BCL<:BoundaryCond,BCR<:BoundaryCond}
     end
 end
 
+"""
+    getindex(bcs::BoundaryCond1d, key::Int)
+
+Return the `value` of the left (`key = 1`) or right (`key = 2`) boundary condition: the boundary value of a
+[`DirichletBC`](@ref) or [`NeumannBC`](@ref), and `nothing` for [`PeriodicBC`](@ref) and [`OpenBC`](@ref). Throws an
+`ArgumentError` for any other `key`.
+"""
 function Base.getindex(bcs::BoundaryCond1d, key::Int)
     if key == 1
         return bcs.left.value
@@ -99,13 +191,27 @@ function Base.getindex(bcs::BoundaryCond1d, key::Int)
 end
 
 """
-    struct BoundaryConditions{N, BC <: BoundaryCond1d}
+    BoundaryConditions(conditions::BoundaryCond1d...)
 
-Container for boundary conditions for N dimensions.
+Boundary conditions of a field in ``N`` dimensions: one [`BoundaryCond1d`](@ref) per axis, in the order of the
+variables of the architecture. Indexing with `bcs[i]` returns the conditions of axis `i`.
 
 # Fields
 
-  - `conditions::NTuple{N,BC}`: Tuple of 1D boundary conditions for each dimension.
+  - `conditions::NTuple{N,BC}`: the conditions of each axis.
+
+# Examples
+
+```jldoctest
+julia> x_bcs, y_bcs = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC());
+
+julia> bcs = BoundaryConditions(x_bcs, y_bcs);
+
+julia> bcs[2].left isa PeriodicBC
+true
+```
+
+See also [`ScalarField`](@ref).
 """
 struct BoundaryConditions{N,BC<:BoundaryCond1d}
     conditions::NTuple{N,BC}
@@ -115,6 +221,11 @@ function BoundaryConditions(conditions::BoundaryCond1d...)
     return BoundaryConditions{length(conditions),eltype(conditions)}(conditions)
 end
 
+"""
+    getindex(bcs::BoundaryConditions, i::Int) -> BoundaryCond1d
+
+Return the boundary conditions of axis `i`.
+"""
 function Base.getindex(bcs::BoundaryConditions, i::Int)
     return bcs.conditions[i]
 end
