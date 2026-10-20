@@ -89,4 +89,78 @@ import DifferenTT: QTTArchitecture, TTArchitecture
         op = DifferenTT.ndim_operator_mpo(collect(reshape(1.0:49.0, 7, 7)), 2, sites, arch)
         @test DifferenTT.contract_mpo(op) ≈ kron(collect(reshape(1.0:49.0, 7, 7)), I(3), I(5))
     end
+
+    # Every query of an architecture, for the four QTT layouts and for TT (blocked, interleaved, permuted by var_map,
+    # reversed by a negative var_nsites, and both)
+    @testset "queries for every layout" begin
+        layouts = [
+            (QTTArchitecture((2, 3)), [1, 1, 2, 2, 2]),
+            (QTTArchitecture((2, 3); interleaved=true), [1, 2, 1, 2, 2]),
+            (QTTArchitecture((2, 3), Dict(1 => 2, 2 => 1)), [2, 2, 2, 1, 1]),
+            (QTTArchitecture((2, 3), Dict(1 => 2, 2 => 1); interleaved=true), [2, 1, 2, 1, 2]),
+            (QTTArchitecture((-2, 3)), [1, 1, 2, 2, 2]),
+            (QTTArchitecture((2, -3), Dict(1 => 2, 2 => 1); interleaved=true), [2, 1, 2, 1, 2]),
+        ]
+        for (arch, site_map) in layouts
+            @test arch.site_map == site_map
+            @test total_sites(arch) == 5
+            @test [nsites_per_variable(arch, v) for v in 1:2] == [2, 3]
+            @test variable_dims(arch) == (4, 8)
+            @test collect(site_dims(arch)) == fill(2, 5) == [site_dim(arch, n) for n in 1:5]
+            # each variable has 2^nsites values, so the grid has prod(variable_dims) = 2^total_sites points
+            @test prod(variable_dims(arch)) == prod(site_dims(arch))
+            sites = siteinds(arch)
+            @test dim.(sites) == fill(2, 5)
+            @test all(hastags(s, "Site") && hastags(s, "n=$n") for (n, s) in enumerate(sites))
+            @test all(plev(s) == 0 for s in sites)
+        end
+
+        # interleaving follows the physical order of var_map and skips variables that ran out of sites
+        arch = QTTArchitecture((2, -3, 1), Dict(1 => 2, 2 => 3, 3 => 1); interleaved=true)
+        @test arch.site_map == [3, 1, 2, 1, 2, 2]
+        @test variable_dims(arch) == (4, 8, 2)
+
+        # one variable with one site
+        arch = QTTArchitecture((1,))
+        @test arch.site_map == [1]
+        @test total_sites(arch) == 1 && variable_dims(arch) == (2,) && dim.(siteinds(arch)) == [2]
+
+        # TT: unequal dimensions, permuted, one site
+        for (arch, sdims) in [
+            (TTArchitecture((3, 5, 4)), (3, 5, 4)),
+            (TTArchitecture((3, 5, 4), Dict(1 => 2, 2 => 3, 3 => 1)), (4, 3, 5)),
+            (TTArchitecture((6,)), (6,)),
+        ]
+            N = length(sdims)
+            @test total_sites(arch) == N
+            @test all(nsites_per_variable(arch, v) == 1 for v in 1:N)
+            @test site_dims(arch) == sdims
+            @test prod(variable_dims(arch)) == prod(sdims)
+            @test dim.(siteinds(arch)) == collect(sdims)
+            @test [site_dim(arch, arch.var_map[v]) for v in 1:N] == collect(variable_dims(arch))
+        end
+
+        # keyword arguments reach the Index constructor
+        @test all(plev(s) == 1 for s in siteinds(QTTArchitecture((2,)); plev=1))
+        @test site_dims(TTArchitecture((3, 4), nothing)) == (3, 4)
+    end
+
+    @testset "site_indices and link_indices" begin
+        sites = DifferenTT.site_indices([3, 2, 4])
+        @test dim.(sites) == [3, 2, 4]
+        @test all(hastags(s, "Site,n=$n") for (n, s) in enumerate(sites))
+        links = DifferenTT.link_indices([2, 5])
+        @test dim.(links) == [2, 5]
+        @test all(hastags(l, "Link,l=$n") for (n, l) in enumerate(links))
+        @test allunique(vcat(sites, links))
+        @test isempty(DifferenTT.link_indices(Int[]))
+    end
+
+    @testset "errors" begin
+        @test_throws ArgumentError QTTArchitecture((2, 2), Dict(1 => 1, 2 => 1))
+        @test_throws ArgumentError QTTArchitecture((2, 2), Dict(1 => 1, 2 => 2, 3 => 3))
+        @test_throws ArgumentError TTArchitecture((3, 3), Dict(1 => 2, 2 => 2))
+        @test_throws BoundsError site_dim(TTArchitecture((3, 3)), 3)
+        @test_throws BoundsError nsites_per_variable(QTTArchitecture((2, 3)), 3)
+    end
 end

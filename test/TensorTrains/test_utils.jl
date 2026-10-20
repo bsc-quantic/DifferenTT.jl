@@ -84,4 +84,43 @@ using ITensorMPS
         @test DifferenTT.decimal_to_base(123, 10, 4) == [0, 1, 2, 3]
         @test DifferenTT.base_to_decimal([0, 1, 2, 3], 10) == 123
     end
+
+    @testset "ndim_index: reversed, permuted and errors" begin
+        # var 2 sits on sites 3, 5 and 6 and is reversed: its bits are written least significant first
+        arch = DifferenTT.QTTArchitecture((2, -3, 1), Dict(1 => 2, 2 => 3, 3 => 1); interleaved=true)
+        @test arch.site_map == [3, 1, 2, 1, 2, 2]
+        @test DifferenTT.ndim_index([0, 1, 1], 2, arch) == [1, 1, 1, 1, 1, 0]
+        @test DifferenTT.ndim_index([0, 1], 1, arch) == [1, 0, 1, 1, 1, 1]
+        @test DifferenTT.ndim_index([0], 3, arch) == [0, 1, 1, 1, 1, 1]
+        @test_throws DimensionMismatch DifferenTT.ndim_index([0, 1], 2, arch)
+
+        # TT with a permuted var_map: variable 1 lives on site 3
+        tt = DifferenTT.TTArchitecture((4, 5, 6), Dict(1 => 3, 2 => 1, 3 => 2))
+        @test DifferenTT.ndim_index([4], 1, tt) == [1, 1, 4]
+        @test DifferenTT.ndim_index([2], 2, tt) == [2, 1, 1]
+        @test_throws DimensionMismatch DifferenTT.ndim_index([1, 2], 1, tt)
+    end
+
+    @testset "Conversion round trips" begin
+        for base in (2, 3, 5), ndigits in 1:4
+            numbers = 0:(base^ndigits-1)
+            @test all(
+                DifferenTT.base_to_decimal(DifferenTT.decimal_to_base(n, base, ndigits), base) == n for n in numbers
+            )
+            @test all(length(DifferenTT.decimal_to_base(n, base, ndigits)) == ndigits for n in numbers)
+            @test all(all(0 .<= DifferenTT.decimal_to_base(n, base, ndigits) .< base) for n in numbers)
+        end
+        for nbits in 1:5, n in 0:(2^nbits-1)
+            @test DifferenTT.binary_to_decimal(DifferenTT.decimal_to_binary(n, nbits)) == n
+        end
+        # the digits are the most significant first, as in the site order of a QTT variable
+        @test DifferenTT.decimal_to_binary(1, 3) == [0, 0, 1]
+        # a number that needs more digits than asked for returns all of them
+        @test DifferenTT.decimal_to_base(9, 2, 2) == [1, 0, 0, 1]
+    end
+
+    @testset "identity_array" begin
+        @test DifferenTT.identity_array(3) == [1.0 0 0; 0 1 0; 0 0 1]
+        @test DifferenTT.identity_array(1) isa Matrix{Float64}
+    end
 end
