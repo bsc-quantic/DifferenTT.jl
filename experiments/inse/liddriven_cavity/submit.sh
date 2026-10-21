@@ -61,14 +61,14 @@ export CAVITY_LIDS="${CAVITY_LIDS}"
 
 echo "Task \${SLURM_ARRAY_TASK_ID} / 1 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
-julia --project=. -t 1 --heap-size-hint=28G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=experiments -t 1 --heap-size-hint=28G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 
 echo "Generating snapshot plots..."
-julia --project=. -t 1 ${SCRIPT_DIR}/plot_snapshots.jl ${NOCOND_ARG}
+julia --project=experiments -t 1 ${SCRIPT_DIR}/plot_snapshots.jl ${NOCOND_ARG}
 
 if [ "${CAVITY_LIDS}" == "1" ]; then
     echo "Comparing with Ghia et al. (1982)..."
-    julia --project=. -t 1 ${SCRIPT_DIR}/ghia_comparison.jl ${NOCOND_ARG}
+    julia --project=experiments -t 1 ${SCRIPT_DIR}/ghia_comparison.jl ${NOCOND_ARG}
 fi
 ARRAY_EOF
 )

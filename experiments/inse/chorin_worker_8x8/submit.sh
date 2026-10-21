@@ -44,10 +44,10 @@ module load julia/1.12.0
 
 echo "Task \${SLURM_ARRAY_TASK_ID} / 1 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 
-julia --project=. -t 1 --heap-size-hint=28G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=experiments -t 1 --heap-size-hint=28G ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 
 echo "Generating snapshot plots..."
-julia --project=. -t 1 ${SCRIPT_DIR}/plot_snapshots.jl
+julia --project=experiments -t 1 ${SCRIPT_DIR}/plot_snapshots.jl
 ARRAY_EOF
 )
 

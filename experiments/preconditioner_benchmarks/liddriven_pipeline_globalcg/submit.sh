@@ -65,7 +65,7 @@ export CAVITY_LIDS="${CAVITY_LIDS}"
 echo "Task \${SLURM_ARRAY_TASK_ID} / 10 — Job \${SLURM_JOB_ID} on \${HOSTNAME}"
 echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB"
 
-julia --project=. -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID}
+julia --project=experiments -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID}
 ARRAY_EOF
 )
 
@@ -92,7 +92,7 @@ export CAVITY_LIDS="${CAVITY_LIDS}"
 
 echo "Collecting results from array job..."
 
-julia --project=. ${SCRIPT_DIR}/collect.jl
+julia --project=experiments ${SCRIPT_DIR}/collect.jl
 COLLECT_EOF
 )
 

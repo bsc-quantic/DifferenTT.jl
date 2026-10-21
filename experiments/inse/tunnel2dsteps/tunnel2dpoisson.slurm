@@ -18,4 +18,4 @@ echo "Job ID: $SLURM_JOB_ID"
 echo "Running on node: $HOSTNAME"
 echo "------------------------------------------------"
 
-julia --project=. -t 1 --heap-size-hint=14G experiments/inse/tunnel2dsteps/tunnel2dpoisson.jl
+julia --project=experiments -t 1 --heap-size-hint=14G experiments/inse/tunnel2dsteps/tunnel2dpoisson.jl

@@ -47,7 +47,7 @@ ${SECTIONS_ENV}
 echo "Job \${SLURM_JOB_ID} on \${HOSTNAME}, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB"
 echo "Sections: \${LINSOLVE_SPD_SECTIONS:-all}"
 
-julia --project=. -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl
+julia --project=experiments -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl
 JOB_EOF
 )
 
