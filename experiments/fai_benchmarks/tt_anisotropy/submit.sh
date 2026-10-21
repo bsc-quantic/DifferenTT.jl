@@ -7,7 +7,7 @@ SCRIPT_DIR="experiments/fai_benchmarks/tt_anisotropy"
 # = 2 * 6 * (1 + 5 + 4 + 1)
 NTASKS=132
 
-# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+# GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
 # Right-hand side: ones (default), random or manufactured. See anisotropy_problem.jl.

@@ -2,7 +2,7 @@
 
 SCRIPT_DIR="experiments/fai_benchmarks/tt_poisson_global"
 
-# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+# GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
 RESULTS_DIR="${SCRIPT_DIR}/results"

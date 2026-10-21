@@ -11,7 +11,7 @@
 
 SCRIPT_DIR="experiments/fai_benchmarks/chorin_pipeline"
 
-# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+# GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
 NOCOND_ARG=""
