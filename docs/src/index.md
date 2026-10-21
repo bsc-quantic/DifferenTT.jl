@@ -24,7 +24,7 @@ several algorithms for the same task side by side and documents what each one is
     TT format ([Finite-difference operators](@ref)).
   - **Tensor-train utilities.** Element-wise products and functions by randomized sketching, and cross interpolation of
     functions ([Tensor-train utilities](@ref)).
-  - **Linear solvers.** The alternating solvers ALS, ResidualALS (MALS with a residual-based enrichment), AMEn and
+  - **Linear solvers.** The alternating solvers ALS, ResidualALS (MALS with a residual-based truncation), AMEn and
     ExpandedALS, and global TT-CG and TT-GMRES ([Linear solvers](@ref manual_linear_solvers)).
   - **Preconditioners.** The factorized approximate inverse (FAI) in the TT format, which is positive definite by
     construction, and a sinc-quadrature approximation of the inverse Laplacian ([Preconditioners](@ref)).

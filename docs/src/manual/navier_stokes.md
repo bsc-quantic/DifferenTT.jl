@@ -6,8 +6,7 @@ CurrentModule = DifferenTT
 
 The incompressible Navier–Stokes equations couple the velocity ``\mathbf{u}`` and the pressure ``p`` through the
 constraint ``\nabla \cdot \mathbf{u} = 0``, which makes the pressure a Lagrange multiplier that is determined by a Poisson
-equation at every time step. A TT solver spends most of its time in this Poisson solve, which is why it is the target of the
-preconditioners of this library. DifferenTT offers two formulations of the equations, with the same fields, operators,
+equation at every time step. DifferenTT offers two formulations of the equations, with the same fields, operators,
 time steppers and linear solvers, and we describe here which type to pass and what each one imposes. The derivation of the
 boundary conditions of each formulation is in the corresponding tutorial, and the exact rules are in the docstrings.
 The signatures are in the [API reference](@ref api_physics).
@@ -35,7 +34,7 @@ The caches that it builds once ([`ChorinCache`](@ref)), the single step [`chorin
 [Grids, fields and boundary conditions](@ref): in the setup of the paper the velocity has a Dirichlet inlet and a Neumann
 outlet, the pressure a Dirichlet outlet, and the second axis is periodic. For such an axis we recommend the grid
 `Grid(arch, box_size; periodic = DifferenTT.periodic_axes(p_bcs))`, which gives the stencils their intended period
-(the paper's runs used the plain `Grid`, whose period is ``L + h``).
+``L`` (the plain `Grid` gives ``L + h``).
 
 ## Vorticity–streamfunction formulation
 
@@ -68,4 +67,4 @@ notes. They are planned for v0.2 and are not hidden by any option.
     that it returns, and that `chorin_evolve!` stores, is the provisional field ``\mathbf{u}^*`` of the next step and not
     the projected one. The order predict, mask, project, which solves the same pressure systems, is to be reconsidered.
   - **Period of a periodic axis.** `Grid` without the `periodic` flag keeps a node at both ends of a periodic axis, so its
-    stencils have period ``L + h`` ([Grids, fields and boundary conditions](@ref)). The paper's Chorin runs used this grid.
+    stencils have period ``L + h`` ([Grids, fields and boundary conditions](@ref)).

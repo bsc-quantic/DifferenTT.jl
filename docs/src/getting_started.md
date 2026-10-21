@@ -70,7 +70,8 @@ maxlinkdim(b)
 ## The solver
 
 [`ResidualALS`](@ref) is the alternating solver that we recommend for SPD systems. It sweeps along the chain, solves a local
-problem on two sites by CG, and enriches the solution with the residual. The three argument structures set the sweeps
+problem on two sites by CG, and truncates the SVD that splits the two-site tensor according to the residual, so that
+the bond dimension is the smallest one that meets the requested accuracy. The three argument structures set the sweeps
 ([`SweepingArgs`](@ref)), the local solver ([`LocalUpdaterArgs`](@ref)), and, through the
 [`ResidualObserver`](@ref), the relative residual at which the sweeps stop. KrylovKit selects CG for the local problems
 only if both `ishermitian` and `isposdef` are set.
