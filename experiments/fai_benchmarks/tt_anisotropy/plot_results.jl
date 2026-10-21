@@ -17,7 +17,7 @@ the global κ(P L), so the floor lines are a reference, not a bound.
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))
 
-base_folder = "experiments/fai_benchmarks/tt_anisotropy"
+base_folder = @__DIR__
 nocond_folder = joinpath(base_folder, "results_nocond")
 cond_folder = joinpath(base_folder, "results")
 plots_dir = joinpath(base_folder, "plots")

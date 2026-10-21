@@ -17,7 +17,7 @@ BLAS.set_num_threads(8)
 
 ############################################################
 
-destination_folder = "experiments/validation/tunnel2dsteps/"
+destination_folder = @__DIR__
 destination_file = "chorin.jld2"
 
 ############################################################
@@ -30,7 +30,7 @@ destination_file = "chorin.jld2"
 load_timevolved_mps = false
 
 if load_timevolved_mps
-    longevol_data = load("experiments/validation/tunnel2dsteps/chorin.jld2")
+    longevol_data = load(joinpath(@__DIR__, "chorin.jld2"))
     kickstart_mps_vx, kickstart_mps_vy = last(longevol_data["u_fields"])
 end
 
@@ -68,7 +68,7 @@ object_mask = nothing # Id the following code blocks in this section are not run
 save_mask = true
 mask_name = "circle_mask"
 load_mask = false
-mask_path = "experiments/validation/tunnel2dsteps/" * mask_name * ".jld2"
+mask_path = joinpath(@__DIR__, mask_name * ".jld2")
 
 object_mask = nothing
 
@@ -290,7 +290,7 @@ visualize_vector(
     -1.0 .* nondivfree_advection_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_nondivfree_advection.png";
+    joinpath(@__DIR__, "test_nondivfree_advection.png");
     arrow_scale=0.0,
     npoints=100,
     size=(1200, 600),
@@ -303,7 +303,7 @@ visualize_scalar(
     ∇u,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_∇u.png";
+    joinpath(@__DIR__, "test_∇u.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -340,7 +340,7 @@ visualize_scalar(
     ∇u,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_∇u_corrected.png";
+    joinpath(@__DIR__, "test_∇u_corrected.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -357,7 +357,7 @@ visualize_scalar(
     rhs,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_rhs.png";
+    joinpath(@__DIR__, "test_rhs.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -382,7 +382,7 @@ visualize_scalar(
     divfree_p,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_divfreep.png";
+    joinpath(@__DIR__, "test_divfreep.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -440,7 +440,7 @@ div_free_u_mpss = ntuple(
             (-1.0 * dt) * full_dp,
             experiment.grid,
             experiment.u_fields.arch,
-            "experiments/validation/tunnel2dsteps/test_dp$(i).png";
+            joinpath(@__DIR__, "test_dp$(i).png");
             npoints=200,
             size=(1200, 600),
         )
@@ -453,7 +453,7 @@ visualize_vector(
     div_free_u_mpss,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_div_free_u_mpss.png";
+    joinpath(@__DIR__, "test_div_free_u_mpss.png");
     arrow_scale=0.0,
     npoints=300,
     size=(1200, 600),
@@ -501,7 +501,7 @@ visualize_vector(
     (1 / Re) .* ∇p_diffusion,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_∇p_diffusion.png";
+    joinpath(@__DIR__, "test_∇p_diffusion.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -519,7 +519,7 @@ visualize_vector(
     -1.0 .* divfree_advection_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_divfree_advection.png";
+    joinpath(@__DIR__, "test_divfree_advection.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -530,7 +530,7 @@ visualize_vector(
     (1 / Re) .* divfree_diffusion_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    "experiments/validation/tunnel2dsteps/test_divfree_diffusion.png";
+    joinpath(@__DIR__, "test_divfree_diffusion.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),

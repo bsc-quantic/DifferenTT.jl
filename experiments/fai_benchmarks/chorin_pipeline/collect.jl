@@ -7,9 +7,9 @@ using DifferenTT
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = if use_nocond
-    "experiments/fai_benchmarks/chorin_pipeline/results_nocond"
+    joinpath(@__DIR__, "results_nocond")
 else
-    "experiments/fai_benchmarks/chorin_pipeline/results"
+    joinpath(@__DIR__, "results")
 end
 tasks_folder = joinpath(base_folder, "tasks")
 

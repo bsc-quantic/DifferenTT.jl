@@ -9,7 +9,7 @@ solve per step, followed by the explicit vorticity transport.
 Set `CAVITY_LIDS=2` for the doubly-driven cavity of Kiffner & Jaksch (arXiv:2303.03010, Fig. 5): the bottom lid
 also moves, with velocity `-U_LID`. Its results go to the `results_doublelid` folder.
 
-Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/fai_benchmarks/liddriven_pipeline_globalcg/worker.jl [task_id]
+Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/worker.jl [task_id]
 """
 
 using ITensors
@@ -36,7 +36,7 @@ const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
-const default_base_folder = "experiments/fai_benchmarks/liddriven_pipeline_globalcg/results" * RESULTS_SUFFIX
+const default_base_folder = joinpath(@__DIR__, "results") * RESULTS_SUFFIX
 base_folder = get(ENV, "LIDDRIVEN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)

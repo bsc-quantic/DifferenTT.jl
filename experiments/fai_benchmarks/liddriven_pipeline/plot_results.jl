@@ -17,7 +17,7 @@
 
     Note: `pc_conds_per_site` is the absolute local κ(P^{-1}A), not a ratio.
 
-    Usage: julia --project=. experiments/fai_benchmarks/liddriven_pipeline/plot_results.jl [single|double]
+    Usage: julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline/plot_results.jl [single|double]
     The lid count selects the results folders (`results*_singlelid`/`results*` or `results*_doublelid`, and the
     matching `plots*`); without it, it is detected from the folders that exist.
 """
@@ -35,7 +35,7 @@ default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", marg
 ENV["GKSwstype"] = "100"
 include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
-base_folder = "experiments/fai_benchmarks/liddriven_pipeline"
+base_folder = @__DIR__
 const RESULTS_SUFFIX = cavity_results_suffix(
     s -> isfile(joinpath(base_folder, "results_nocond" * s, "collected_results.jld2"))
 )

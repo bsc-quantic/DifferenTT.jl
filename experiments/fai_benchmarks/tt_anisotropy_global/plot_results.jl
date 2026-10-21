@@ -12,7 +12,7 @@ plus crossover_summary.md / crossover_ratio.png across N.
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))
 
-base_folder = "experiments/fai_benchmarks/tt_anisotropy_global"
+base_folder = @__DIR__
 results_folder = joinpath(base_folder, "results")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)

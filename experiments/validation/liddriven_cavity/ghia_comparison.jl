@@ -10,7 +10,7 @@ solver, then interpolated linearly on the centrelines x = 0.5 and y = 0.5.
 
 Only for the single-lid cavity: Ghia et al. have no doubly-driven reference data.
 
-Usage: julia --project=. experiments/validation/liddriven_cavity/ghia_comparison.jl [nocond]
+Usage: julia --project=experiments experiments/validation/liddriven_cavity/ghia_comparison.jl [nocond]
 """
 
 using ITensors
@@ -25,9 +25,9 @@ get(ENV, "CAVITY_LIDS", "1") == "1" || error("ghia_comparison.jl only applies to
 
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = if use_nocond
-    "experiments/validation/liddriven_cavity/results_nocond"
+    joinpath(@__DIR__, "results_nocond")
 else
-    "experiments/validation/liddriven_cavity/results"
+    joinpath(@__DIR__, "results")
 end
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 isfile(snapshots_file) || error("Snapshots file not found at $snapshots_file")

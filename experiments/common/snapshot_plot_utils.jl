@@ -4,8 +4,7 @@ Last-snapshot plots shared by the Chorin benchmark plotters.
 The Chorin workers store the final fluid state of a run (the stats workers: of repeat 1 only) under
 `"last_snapshot"` in their task files (`grid`, `u_fields`, `p_field`, `n_steps`). `plot_last_snapshots` draws, for every
 configuration, the velocity, vorticity and pressure of that state into
-`<plots_dir>/<size>/last_snapshots/`, like `experiments/inse/chorin_worker_8x8/plot_snapshots.jl`
-does for its intermediate snapshots.
+`<plots_dir>/<size>/last_snapshots/`.
 """
 
 using ITensors

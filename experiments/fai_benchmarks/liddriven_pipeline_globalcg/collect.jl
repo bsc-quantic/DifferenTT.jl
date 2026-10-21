@@ -6,7 +6,7 @@ const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
-base_folder = "experiments/fai_benchmarks/liddriven_pipeline_globalcg/results" * RESULTS_SUFFIX
+base_folder = joinpath(@__DIR__, "results") * RESULTS_SUFFIX
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()

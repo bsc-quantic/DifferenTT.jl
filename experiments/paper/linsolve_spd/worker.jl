@@ -24,7 +24,7 @@ xᵀPx), and the spectrum of S·A is found as the spectrum of the symmetric Lᵀ
 All results go to a single JLD2 file, one entry per case written as soon as the case finishes. Entries already in the
 file are skipped, so a timed-out job can be resubmitted and continues where it stopped.
 
-Usage: julia --project=. experiments/paper/linsolve_spd/worker.jl
+Usage: julia --project=experiments experiments/paper/linsolve_spd/worker.jl
 """
 
 using ITensors
@@ -67,7 +67,7 @@ progress(
 )
 
 # ---- Configuration ----
-const BASE_FOLDER = "experiments/paper/linsolve_spd"
+const BASE_FOLDER = @__DIR__
 const DEFAULT_RESULTS_FILE = joinpath(BASE_FOLDER, "results", "linsolve_spd.jld2")
 const RESULTS_FILE = get(ENV, "LINSOLVE_SPD_RESULTS", DEFAULT_RESULTS_FILE)
 
@@ -98,7 +98,7 @@ const SPD_TOL = 1e-8
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const MASK_FILE = "experiments/fai_benchmarks/chorin_pipeline/masks.jld2"
+const MASK_FILE = joinpath(@__DIR__, "..", "..", "fai_benchmarks", "chorin_pipeline", "masks.jld2")
 
 const CHORIN_DENSE_NODES = [(4, 4), (5, 5), (6, 6), (7, 7)]
 const CHORIN_LARGE_NODES = [(8, 8), (10, 10)]

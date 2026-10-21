@@ -21,12 +21,12 @@ flush(stderr)
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-const default_base_folder = "experiments/fai_benchmarks/chorin_pipeline_globalcg/results"
+const default_base_folder = joinpath(@__DIR__, "results")
 base_folder = get(ENV, "CHORIN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = "experiments/fai_benchmarks/chorin_pipeline_globalcg/masks.jld2"
+const MASK_FILE = joinpath(@__DIR__, "masks.jld2")
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)

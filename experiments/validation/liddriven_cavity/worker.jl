@@ -4,12 +4,12 @@
 Long time evolution of the lid-driven cavity of Kiffner & Jaksch (arXiv:2303.03010) with the ψ–ω scheme of
 `INSVorticityExperiment`: walls are ghost nodes, the lid moves in +x and the fluid starts at rest. Each step
 solves the SPD stream function Poisson system `-Δψ = ω` once and advances ω explicitly with the resulting
-velocity and wall vorticity. Mirrors `experiments/inse/chorin_worker_8x8/worker.jl`.
+velocity and wall vorticity.
 
 Set `CAVITY_LIDS=2` for the doubly-driven cavity of the same paper (Fig. 5): the bottom lid also moves, with
 velocity `-U_LID`. Its results go to the `*_doublelid` folders.
 
-Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/validation/liddriven_cavity/worker.jl [task_id] [nocond]
+Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/worker.jl [task_id] [nocond]
 """
 
 using ITensors
@@ -32,9 +32,9 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = (
     if use_nocond
-        "experiments/validation/liddriven_cavity/results_nocond"
+        joinpath(@__DIR__, "results_nocond")
     else
-        "experiments/validation/liddriven_cavity/results"
+        joinpath(@__DIR__, "results")
     end
 ) * RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")

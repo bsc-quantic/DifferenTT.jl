@@ -4,7 +4,7 @@ using DifferenTT
 using JLD2
 using Plots
 
-# Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/validation/liddriven_cavity/plot_snapshots.jl [nocond]
+# Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/plot_snapshots.jl [nocond]
 # Number of moving lids of the worker run (see worker.jl): 2 reads the doubly-driven cavity results
 const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
@@ -12,9 +12,9 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = (
     if use_nocond
-        "experiments/validation/liddriven_cavity/results_nocond"
+        joinpath(@__DIR__, "results_nocond")
     else
-        "experiments/validation/liddriven_cavity/results"
+        joinpath(@__DIR__, "results")
     end
 ) * RESULTS_SUFFIX
 snapshots_file = joinpath(base_folder, "snapshots.jld2")

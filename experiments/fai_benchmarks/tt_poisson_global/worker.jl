@@ -19,7 +19,7 @@ end
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-const default_base_folder = "experiments/fai_benchmarks/tt_poisson_global/results"
+const default_base_folder = joinpath(@__DIR__, "results")
 base_folder = get(ENV, "TT_POISSON_GLOBAL_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)

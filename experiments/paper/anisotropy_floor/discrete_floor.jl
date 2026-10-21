@@ -10,7 +10,7 @@ Everything is done in full format with 1D operators taken from DifferenTT, so th
 eigendecomposition of the 1D Laplacian, and the extreme eigenvalues of L0⁻¹ L come from the
 Lanczos tridiagonal built from the L0-preconditioned CG coefficients (Saad 2003, §6.7).
 
-Usage: julia --project=. experiments/paper/anisotropy_floor/discrete_floor.jl [N...]
+Usage: julia --project=experiments experiments/paper/anisotropy_floor/discrete_floor.jl [N...]
 """
 
 using LinearAlgebra

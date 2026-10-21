@@ -14,9 +14,9 @@ using DifferenTT
 
 box_size = (2.0, 1.0)
 system_sizes = [(8, 8), (10, 10), (12, 12)]
-mask_path = "experiments/fai_benchmarks/chorin_pipeline_globalcg/masks.jld2"
+mask_path = joinpath(@__DIR__, "masks.jld2")
 
-maskplots_subfolder = "experiments/fai_benchmarks/chorin_pipeline_globalcg/maskplots"
+maskplots_subfolder = joinpath(@__DIR__, "maskplots")
 mkpath(maskplots_subfolder)
 
 function circle(x, y; bx=0.5, by=0.5, rad=0.1)

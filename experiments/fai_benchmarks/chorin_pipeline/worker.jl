@@ -23,15 +23,15 @@ flush(stderr)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    "experiments/fai_benchmarks/chorin_pipeline/results_nocond"
+    joinpath(@__DIR__, "results_nocond")
 else
-    "experiments/fai_benchmarks/chorin_pipeline/results"
+    joinpath(@__DIR__, "results")
 end
 base_folder = get(ENV, "CHORIN_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = "experiments/fai_benchmarks/chorin_pipeline/masks.jld2"
+const MASK_FILE = joinpath(@__DIR__, "masks.jld2")
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)

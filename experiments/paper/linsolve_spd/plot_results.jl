@@ -13,7 +13,7 @@ Reads the single results file of worker.jl and generates, in `plots/`:
        solve ran through. The y-axis is the number of local blocks checked (before the stop, if any).
 plus `summary.md` with the numbers.
 
-Usage: julia --project=. experiments/paper/linsolve_spd/plot_results.jl [results_file]
+Usage: julia --project=experiments experiments/paper/linsolve_spd/plot_results.jl [results_file]
 """
 
 using JLD2
@@ -25,7 +25,7 @@ gr()
 default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 ENV["GKSwstype"] = "100"
 
-const BASE_FOLDER = "experiments/paper/linsolve_spd"
+const BASE_FOLDER = @__DIR__
 const RESULTS_FILE = length(ARGS) > 0 ? ARGS[1] : joinpath(BASE_FOLDER, "results", "linsolve_spd.jld2")
 const PLOTS_DIR = joinpath(dirname(RESULTS_FILE), "..", "plots")
 mkpath(PLOTS_DIR)

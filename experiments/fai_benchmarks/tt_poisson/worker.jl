@@ -23,9 +23,9 @@ flush(stderr)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    "experiments/fai_benchmarks/tt_poisson/results_nocond"
+    joinpath(@__DIR__, "results_nocond")
 else
-    "experiments/fai_benchmarks/tt_poisson/results"
+    joinpath(@__DIR__, "results")
 end
 base_folder = get(ENV, "TT_POISSON_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")

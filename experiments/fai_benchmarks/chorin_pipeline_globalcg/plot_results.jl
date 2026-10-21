@@ -28,7 +28,7 @@ default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", marg
 
 # Configuration
 ENV["GKSwstype"] = "100"
-base_folder = "experiments/fai_benchmarks/chorin_pipeline_globalcg/results"
+base_folder = joinpath(@__DIR__, "results")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 

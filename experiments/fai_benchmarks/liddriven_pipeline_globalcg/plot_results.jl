@@ -13,7 +13,7 @@
 
     Global CG does not record local Krylov condition numbers.
 
-    Usage: julia --project=. experiments/fai_benchmarks/liddriven_pipeline_globalcg/plot_results.jl [single|double]
+    Usage: julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/plot_results.jl [single|double]
     The lid count selects the results folder (`results_singlelid`/`results` or `results_doublelid`); without it, it
     is detected from the folders that exist.
 """
@@ -33,7 +33,7 @@ default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", marg
 ENV["GKSwstype"] = "100"
 include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
-results_root = "experiments/fai_benchmarks/liddriven_pipeline_globalcg"
+results_root = @__DIR__
 const RESULTS_SUFFIX = cavity_results_suffix(
     s -> isfile(joinpath(results_root, "results" * s, "collected_results.jld2"))
 )

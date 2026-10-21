@@ -1,7 +1,7 @@
 using JLD2
 using DataFrames
 
-base_folder = "experiments/fai_benchmarks/chorin_pipeline_globalcg/results"
+base_folder = joinpath(@__DIR__, "results")
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()

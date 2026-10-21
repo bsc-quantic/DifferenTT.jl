@@ -27,7 +27,7 @@ default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", marg
 
 # Configuration
 ENV["GKSwstype"] = "100"
-base_folder = "experiments/fai_benchmarks/tt_poisson_global"
+base_folder = @__DIR__
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
