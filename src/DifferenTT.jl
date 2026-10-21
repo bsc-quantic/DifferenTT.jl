@@ -9,6 +9,7 @@ using KrylovKit
 using LinearAlgebra
 using Logging: NullLogger, with_logger
 using PrecompileTools: @compile_workload, @setup_workload
+using Preferences: set_preferences!
 using Printf
 using Random
 using TensorCrossInterpolation
@@ -176,6 +177,8 @@ public TTCG, TTGMRES, KrylovUpdater, QRUpdater, positions_sum, krylov_numiters, 
 public dense_projected_operator, preconditioned_linsolve
 public AbstractUpdater, bind_observer, default_differenTT_checkdone
 public AbstractALSExpansion, NullExpansion, RandomSPSDexpansion, RandomLTexpansion, ResidualExpansion
+# Precompilation
+public set_precompile_workload
 
 function __init__()
     _register_plots_error_hint()

@@ -10,7 +10,45 @@
 # five-variable TT problem, and the dense conversions (`contract_mpo`, `contract_mps`, `mat2mpo`, `vec2mps`), which
 # specialize on the tensor order, for the site counts used here. Other cases, other array backends (e.g. `CuArray`),
 # element types and random number generators other than `Xoshiro` and `Random.default_rng()` compile on their first
-# call, as before.
+# call, as before. `set_precompile_workload` turns the workload off, e.g. while developing the package.
+"""
+    set_precompile_workload(enabled::Bool; default_environment::Bool=false) -> Bool
+
+Turn the precompilation workload of DifferenTT on (`true`, the default) or off (`false`).
+
+When the package is precompiled, i.e. after it is installed or updated and after every change to its source, we run
+its common paths on small problems: the QTT operators, the local and global solvers, the FAI preconditioner, cross
+interpolation and the Navier–Stokes steps. The native code compiled for them is stored with the package, so that the
+first calls of every later session load it instead of compiling it, which makes them several times faster. The price
+is about two minutes of precompilation instead of a few seconds. When the source changes often, e.g. while developing
+the package, we recommend to turn the workload off.
+
+The setting is the preference `precompile_workload` of DifferenTT, stored in the `LocalPreferences.toml` of the active
+environment, or, with `default_environment = true`, of the default environment `@v#.#`, which every environment whose
+load path includes it inherits; the setting of the active environment takes precedence. Julia records the preference
+with the precompiled package, so the change takes effect in a new session: restart Julia, and the next
+`using DifferenTT` precompiles the package again.
+
+# Examples
+
+```julia
+DifferenTT.set_precompile_workload(false)                            # in the active environment
+DifferenTT.set_precompile_workload(false; default_environment=true)  # in every environment of this machine
+DifferenTT.set_precompile_workload(true)                             # back to the default
+```
+"""
+function set_precompile_workload(enabled::Bool; default_environment::Bool=false)
+    if default_environment
+        project_toml = Base.load_path_expand("@v#.#")
+        mkpath(dirname(project_toml))
+        isfile(project_toml) || touch(project_toml)
+        set_preferences!(DifferenTT, "precompile_workload" => enabled; force=true, project_toml)
+    else
+        set_preferences!(DifferenTT, "precompile_workload" => enabled; force=true)
+    end
+    return enabled
+end
+
 @setup_workload begin
     dirichlet = BoundaryCond1d(DirichletBC(1.0), DirichletBC(2.0))
     neumann_dirichlet = BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0))
