@@ -898,11 +898,12 @@ function block_effects(
         end
         p = isfinite(fit.F) ? (1 + exceed) / (nperm + 1) : NaN
 
-        hosts_of(r) = if hasproperty(gs, :hostname)
-            join(sort(unique(String[string(h) for h in gs.hostname[gs.repeat .== r] if !ismissing(h)])), "+")
-        else
-            ""
-        end
+        hosts_of(r) =
+            if hasproperty(gs, :hostname)
+                join(sort(unique(String[string(h) for h in gs.hostname[gs.repeat .== r] if !ismissing(h)])), "+")
+            else
+                ""
+            end
         slow, fast = argmax(fit.be), argmin(fit.be)
         push!(
             out,
@@ -1130,11 +1131,12 @@ function write_variability_summary(
         sb = [100 * (exp(e.sd_block) - 1) for e in bfx]
         sr = [100 * (exp(e.sd_resid) - 1) for e in bfx]
         worst = bfx[argmax(sb)]
-        pct_range(v) = if round(minimum(v), digits=1) == round(maximum(v), digits=1)
-            @sprintf("%.1f%%", minimum(v))
-        else
-            @sprintf("%.1f%%–%.1f%%", minimum(v), maximum(v))
-        end
+        pct_range(v) =
+            if round(minimum(v), digits=1) == round(maximum(v), digits=1)
+                @sprintf("%.1f%%", minimum(v))
+            else
+                @sprintf("%.1f%%–%.1f%%", minimum(v), maximum(v))
+            end
         println(
             io,
             @sprintf(
@@ -1190,20 +1192,20 @@ function write_variability_summary(
                 "the per-repeat correlation is undefined"
             else
                 @sprintf(
-                "the median Pearson correlation between solve time and iteration count across repeats is %.2f",
-                median(varying_corr)
-            )
+                    "the median Pearson correlation between solve time and iteration count across repeats is %.2f",
+                    median(varying_corr)
+                )
             end
             verdict = if isempty(varying_corr)
                 ""
             else
                 (
-                if median(varying_corr) >= 0.7
-                    ", so the timing spread largely tracks the iteration spread (algorithmic variability)"
-                else
-                    ", so the timing spread is only partly explained by iteration spread (machine noise contributes)"
-                end
-            )
+                    if median(varying_corr) >= 0.7
+                        ", so the timing spread largely tracks the iteration spread (algorithmic variability)"
+                    else
+                        ", so the timing spread is only partly explained by iteration spread (machine noise contributes)"
+                    end
+                )
             end
             s *= "$n_varying of $(n_varying + n_identical) configurations show iteration counts that vary across repeats (random initial guess and/or randomized preconditioner); $corr_txt$verdict. "
         end
@@ -1241,21 +1243,21 @@ function write_variability_summary(
                 "1 (reference)"
             else
                 _fmt_gm(
-                sstat(r, :speedup_solve, :gm),
-                sstat(r, :speedup_solve, :gsd),
-                sstat(r, :speedup_solve, :q25),
-                sstat(r, :speedup_solve, :q75),
-            )
+                    sstat(r, :speedup_solve, :gm),
+                    sstat(r, :speedup_solve, :gsd),
+                    sstat(r, :speedup_solve, :q25),
+                    sstat(r, :speedup_solve, :q75),
+                )
             end
             sp_t = if r.key == "baseline"
                 "1 (reference)"
             else
                 _fmt_gm(
-                sstat(r, :speedup_total, :gm),
-                sstat(r, :speedup_total, :gsd),
-                sstat(r, :speedup_total, :q25),
-                sstat(r, :speedup_total, :q75),
-            )
+                    sstat(r, :speedup_total, :gm),
+                    sstat(r, :speedup_total, :gsd),
+                    sstat(r, :speedup_total, :q25),
+                    sstat(r, :speedup_total, :q75),
+                )
             end
             println(
                 io,
