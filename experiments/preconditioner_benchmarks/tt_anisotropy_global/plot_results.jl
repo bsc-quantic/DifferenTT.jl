@@ -10,7 +10,7 @@ Generates, per dimension N, with the floor F on the x-axis:
 plus crossover_summary.md / crossover_ratio.png across N.
 """
 
-include(joinpath(@__DIR__, "..", "anisotropy_plot_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))
 
 base_folder = "experiments/preconditioner_benchmarks/tt_anisotropy_global"
 results_folder = joinpath(base_folder, "results")

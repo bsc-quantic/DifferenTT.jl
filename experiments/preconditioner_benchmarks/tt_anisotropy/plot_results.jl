@@ -15,7 +15,7 @@ Note: `avg_pc_cond` is the average over sites of the local κ(P⁻¹A) of the pr
 the global κ(P L), so the floor lines are a reference, not a bound.
 """
 
-include(joinpath(@__DIR__, "..", "anisotropy_plot_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))
 
 base_folder = "experiments/preconditioner_benchmarks/tt_anisotropy"
 nocond_folder = joinpath(base_folder, "results_nocond")

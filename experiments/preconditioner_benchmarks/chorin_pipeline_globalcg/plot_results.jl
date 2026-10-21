@@ -32,7 +32,7 @@ base_folder = "experiments/preconditioner_benchmarks/chorin_pipeline_globalcg/re
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
 results_file = joinpath(base_folder, "collected_results.jld2")
 @info "Loading dataframe from $results_file"

@@ -31,7 +31,7 @@ default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", marg
 
 # Configuration
 ENV["GKSwstype"] = "100"
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
 results_root = "experiments/preconditioner_benchmarks/liddriven_pipeline_globalcg"
 const RESULTS_SUFFIX = cavity_results_suffix(

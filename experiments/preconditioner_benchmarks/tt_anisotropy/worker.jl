@@ -3,7 +3,7 @@
 
 Local (ResidualALS) solve of -∇⋅(K∇u) = f with the equicorrelated diffusion tensor
 K = (1-ρ) I + ρ 𝟏𝟏ᵀ, sweeping the floor F of separable preconditioners instead of N.
-Problem definition in ../anisotropy_problem.jl.
+Problem definition in ../../common/anisotropy_problem.jl.
 """
 
 using ITensors
@@ -14,7 +14,7 @@ using TensorCrossInterpolation
 using DifferenTT
 using Random
 
-include(joinpath(@__DIR__, "..", "anisotropy_problem.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_problem.jl"))
 
 # ---- Runtime configuration ----
 # Match BLAS threads to the SLURM allocation (falls back to Julia's default if not under SLURM).

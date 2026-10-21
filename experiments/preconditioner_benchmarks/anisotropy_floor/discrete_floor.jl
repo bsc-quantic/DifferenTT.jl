@@ -22,7 +22,7 @@ using ITensorMPS
 using TensorCrossInterpolation
 using DifferenTT
 
-include(joinpath(@__DIR__, "..", "anisotropy_problem.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_problem.jl"))
 
 # Keep in sync with the workers
 const N_NODES_PER_DIM = 15

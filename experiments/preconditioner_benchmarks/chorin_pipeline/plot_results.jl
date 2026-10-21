@@ -39,8 +39,8 @@ mkpath(plots_dir)
 
 cond_folder = joinpath(base_folder, "results")
 
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
-include(joinpath(@__DIR__, "..", "snapshot_plot_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "snapshot_plot_utils.jl"))
 
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
 @info "Loading nocond dataframe from $results_file_nocond"

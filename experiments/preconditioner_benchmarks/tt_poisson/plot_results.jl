@@ -35,7 +35,7 @@ mkpath(plots_dir)
 
 omit_unreliable_data = true # Toggle to omit N=4, N=50 and sinc M=1 data
 
-include(joinpath(@__DIR__, "..", "plot_cond_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
 results_file_nocond = joinpath(nocond_folder, "collected_results.jld2")
 @info "Loading nocond dataframe from $results_file_nocond"
