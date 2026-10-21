@@ -16,6 +16,11 @@
 
 SCRIPT_DIR="experiments/validation/liddriven_cavity"
 
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/validation/liddriven_cavity/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
+
 # Number of moving lids: 1 (lid-driven cavity) or 2 (doubly-driven cavity, bottom lid moving in -x).
 # Override with CAVITY_LIDS=2; the results then go to the *_doublelid folders.
 CAVITY_LIDS="${CAVITY_LIDS:-1}"
@@ -47,15 +52,15 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     --error="${LOGS_DIR}/task_%03a.err" <<ARRAY_EOF
 #!/bin/bash
 #SBATCH --job-name=liddriven_cavity${RESULTS_SUFFIX}
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --array=1
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=16
 #SBATCH --time=01-12:00:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0 
+module load ${JULIA_MODULE}
 
 export CAVITY_LIDS="${CAVITY_LIDS}"
 

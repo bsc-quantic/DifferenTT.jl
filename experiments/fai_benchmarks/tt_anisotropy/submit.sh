@@ -2,6 +2,11 @@
 
 SCRIPT_DIR="experiments/fai_benchmarks/tt_anisotropy"
 
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/fai_benchmarks/tt_anisotropy/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
+
 # Must equal length(build_task_list()) in worker.jl:
 # len(system_dims) * len(floor_values) * (1 + len(sinc_M_values) + len(fai_configs) + len(fai_L0_configs))
 # = 2 * 6 * (1 + 5 + 4 + 1)
@@ -32,16 +37,16 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     --error="${LOGS_DIR}/task_%03a.err" <<ARRAY_EOF
 #!/bin/bash
 #SBATCH --job-name=tt_aniso
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --array=1-${NTASKS}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0
+module load ${JULIA_MODULE}
 
 if [ -n "\${SLURM_MEM_PER_NODE}" ]; then
     TASK_MEM_MB=\${SLURM_MEM_PER_NODE}
@@ -68,14 +73,14 @@ COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \
     --error="${LOGS_DIR}/collect.err" <<COLLECT_EOF
 #!/bin/bash
 #SBATCH --job-name=tt_collect
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:10:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0 2>/dev/null || true
+module load ${JULIA_MODULE} 2>/dev/null || true
 
 echo "Collecting results from array job..."
 

@@ -1,5 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=circ_evol
+# Static #SBATCH lines do not expand variables: override the account and QoS with
+#   sbatch --account=<project> --qos=<qos> validation/tunnel2d/tunnel2d.slurm
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 #SBATCH --output=experiments/validation/tunnel2d/circle_data/output.out
@@ -10,7 +12,7 @@
 #SBATCH --qos=gp_bsccase       
 
 # Load necessary modules (Adjust version as needed)
-module load julia/1.12.0
+module load ${JULIA_MODULE:-julia/1.12.0}
 
 # Optional: Print configuration to output for verification
 echo "------------------------------------------------"

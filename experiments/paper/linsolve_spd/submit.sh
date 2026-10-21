@@ -10,6 +10,11 @@
 #
 
 SCRIPT_DIR="experiments/paper/linsolve_spd"
+
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/paper/linsolve_spd/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 LOGS_DIR="${RESULTS_DIR}/logs"
 mkdir -p "${LOGS_DIR}"
@@ -24,15 +29,15 @@ JOB_ID=$(sbatch --parsable \
     --error="${LOGS_DIR}/linsolve_spd_%j.err" <<JOB_EOF
 #!/bin/bash
 #SBATCH --job-name=linsolve_spd
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0
+module load ${JULIA_MODULE}
 
 # 2 GB per core on MN5: leave 20% headroom for BLAS buffers and memory the GC does not track
 if [ -n "\${SLURM_MEM_PER_NODE}" ]; then

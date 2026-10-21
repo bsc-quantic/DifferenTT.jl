@@ -11,6 +11,11 @@
 
 SCRIPT_DIR="experiments/fai_benchmarks/liddriven_pipeline_globalcg"
 
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/fai_benchmarks/liddriven_pipeline_globalcg/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
+
 # GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
@@ -39,17 +44,17 @@ ARRAY_JOB_ID=$(sbatch --parsable \
     --error="${LOGS_DIR}/task_%03a.err" <<ARRAY_EOF
 #!/bin/bash
 #SBATCH --job-name=liddriven_globalcg${RESULTS_SUFFIX}
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 # #SBATCH --array=1-111
 #SBATCH --array=1-10
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=01-12:00:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 #SBATCH --exclusive
 
-module load julia/1.12.0 
+module load ${JULIA_MODULE}
 
 if [ -n "\${SLURM_MEM_PER_NODE}" ]; then
     TASK_MEM_MB=\${SLURM_MEM_PER_NODE}
@@ -79,14 +84,14 @@ COLLECT_JOB_ID=$(sbatch --parsable --dependency=afterany:${ARRAY_JOB_ID} \
     --error="${LOGS_DIR}/collect.err" <<COLLECT_EOF
 #!/bin/bash
 #SBATCH --job-name=liddriven_collect_globalcg
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --time=00:10:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0 2>/dev/null || true
+module load ${JULIA_MODULE} 2>/dev/null || true
 
 export CAVITY_LIDS="${CAVITY_LIDS}"
 
