@@ -37,6 +37,10 @@ using Random
 using Dates
 using Printf
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", string(LinearAlgebra.BLAS.get_num_threads())))
 LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 
@@ -67,7 +71,7 @@ progress(
 )
 
 # ---- Configuration ----
-const BASE_FOLDER = @__DIR__
+const BASE_FOLDER = OUT_ROOT
 const DEFAULT_RESULTS_FILE = joinpath(BASE_FOLDER, "results", "linsolve_spd.jld2")
 const RESULTS_FILE = get(ENV, "LINSOLVE_SPD_RESULTS", DEFAULT_RESULTS_FILE)
 
@@ -76,14 +80,15 @@ const SECTIONS = split(get(ENV, "LINSOLVE_SPD_SECTIONS", join(ALL_SECTIONS, ",")
 all(in(ALL_SECTIONS), SECTIONS) || error("Unknown section in $SECTIONS, expected a subset of $ALL_SECTIONS")
 
 # Bond dimensions of the preconditioners. The truncated inverse also adds its full (lossless) bond dimension.
-const DENSE_MAXDIMS = collect(1:15)
-const TRUNC_MAXDIMS = collect(1:15)
+# Smoke mode: one small system, two bond dimensions, one large size with one bond dimension, two sweeps.
+const DENSE_MAXDIMS = SMOKE ? [1, 2] : collect(1:15)
+const TRUNC_MAXDIMS = SMOKE ? [1, 2] : collect(1:15)
 # The exact A⁻¹ MPO drops only the rounding noise of the dense inverse (ITensor cutoffs are on the squared singular
 # values, so this is a relative Frobenius error of about 1e-14)
 const EXACT_INV_CUTOFF = 1e-28
 
 # Sweeps of every preconditioner build (linsolve and FAI)
-const PRECOND_NSWEEPS = 10
+const PRECOND_NSWEEPS = SMOKE ? 2 : 10
 
 # linsolve_preconditioner build. The residual target is below what a small χ can reach, so the build runs all its
 # sweeps and returns the best preconditioner of each χ (the indefiniteness cannot be blamed on a loose tolerance).
@@ -100,9 +105,9 @@ const RE_NUM = 3000
 const STENCIL_ORDER = 8
 const MASK_FILE = joinpath(@__DIR__, "..", "..", "fai_benchmarks", "chorin_pipeline", "masks.jld2")
 
-const CHORIN_DENSE_NODES = [(4, 4), (5, 5), (6, 6), (7, 7)]
-const CHORIN_LARGE_NODES = [(8, 8), (10, 10)]
-const CHORIN_LARGE_MAXDIMS = [8, 10, 12, 14, 16, 18, 20]
+const CHORIN_DENSE_NODES = SMOKE ? [(4, 4)] : [(4, 4), (5, 5), (6, 6), (7, 7)]
+const CHORIN_LARGE_NODES = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
+const CHORIN_LARGE_MAXDIMS = SMOKE ? [8] : [8, 10, 12, 14, 16, 18, 20]
 # FAI is SPD by construction (Glᵀ Gl): a control for the local spectra of the first Chorin step. Empty to skip.
 const CHORIN_FAI_CONTROL = [(1e7, 4)]
 const CHORIN_FAI_TOL = 0.1
@@ -114,7 +119,7 @@ const CHORIN_TOL = 1e-3
 # The first Chorin step converges in a few sweeps with an SPD preconditioner. The cap only matters if the linsolve
 # preconditioner keeps it from converging. The SPD checks diagonalize every local block (dense, nonsymmetric), which is
 # affordable here because the first-step solution has χ ≈ 40-50 (blocks up to ≈ 8000 rows).
-const CHORIN_SPECTRAL_NSWEEPS = 10
+const CHORIN_SPECTRAL_NSWEEPS = SMOKE ? 2 : 10
 
 # ---- Results file ----
 mkpath(dirname(RESULTS_FILE))

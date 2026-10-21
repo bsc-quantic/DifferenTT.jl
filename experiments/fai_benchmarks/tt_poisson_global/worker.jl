@@ -70,7 +70,11 @@ end
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-const default_base_folder = joinpath(@__DIR__, "results")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
+const default_base_folder = joinpath(OUT_ROOT, "results")
 base_folder = get(ENV, "TT_POISSON_GLOBAL_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -81,13 +85,13 @@ const N_SOLVE_REPEATS = 2
 
 # Number of sweeps used to build the FAI preconditioner. Overridable for fast local
 # verification; the default (30) matches the literal used today.
-const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_GLOBAL_FAI_NSWEEPS", "30"))
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_GLOBAL_FAI_NSWEEPS", SMOKE ? "3" : "30"))
 
 # Sweeping over number of dimensions N
 # const system_dims = [5, 10, 15, 20, 25, 30, 40, 50]
-const system_dims = [5, 10, 15, 20, 25]
+const system_dims = SMOKE ? [5] : [5, 10, 15, 20, 25]
 
-const N_NODES_PER_DIM = 15
+const N_NODES_PER_DIM = SMOKE ? 7 : 15
 
 const maxdims_map = Dict(5 => 20, 10 => 25, 15 => 25, 20 => 30, 25 => 30, 30 => 50, 40 => 50, 50 => 50)
 
@@ -101,8 +105,9 @@ const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-2, 25 => 1e-
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
-const sinc_M_values = [3, 4, 5, 7, 10]
-const fai_configs = [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
+# Smoke mode keeps the baseline and one FAI task (the warm-up already runs the Sinc and FAI paths).
+const sinc_M_values = SMOKE ? Int[] : [3, 4, 5, 7, 10]
+const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""

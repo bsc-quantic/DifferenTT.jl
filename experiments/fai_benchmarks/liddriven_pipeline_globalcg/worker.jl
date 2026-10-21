@@ -68,12 +68,16 @@ flush(stderr)
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 # Number of moving lids: 1 is the lid-driven cavity, 2 the doubly-driven cavity (bottom lid moving in -x)
 const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
-const default_base_folder = joinpath(@__DIR__, "results") * RESULTS_SUFFIX
+const default_base_folder = joinpath(OUT_ROOT, "results") * RESULTS_SUFFIX
 base_folder = get(ENV, "LIDDRIVEN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -102,7 +106,8 @@ const dt_map = Dict(
     (12, 12) => 0.00001,
 )
 
-const n_steps_map = Dict((8, 8) => 50, (10, 10) => 20, (11, 11) => 10, (12, 12) => 10)
+# Smoke mode: two steps, the baseline and one FAI task.
+const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2) : Dict((8, 8) => 50, (10, 10) => 20, (11, 11) => 10, (12, 12) => 10)
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -118,13 +123,14 @@ const system_sizes = [(8, 8)]
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
 
-const g_maxdims = 2:10
+const g_maxdims = SMOKE ? (2:2) : (2:10)
 
 const maxdims_map = Dict((8, 8) => 120, (10, 10) => 150, (11, 11) => 200, (12, 12) => 250)
 
 const cutoff_map = Dict((8, 8) => 1e-13, (10, 10) => 1e-13, (11, 11) => 1e-13, (12, 12) => 1e-13)
 
-const maxiter_map = Dict((8, 8) => 3000, (10, 10) => 3000, (11, 11) => 4000, (12, 12) => 5000)
+# Smoke mode caps the global iterations: it checks that the solver runs, not that it converges.
+const maxiter_map = SMOKE ? Dict((8, 8) => 30, (10, 10) => 30, (11, 11) => 30, (12, 12) => 30) : Dict((8, 8) => 3000, (10, 10) => 3000, (11, 11) => 4000, (12, 12) => 5000)
 
 const tol_map = Dict((8, 8) => 1e-3, (10, 10) => 1e-3, (11, 11) => 1e-3, (12, 12) => 1e-3)
 

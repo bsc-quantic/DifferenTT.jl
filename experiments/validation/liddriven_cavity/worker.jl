@@ -55,6 +55,10 @@ using JLD2
 using DifferenTT
 using Random
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 const cpus_per_task = parse(Int, get(ENV, "SLURM_CPUS_PER_TASK", "1"))
 LinearAlgebra.BLAS.set_num_threads(cpus_per_task)
 @info "Set BLAS threads to $cpus_per_task"
@@ -67,9 +71,9 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder = (
     if use_nocond
-        joinpath(@__DIR__, "results_nocond")
+        joinpath(OUT_ROOT, "results_nocond")
     else
-        joinpath(@__DIR__, "results")
+        joinpath(OUT_ROOT, "results")
     end
 ) * RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -80,7 +84,7 @@ const RE_NUM = 1000
 const U_LID = 1.0
 const STENCIL_ORDER = 2
 const WALL_FORMULA = :jensen
-const SAVE_EVERY = 200
+const SAVE_EVERY = SMOKE ? 2 : 200
 
 # Four no-slip walls with ψ = 0, the top one moving in +x and, for two lids, the bottom one moving in -x.
 # DirichletBC logs at every construction: build the boundary conditions once
@@ -91,10 +95,11 @@ else
 end
 const CAVITY_BCS = vorticity_boundary_conditions(FACES)
 
-const tf_map = Dict((7, 7) => 40.0, (8, 8) => 40.0)
+# Smoke mode: 4 steps of dt = 0.005, with a snapshot every 2 steps.
+const tf_map = SMOKE ? Dict((7, 7) => 0.02, (8, 8) => 0.02) : Dict((7, 7) => 40.0, (8, 8) => 40.0)
 
 # RK4: dt = 0.005 at 128² and 0.002 at 256², about half the CFL bound
-const n_steps_map = Dict((7, 7) => 8000, (8, 8) => 20000)
+const n_steps_map = SMOKE ? Dict((7, 7) => 4, (8, 8) => 4) : Dict((7, 7) => 8000, (8, 8) => 20000)
 
 # Overridable for fast verification only: stops the run after the given number of steps, keeping the time step
 # tf_map[nodes] / n_steps_map[nodes]. The default reproduces n_steps_map[nodes] exactly.

@@ -26,12 +26,16 @@ minutes.
 using JLD2
 using DataFrames
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 # Number of moving lids of the worker run (see worker.jl): 2 reads the doubly-driven cavity results
 const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
-base_folder = joinpath(@__DIR__, "results") * RESULTS_SUFFIX
+base_folder = joinpath(OUT_ROOT, "results") * RESULTS_SUFFIX
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()

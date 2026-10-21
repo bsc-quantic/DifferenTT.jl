@@ -21,11 +21,15 @@ using Plots
 using Printf
 using LaTeXStrings
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 gr()
 default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 ENV["GKSwstype"] = "100"
 
-const BASE_FOLDER = @__DIR__
+const BASE_FOLDER = OUT_ROOT
 const RESULTS_FILE = length(ARGS) > 0 ? ARGS[1] : joinpath(BASE_FOLDER, "results", "linsolve_spd.jld2")
 const PLOTS_DIR = joinpath(dirname(RESULTS_FILE), "..", "plots")
 mkpath(PLOTS_DIR)

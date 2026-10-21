@@ -37,11 +37,15 @@ using LinearAlgebra
 using JLD2
 using DifferenTT
 
-box_size = (2.0, 1.0)
-system_sizes = [(8, 8), (10, 10), (12, 12)]
-mask_path = joinpath(@__DIR__, "masks.jld2")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
-maskplots_subfolder = joinpath(@__DIR__, "maskplots")
+box_size = (2.0, 1.0)
+system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10), (12, 12)]
+mask_path = joinpath(OUT_ROOT, "masks.jld2")
+
+maskplots_subfolder = joinpath(OUT_ROOT, "maskplots")
 mkpath(maskplots_subfolder)
 
 function circle(x, y; bx=0.5, by=0.5, rad=0.1)

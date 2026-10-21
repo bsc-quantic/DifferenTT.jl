@@ -79,11 +79,15 @@ end
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    joinpath(@__DIR__, "results_nocond")
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    joinpath(@__DIR__, "results")
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "TT_POISSON_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -97,23 +101,24 @@ const N_SOLVE_REPEATS = use_nocond ? 2 : 1
 
 # Number of sweeps used to build the FAI preconditioner. Overridable for fast local verification;
 # the default (30) matches the value used in every existing FAI run.
-const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_FAI_NSWEEPS", "30"))
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_POISSON_FAI_NSWEEPS", SMOKE ? "3" : "30"))
 
 # Sweeping over number of dimensions N
-const system_dims = [5, 10, 15, 20, 25]
-const N_NODES_PER_DIM = 15
+const system_dims = SMOKE ? [5] : [5, 10, 15, 20, 25]
+const N_NODES_PER_DIM = SMOKE ? 7 : 15
 const residual_tol = 1e-7
 
 const maxdims_map = Dict(5 => 20, 10 => 25, 15 => 25, 20 => 30, 25 => 30, 30 => 50, 40 => 50, 50 => 50)
 
-const nsweeps_map = Dict(5 => 50, 10 => 50, 15 => 50, 20 => 60, 25 => 60, 30 => 80, 40 => 100, 50 => 120)
+const nsweeps_map = SMOKE ? Dict(5 => 5) : Dict(5 => 50, 10 => 50, 15 => 50, 20 => 60, 25 => 60, 30 => 80, 40 => 100, 50 => 120)
 
 const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-2, 25 => 1e-1, 30 => 2e-1, 40 => 2e-1, 50 => 2e-1)
 
 # We will test: Baseline, Sinc-Quadrature (M sweep), FAI (mu and gdim sweep)
 # To simplify the job array, we just do a few configs per N.
-const sinc_M_values = [3, 4, 5, 7, 10]
-const fai_configs = [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
+# Smoke mode keeps the baseline and one FAI task (the warm-up already runs the Sinc and FAI paths).
+const sinc_M_values = SMOKE ? Int[] : [3, 4, 5, 7, 10]
+const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""

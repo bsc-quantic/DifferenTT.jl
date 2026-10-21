@@ -26,7 +26,11 @@ minutes.
 using JLD2
 using DataFrames
 
-base_folder = joinpath(@__DIR__, "results")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
+base_folder = joinpath(OUT_ROOT, "results")
 tasks_folder = joinpath(base_folder, "tasks")
 
 df = DataFrame()

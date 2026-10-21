@@ -50,13 +50,17 @@ using Statistics
 using Printf
 using LaTeXStrings
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 gr()
 default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 ENV["GKSwstype"] = "100"
 include(joinpath(@__DIR__, "..", "..", "common", "plot_cond_utils.jl"))
 
-base_folder = @__DIR__
+base_folder = OUT_ROOT
 const RESULTS_SUFFIX = cavity_results_suffix(
     s -> isfile(joinpath(base_folder, "results_nocond" * s, "collected_results.jld2"))
 )

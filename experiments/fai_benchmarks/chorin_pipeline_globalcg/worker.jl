@@ -75,12 +75,16 @@ flush(stderr)
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-const default_base_folder = joinpath(@__DIR__, "results")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
+const default_base_folder = joinpath(OUT_ROOT, "results")
 base_folder = get(ENV, "CHORIN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = joinpath(@__DIR__, "masks.jld2")
+const MASK_FILE = joinpath(OUT_ROOT, "masks.jld2")
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
@@ -89,7 +93,8 @@ const STENCIL_ORDER = 8
 
 const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002, (12, 12) => 0.00001)
 
-const n_steps_map = Dict((8, 8) => 50, (10, 10) => 20, (12, 12) => 5)
+# Smoke mode: one grid size, two steps, the baseline and one FAI task, on the cylinder mask that smoke.jl generates.
+const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (12, 12) => 2) : Dict((8, 8) => 50, (10, 10) => 20, (12, 12) => 5)
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -98,18 +103,19 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
 end
 
 # const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const system_sizes = [(8, 8), (10, 10)]
+const system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
 
-const g_maxdims = 2:10
+const g_maxdims = SMOKE ? (2:2) : (2:10)
 
 const maxdims_map = Dict((8, 8) => 150, (10, 10) => 200, (12, 12) => 250)
 
 const cutoff_map = Dict((8, 8) => 1e-13, (10, 10) => 1e-13, (12, 12) => 1e-13)
 
-const maxiter_map = Dict((8, 8) => 3000, (10, 10) => 3000, (12, 12) => 5000)
+# Smoke mode caps the global iterations: it checks that the solver runs, not that it converges.
+const maxiter_map = SMOKE ? Dict((8, 8) => 30, (10, 10) => 30, (12, 12) => 30) : Dict((8, 8) => 3000, (10, 10) => 3000, (12, 12) => 5000)
 
 const tol_map = Dict((8, 8) => 1e-2, (10, 10) => 1e-2, (12, 12) => 1e-2)
 

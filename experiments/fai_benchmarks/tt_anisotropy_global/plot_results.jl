@@ -39,9 +39,13 @@ There is no job script: we run it locally on the collected data.
 None.
 """
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))
 
-base_folder = @__DIR__
+base_folder = OUT_ROOT
 results_folder = joinpath(base_folder, "results")
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)

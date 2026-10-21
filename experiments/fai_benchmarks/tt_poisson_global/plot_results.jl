@@ -43,13 +43,17 @@ using Statistics
 using Printf
 using LaTeXStrings
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 # Use GR backend
 gr()
 default(; fmt=:png, dpi=300, size=(900, 500), fontfamily="Computer Modern", margin=5Plots.mm)
 
 # Configuration
 ENV["GKSwstype"] = "100"
-base_folder = @__DIR__
+base_folder = OUT_ROOT
 plots_dir = joinpath(base_folder, "plots")
 mkpath(plots_dir)
 

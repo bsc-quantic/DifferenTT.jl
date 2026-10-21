@@ -1,3 +1,7 @@
+# Smoke mode is not implemented for this exploratory script yet: it is added with the update of X8 (`Revise` and `MKL`, session 5a-4).
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+SMOKE && error("smoke mode is not implemented for this script yet (X8, session 5a-4)")
+
 using ITensors
 using ITensorMPS
 using TensorCrossInterpolation

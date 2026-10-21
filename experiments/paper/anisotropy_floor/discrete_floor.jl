@@ -49,14 +49,16 @@ using TensorCrossInterpolation
 using DifferenTT
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_problem.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
 
 # Keep in sync with the workers
 const N_NODES_PER_DIM = 15
-const floor_values = [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
-const floor_dims = isempty(ARGS) ? [3, 4, 5] : parse.(Int, ARGS)
+const floor_values = SMOKE ? [1.0, 10.0] : [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
+const floor_dims = SMOKE ? [3] : (isempty(ARGS) ? [3, 4, 5] : parse.(Int, ARGS))
 const rank_tols = [1e-4, 1e-6, 1e-8]
 
-const out_folder = @__DIR__
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const out_folder = output_root(@__DIR__; fresh=true)
 
 """
 1D factors in the benchmark conventions: A = -d²/dx² and C = d/dx (centered).

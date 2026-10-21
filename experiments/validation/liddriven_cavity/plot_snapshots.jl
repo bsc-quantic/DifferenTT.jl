@@ -36,6 +36,10 @@ using DifferenTT
 using JLD2
 using Plots
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 # Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/plot_snapshots.jl [nocond]
 # Number of moving lids of the worker run (see worker.jl): 2 reads the doubly-driven cavity results
 const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
@@ -44,9 +48,9 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = (
     if use_nocond
-        joinpath(@__DIR__, "results_nocond")
+        joinpath(OUT_ROOT, "results_nocond")
     else
-        joinpath(@__DIR__, "results")
+        joinpath(OUT_ROOT, "results")
     end
 ) * RESULTS_SUFFIX
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
@@ -64,7 +68,7 @@ plot_dir = base_folder
 # Axes are grid coordinates: the walls are ghost nodes, so physical coordinates are shifted by +dx
 diff_ops = nothing
 
-for i in 200:200:25000
+for i in (SMOKE ? (2:2:4) : (200:200:25000))
     if haskey(file, "omega_field_$i")
         @info "Generating plots for step $i"
         omega_field = file["omega_field_$i"]

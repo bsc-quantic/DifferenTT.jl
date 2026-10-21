@@ -76,17 +76,21 @@ flush(stderr)
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    joinpath(@__DIR__, "results_nocond")
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    joinpath(@__DIR__, "results")
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "CHORIN_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = joinpath(@__DIR__, "masks.jld2")
+const MASK_FILE = joinpath(OUT_ROOT, "masks.jld2")
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
@@ -95,10 +99,11 @@ const STENCIL_ORDER = 8
 
 const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002, (12, 12) => 0.00001)
 
-const n_steps_map = Dict((8, 8) => 100, (10, 10) => 50, (12, 12) => 20)
+# Smoke mode: one grid size, two steps, the baseline and one FAI task, on the cylinder mask that smoke.jl generates.
+const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (12, 12) => 2) : Dict((8, 8) => 100, (10, 10) => 50, (12, 12) => 20)
 
-const system_sizes = [(8, 8), (10, 10)]
-const cond_nodes = [(8, 8), (10, 10)]
+const system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
+const cond_nodes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
 # const system_sizes = [(10, 10)]
 # const cond_nodes  = [(10, 10)]
 
@@ -109,7 +114,7 @@ end
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
 
-const g_maxdims = 2:10
+const g_maxdims = SMOKE ? (2:2) : (2:10)
 
 const maxdims_map = Dict((8, 8) => 150, (10, 10) => 200, (12, 12) => 250)
 

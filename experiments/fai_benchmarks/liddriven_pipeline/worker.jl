@@ -69,6 +69,10 @@ flush(stderr)
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 # Number of moving lids: 1 is the lid-driven cavity, 2 the doubly-driven cavity (bottom lid moving in -x)
 const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
@@ -77,9 +81,9 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = (
     if use_nocond
-        joinpath(@__DIR__, "results_nocond")
+        joinpath(OUT_ROOT, "results_nocond")
     else
-        joinpath(@__DIR__, "results")
+        joinpath(OUT_ROOT, "results")
     end
 ) * RESULTS_SUFFIX
 base_folder = get(ENV, "LIDDRIVEN_RESULTS_DIR", default_base_folder)
@@ -110,7 +114,8 @@ const dt_map = Dict(
     (12, 12) => 0.00001,
 )
 
-const n_steps_map = Dict((8, 8) => 1000, (10, 10) => 500, (11, 11) => 100, (12, 12) => 100)
+# Smoke mode: one grid size, two steps, the baseline and one FAI task.
+const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2) : Dict((8, 8) => 1000, (10, 10) => 500, (11, 11) => 100, (12, 12) => 100)
 
 # Overridable for fast verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -118,8 +123,8 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
     return isempty(override) ? n_steps_map[nodes] : parse(Int, override)
 end
 
-const system_sizes = [(11, 11)]
-const cond_nodes = [(11, 11)]
+const system_sizes = SMOKE ? [(8, 8)] : [(11, 11)]
+const cond_nodes = SMOKE ? [(8, 8)] : [(11, 11)]
 # 2^11 x 2^11 at Re = 24000 (no condition numbers; the array has 1 + length(g_maxdims) = 10 tasks):
 # const system_sizes = [(11, 11)]
 # const cond_nodes  = Tuple{Int,Int}[]
@@ -133,7 +138,7 @@ end
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
 
-const g_maxdims = 2:10
+const g_maxdims = SMOKE ? (2:2) : (2:10)
 
 const maxdims_map = Dict((8, 8) => 100, (10, 10) => 150, (11, 11) => 200, (12, 12) => 200)
 

@@ -76,11 +76,15 @@ end
 include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
+
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    joinpath(@__DIR__, "results_nocond")
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    joinpath(@__DIR__, "results")
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "TT_ANISOTROPY_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -91,7 +95,7 @@ mkpath(TASKS_DIR)
 const N_SOLVE_REPEATS = use_nocond ? 2 : 1
 
 # Number of sweeps used to build the FAI preconditioner. Overridable for fast local verification.
-const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_ANISOTROPY_FAI_NSWEEPS", "30"))
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_ANISOTROPY_FAI_NSWEEPS", SMOKE ? "3" : "30"))
 
 # Right-hand side: :ones (mean exit time, default), :random or :manufactured. See build_rhs.
 const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
@@ -101,24 +105,25 @@ const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
 # The number of tasks is length(system_dims) * length(floor_values) *
 # (1 + length(sinc_M_values) + length(fai_configs) + length(fai_L0_configs)); keep NTASKS in
 # submit.sh in sync.
-const system_dims = [5, 10]
-const floor_values = [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
-const N_NODES_PER_DIM = 15
+const system_dims = SMOKE ? [5] : [5, 10]
+const floor_values = SMOKE ? [10.0] : [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
+const N_NODES_PER_DIM = SMOKE ? 7 : 15
 const residual_tol = 1e-3
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
 const maxdims_map = Dict(5 => 50, 10 => 70, 15 => 100, 20 => 150)
 
-const nsweeps_map = Dict(5 => 30, 10 => 30, 15 => 40, 20 => 50)
+const nsweeps_map = SMOKE ? Dict(5 => 5) : Dict(5 => 30, 10 => 30, 15 => 40, 20 => 50)
 
 const pc_tol_map = Dict(5 => 1e-3, 10 => 1e-3, 15 => 1e-3, 20 => 1e-2)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
-const sinc_M_values = [3, 4, 5, 7, 10]
-const fai_configs = [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
-const fai_L0_configs = [(1e7, 10)]
+# Smoke mode keeps the baseline, one FAI task and the FAI control (the warm-up already runs the Sinc path).
+const sinc_M_values = SMOKE ? Int[] : [3, 4, 5, 7, 10]
+const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
+const fai_L0_configs = SMOKE ? [(1e7, 4)] : [(1e7, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""

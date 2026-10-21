@@ -39,13 +39,17 @@ using Plots
 using Printf
 using Statistics
 
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+
 get(ENV, "CAVITY_LIDS", "1") == "1" || error("ghia_comparison.jl only applies to the single-lid cavity (CAVITY_LIDS=1)")
 
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 base_folder = if use_nocond
-    joinpath(@__DIR__, "results_nocond")
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    joinpath(@__DIR__, "results")
+    joinpath(OUT_ROOT, "results")
 end
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 isfile(snapshots_file) || error("Snapshots file not found at $snapshots_file")
