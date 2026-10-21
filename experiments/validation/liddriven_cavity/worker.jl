@@ -9,7 +9,7 @@ velocity and wall vorticity. Mirrors `experiments/inse/chorin_worker_8x8/worker.
 Set `CAVITY_LIDS=2` for the doubly-driven cavity of the same paper (Fig. 5): the bottom lid also moves, with
 velocity `-U_LID`. Its results go to the `*_doublelid` folders.
 
-Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/inse/liddriven_cavity/worker.jl [task_id] [nocond]
+Usage: [CAVITY_LIDS=1|2] julia --project=. experiments/validation/liddriven_cavity/worker.jl [task_id] [nocond]
 """
 
 using ITensors
@@ -31,7 +31,7 @@ const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 base_folder =
-    (use_nocond ? "experiments/inse/liddriven_cavity/results_nocond" : "experiments/inse/liddriven_cavity/results") *
+    (use_nocond ? "experiments/validation/liddriven_cavity/results_nocond" : "experiments/validation/liddriven_cavity/results") *
     RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)

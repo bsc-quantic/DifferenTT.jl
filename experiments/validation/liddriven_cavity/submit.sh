@@ -5,7 +5,7 @@
 # Submits a single-task SLURM job that runs worker.jl, then plots the saved snapshots with
 # plot_snapshots.jl and compares the last snapshot with Ghia et al. (1982) with ghia_comparison.jl.
 #
-# Usage: [CAVITY_LIDS=1|2] bash experiments/inse/liddriven_cavity/submit.sh [nocond]
+# Usage: [CAVITY_LIDS=1|2] bash experiments/validation/liddriven_cavity/submit.sh [nocond]
 #
 # By default, local condition-number estimates are collected during the evolution and results go
 # to results/. Pass "nocond" to skip them and write to results_nocond/ instead.
@@ -14,7 +14,7 @@
 # skipped (it has no doubly-driven reference data).
 #
 
-SCRIPT_DIR="experiments/inse/liddriven_cavity"
+SCRIPT_DIR="experiments/validation/liddriven_cavity"
 
 # Number of moving lids: 1 (lid-driven cavity) or 2 (doubly-driven cavity, bottom lid moving in -x).
 # Override with CAVITY_LIDS=2; the results then go to the *_doublelid folders.

@@ -11,7 +11,7 @@ using DifferenTT
 
 BLAS.set_num_threads(8)
 
-destination_folder = "experiments/inse/tunnel2d/circle_data"
+destination_folder = "experiments/validation/tunnel2d/circle_data"
 destination_file = "circle_data.jld2"
 
 # logger = init_logger(destination_folder)
@@ -88,7 +88,7 @@ heatmap(
 
 mask(x) = circle(x...)
 
-# longevol_data = load("experiments/inse/tunnel2d/restricted_bm_evol_data/chorin.jld2")
+# longevol_data = load("experiments/validation/tunnel2d/restricted_bm_evol_data/chorin.jld2")
 # kickstart_mps_vx, kickstart_mps_vy = last(longevol_data["u_fields"])
 
 box_size = (2.0, 1.0)
@@ -104,7 +104,7 @@ sites = siteinds(arch)
 save_mask = true
 mask_name = "circle_mask"
 load_mask = false
-mask_path = "experiments/inse/tunnel2d/"*mask_name*".jld2"
+mask_path = "experiments/validation/tunnel2d/"*mask_name*".jld2"
 
 object_mask = nothing
 
@@ -117,7 +117,7 @@ if save_mask
     @show ranks_mask
     @show error_mask
     object_mask = replace_siteinds!(MPS(tci_mask), sites)
-    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
+    visualize_scalar(object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
 
     # save(mask_path, mask_name, object_mask)
 end
@@ -127,7 +127,7 @@ if load_mask
     length(object_mask) != sum(nodes) && throw(ArgumentError("Given object_mask does not have the required length."))
     siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
 
-    visualize_scalar(object_mask, grid, arch, "experiments/inse/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
+    visualize_scalar(object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
 end
 
 isnothing(object_mask) && @warn "Mask was not initialized."
@@ -180,8 +180,8 @@ v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
 
 p_field = ScalarField(sites, arch, bcsp)
 
-# visualize_vector(v_field, grid, "experiments/inse/tunnel2d/tunnel_field.png"; npoints=512, quiver_npoints=5, arrow_scale=0.1, aspect_ratio=:equal, size = fig_size)
-# visualize_vorticity(v_field, grid, "experiments/inse/tunnel2d/tunnel_vorticity.png"; npoints=512, quiver_npoints=20, arrow_scale=0.1, aspect_ratio=:equal, size = fig_size)
+# visualize_vector(v_field, grid, "experiments/validation/tunnel2d/tunnel_field.png"; npoints=512, quiver_npoints=5, arrow_scale=0.1, aspect_ratio=:equal, size = fig_size)
+# visualize_vorticity(v_field, grid, "experiments/validation/tunnel2d/tunnel_vorticity.png"; npoints=512, quiver_npoints=20, arrow_scale=0.1, aspect_ratio=:equal, size = fig_size)
 
 updater_kwargs = LocalUpdaterArgs(;
     ishermitian=true,
