@@ -385,7 +385,21 @@ Chorin projection, and when the local dimension is small (Sec. 5.2); with a larg
 becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (23) for ``D`` holds only if ``\\tilde{G}_L``
 solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error of its row, but
 on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy (Appendix B.6).
-Larger values of ``\\mu`` also make the system worse conditioned for Krylov local solvers.
+
+The value of ``\\mu`` sets the conditioning of the build, although not its exact solution. Since ``\\mathbb{P}_L``
+acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (22) is block diagonal, with the leading principal
+submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and ``\\mu`` times the
+identity on the entries above the diagonal, so its condition number is
+``\\max(\\mu, \\lambda_{\\max}(A)) / \\min(\\mu, \\lambda_{\\min}(A))``. A ``\\mu`` far above ``\\lambda_{\\max}(A)``,
+such as ``10^7`` on a coarse grid, multiplies it by ``\\mu / \\lambda_{\\max}(A)``: the build converges more slowly and,
+with a capped number of sweeps, can return a worse preconditioner (on a ``2^5 \\times 2^5`` QTT pressure operator with
+``\\lambda_{\\max}(A) \\approx 8 \\cdot 10^3``, ``\\chi_{G_L} = 4`` and 30 MALS sweeps, ``\\mu = 10^7`` gave
+``\\kappa(G_L^\\top G_L A) = 146`` and ``\\mu = 10^3`` gave 5.3). Since ``\\lambda_{\\max}(A)`` grows as ``h^{-2}``, the
+paper's ``\\mu = 10^7`` is close to the top of the spectrum only on its finest grids. A value at the top of the
+spectrum, ``\\mu \\approx \\lambda_{\\max}(A)``, is a reasonable choice: it keeps the condition number of the build at
+``\\kappa(A)`` and weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. A rough
+estimate suffices, e.g. from the stencil (at most ``4/h^2`` per axis for the second-order Laplacian) or from a few
+Lanczos iterations.
 
 # Arguments
 
