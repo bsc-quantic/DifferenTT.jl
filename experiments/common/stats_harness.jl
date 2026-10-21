@@ -62,22 +62,23 @@ job, usually on another node, so their pairs are no longer within-node; the coll
 using Random
 using JLD2
 
-const LAYOUT         = Symbol(get(ENV, "BENCH_LAYOUT", "block"))
-const N_REPEATS      = parse(Int,     get(ENV, "BENCH_N_REPEATS", "20"))
-const REPEAT_OFFSET  = parse(Int,     get(ENV, "BENCH_REPEAT_OFFSET", "0"))
-const BASE_SEED      = parse(Int,     get(ENV, "BENCH_BASE_SEED", "20260917"))
-const TIME_BUDGET_S  = parse(Float64, get(ENV, "BENCH_TIME_BUDGET_S", "158400"))
-const SAFETY_FACTOR  = parse(Float64, get(ENV, "BENCH_SAFETY_FACTOR", "1.25"))
-const RETRY_FAILED   = get(ENV, "BENCH_RETRY_FAILED", "0") in ("1", "true", "yes")
-const JOB_T0         = time()   # set once, when the worker starts
+const LAYOUT = Symbol(get(ENV, "BENCH_LAYOUT", "block"))
+const N_REPEATS = parse(Int, get(ENV, "BENCH_N_REPEATS", "20"))
+const REPEAT_OFFSET = parse(Int, get(ENV, "BENCH_REPEAT_OFFSET", "0"))
+const BASE_SEED = parse(Int, get(ENV, "BENCH_BASE_SEED", "20260917"))
+const TIME_BUDGET_S = parse(Float64, get(ENV, "BENCH_TIME_BUDGET_S", "158400"))
+const SAFETY_FACTOR = parse(Float64, get(ENV, "BENCH_SAFETY_FACTOR", "1.25"))
+const RETRY_FAILED = get(ENV, "BENCH_RETRY_FAILED", "0") in ("1", "true", "yes")
+const JOB_T0 = time()   # set once, when the worker starts
 
 LAYOUT in (:block, :task, :unit) || error("BENCH_LAYOUT must be `block`, `task` or `unit`, got `$LAYOUT`")
 
 # Depends on the GLOBAL repeat index (never the local one) and not on the task id.
 solver_seed(rep::Int) = Int(hash((BASE_SEED, rep)) & 0x7fffffff)
 
-repeat_path(tasks_dir::AbstractString, task_id::Int, global_rep::Int) =
+function repeat_path(tasks_dir::AbstractString, task_id::Int, global_rep::Int)
     joinpath(tasks_dir, "task_$(lpad(task_id, 3, '0'))_rep_$(lpad(global_rep, 3, '0')).jld2")
+end
 
 failed_path(path::AbstractString) = replace(path, r"\.jld2$" => ".failed")
 
@@ -104,8 +105,9 @@ Repeat-major: array ids `1:n_groups` are repeat `REPEAT_OFFSET + 1` of every gro
 indices.
 """
 function decode_block(array_id::Int, n_groups::Int)
-    (1 <= array_id <= n_groups * N_REPEATS) ||
-        error("Invalid block array id $array_id: there are $n_groups groups x $N_REPEATS repeats = $(n_groups * N_REPEATS) blocks")
+    (1 <= array_id <= n_groups * N_REPEATS) || error(
+        "Invalid block array id $array_id: there are $n_groups groups x $N_REPEATS repeats = $(n_groups * N_REPEATS) blocks",
+    )
     k, g = divrem(array_id - 1, n_groups)
     return g + 1, REPEAT_OFFSET + k + 1
 end
@@ -118,8 +120,9 @@ repeat) and differs between repeats, so no method is systematically the first un
 (residual JIT cost) or the last (drift over the job, neighbours arriving on a shared node). It uses
 its own RNG, never the global one, so it cannot change any `solver_seed` stream.
 """
-block_order(task_ids::AbstractVector{Int}, global_rep::Int, group::Int) =
+function block_order(task_ids::AbstractVector{Int}, global_rep::Int, group::Int)
     shuffle(MersenneTwister(hash((BASE_SEED, "block_order", group, global_rep))), collect(task_ids))
+end
 
 """
     block_plan(array_id, groups; group_ids=eachindex(groups)) -> (; group, global_rep, task_ids)
@@ -151,7 +154,7 @@ function decode_unit(array_id::Int, task_ids::AbstractVector{Int})
     (1 <= array_id <= n * N_REPEATS) ||
         error("Invalid unit array id $array_id: there are $n tasks x $N_REPEATS repeats = $(n * N_REPEATS) units")
     k, i = divrem(array_id - 1, n)
-    return task_ids[i + 1], REPEAT_OFFSET + k + 1
+    return task_ids[i+1], REPEAT_OFFSET + k + 1
 end
 
 # ---------------------------------------------------------------------------------------------
@@ -169,27 +172,34 @@ function budget_allows(durations::Vector{Float64})
     return (time() - JOB_T0) + SAFETY_FACTOR * maximum(durations) <= TIME_BUDGET_S
 end
 
-function repeat_metadata(task_id::Int, global_rep::Int; first_in_process::Bool, layout::Symbol,
-                         block_group, order_in_block::Int, block_size::Int)
-    return Dict{String, Any}(
-        "task_id"            => task_id,
-        "repeat"             => global_rep,
-        "seed"               => solver_seed(global_rep),
-        "stopped_early"      => false,
-        "n_repeats_planned"  => N_REPEATS,
-        "repeat_offset"      => REPEAT_OFFSET,
-        "base_seed"          => BASE_SEED,
+function repeat_metadata(
+    task_id::Int,
+    global_rep::Int;
+    first_in_process::Bool,
+    layout::Symbol,
+    block_group,
+    order_in_block::Int,
+    block_size::Int,
+)
+    return Dict{String,Any}(
+        "task_id" => task_id,
+        "repeat" => global_rep,
+        "seed" => solver_seed(global_rep),
+        "stopped_early" => false,
+        "n_repeats_planned" => N_REPEATS,
+        "repeat_offset" => REPEAT_OFFSET,
+        "base_seed" => BASE_SEED,
         "slurm_array_job_id" => get(ENV, "SLURM_ARRAY_JOB_ID", ""),
         # The first unit a process runs may still carry residual JIT cost, see
         # BENCH_DISCARD_FIRST_REPEAT in the collectors. In the block layout this is a different,
         # randomly chosen method in every block.
-        "first_in_process"   => first_in_process,
-        "layout"             => String(layout),
+        "first_in_process" => first_in_process,
+        "layout" => String(layout),
         # Block layout only (0 / nothing in the task layout). The block itself is identified by
         # `slurm_job_id`, which every worker records: all units of a block share it.
-        "block_group"        => block_group,
-        "order_in_block"     => order_in_block,
-        "block_size"         => block_size,
+        "block_group" => block_group,
+        "order_in_block" => order_in_block,
+        "block_size" => block_size,
     )
 end
 
@@ -221,7 +231,8 @@ re-submitting a timed-out job only fills the gaps), and a unit that is unlikely 
 """
 function run_units(units::AbstractVector, tasks_dir::AbstractString; layout::Symbol, block_group=nothing)
     mkpath(tasks_dir)
-    @info "Repeat harness" layout n_units=length(units) block_group n_repeats=N_REPEATS repeat_offset=REPEAT_OFFSET base_seed=BASE_SEED time_budget_h=TIME_BUDGET_S / 3600 safety_factor=SAFETY_FACTOR
+    @info "Repeat harness" layout n_units=length(units) block_group n_repeats=N_REPEATS repeat_offset=REPEAT_OFFSET base_seed=BASE_SEED time_budget_h=TIME_BUDGET_S /
+                                                                                                                                                      3600 safety_factor=SAFETY_FACTOR
     @info "Unit order" units=[(u.task_id, u.global_rep) for u in units]
     flush(stderr)
 
@@ -242,12 +253,16 @@ function run_units(units::AbstractVector, tasks_dir::AbstractString; layout::Sym
             continue
         end
         if isfile(failed_path(path)) && !RETRY_FAILED
-            @warn "Unit $k/$(length(units)) (task $task_id, repeat $global_rep) previously FAILED, not retrying (BENCH_RETRY_FAILED=1 to retry)" marker=failed_path(path)
+            @warn "Unit $k/$(length(units)) (task $task_id, repeat $global_rep) previously FAILED, not retrying (BENCH_RETRY_FAILED=1 to retry)" marker=failed_path(
+                path
+            )
             n_failed += 1
             continue
         end
         if !budget_allows(durations)
-            @warn "WALL-CLOCK BUDGET EXHAUSTED, stopping before unit $k/$(length(units)) (task $task_id, repeat $global_rep)" completed=length(durations) elapsed_h=(time() - JOB_T0) / 3600 longest_unit_h=maximum(durations) / 3600
+            @warn "WALL-CLOCK BUDGET EXHAUSTED, stopping before unit $k/$(length(units)) (task $task_id, repeat $global_rep)" completed=length(
+                durations
+            ) elapsed_h=(time() - JOB_T0) / 3600 longest_unit_h=maximum(durations) / 3600
             stopped_early = true
             break
         end
@@ -262,7 +277,9 @@ function run_units(units::AbstractVector, tasks_dir::AbstractString; layout::Sym
         catch e
             e isa InterruptException && rethrow()
             msg = sprint(showerror, e, catch_backtrace())
-            @error "UNIT $k (task $task_id, repeat $global_rep) FAILED, continuing with the next unit" seed=solver_seed(global_rep) exception=(e, catch_backtrace())
+            @error "UNIT $k (task $task_id, repeat $global_rep) FAILED, continuing with the next unit" seed=solver_seed(
+                global_rep
+            ) exception=(e, catch_backtrace())
             write(failed_path(path), "seed=$(solver_seed(global_rep))\n" * msg)
             n_failed += 1
             GC.gc(true)
@@ -271,8 +288,18 @@ function run_units(units::AbstractVector, tasks_dir::AbstractString; layout::Sym
         end
         push!(durations, time() - t_rep)
 
-        merge!(result, repeat_metadata(task_id, global_rep; first_in_process = n_started == 1, layout,
-                                       block_group, order_in_block = layout == :block ? k : 0, block_size))
+        merge!(
+            result,
+            repeat_metadata(
+                task_id,
+                global_rep;
+                first_in_process=n_started == 1,
+                layout,
+                block_group,
+                order_in_block=layout == :block ? k : 0,
+                block_size,
+            ),
+        )
         result["repeat_wall_time"] = durations[end]
         atomic_save(path, result)
         rm(failed_path(path); force=true)    # a successful retry clears an old marker
@@ -294,7 +321,8 @@ function run_units(units::AbstractVector, tasks_dir::AbstractString; layout::Sym
         end
     end
     @info "Repeat harness finished" completed=length(durations) skipped=n_skipped failed=n_failed stopped_early
-    n_failed > 0 && @error "$n_failed unit(s) FAILED or were skipped as previously failed: see the *.failed markers in $tasks_dir"
+    n_failed > 0 &&
+        @error "$n_failed unit(s) FAILED or were skipped as previously failed: see the *.failed markers in $tasks_dir"
     flush(stderr)
     return (; completed=length(durations), skipped=n_skipped, failed=n_failed, stopped_early)
 end

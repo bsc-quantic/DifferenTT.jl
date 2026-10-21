@@ -34,7 +34,9 @@ function band!(p, x, y, lo, hi; alpha=0.15, logy::Bool=false, kwargs...)
     return plot!(p, collect(x), ys; ribbon=(ys .- lo2, hi2 .- ys), fillalpha=alpha, kwargs...)
 end
 
-"Individual repeat traces (columns of `M`) drawn faintly behind the central line."
+"""
+Individual repeat traces (columns of `M`) drawn faintly behind the central line.
+"""
 function traces!(p, x, M::AbstractMatrix; color=:gray, alpha=0.25, lw=1.0)
     for j in 1:size(M, 2)
         plot!(p, collect(x), M[:, j]; color=color, alpha=alpha, lw=lw, label="")
@@ -49,12 +51,27 @@ One column per configuration: every repeat as a jittered point, a diamond at the
 vertical line from q25 to q75. The figure to look at first when a result looks too good: it makes a
 bimodal or single-outlier distribution obvious in a way that mean +- std cannot.
 """
-function dist_plot(labels::Vector{String}, samples::Vector{<:AbstractVector}; title::AbstractString="",
-                   ylabel::AbstractString="", yscale::Symbol=:identity, colors=nothing)
+function dist_plot(
+    labels::Vector{String},
+    samples::Vector{<:AbstractVector};
+    title::AbstractString="",
+    ylabel::AbstractString="",
+    yscale::Symbol=:identity,
+    colors=nothing,
+)
     n = length(labels)
-    p = plot(; title=title, ylabel=ylabel, yscale=yscale, legend=false, framestyle=:box,
-             xticks=(1:n, labels), xrotation=45, xlims=(0.4, n + 0.6), bottom_margin=15Plots.mm,
-             size=(max(900, 60 * n + 300), 520))
+    p = plot(;
+        title=title,
+        ylabel=ylabel,
+        yscale=yscale,
+        legend=false,
+        framestyle=:box,
+        xticks=(1:n, labels),
+        xrotation=45,
+        xlims=(0.4, n + 0.6),
+        bottom_margin=15Plots.mm,
+        size=(max(900, 60 * n + 300), 520),
+    )
     rng = MersenneTwister(1234)     # local RNG: jitter only, deterministic figures
     pal = palette(:tab10)
     for (i, raw) in enumerate(samples)
@@ -66,13 +83,24 @@ function dist_plot(labels::Vector{String}, samples::Vector{<:AbstractVector}; ti
         scatter!(p, i .+ jitter, xs; color=c, alpha=0.55, markersize=3.5, markerstrokewidth=0, label="")
         q25, q75 = quantile(xs, 0.25), quantile(xs, 0.75)
         plot!(p, [i, i], [q25, q75]; color=:black, lw=3, label="")
-        scatter!(p, [i], [median(xs)]; marker=:diamond, markersize=7, color=:white,
-                 markerstrokecolor=:black, markerstrokewidth=1.5, label="")
+        scatter!(
+            p,
+            [i],
+            [median(xs)];
+            marker=:diamond,
+            markersize=7,
+            color=:white,
+            markerstrokecolor=:black,
+            markerstrokewidth=1.5,
+            label="",
+        )
     end
     return p
 end
 
-"A colour limit that never errors on an all-NaN or constant matrix."
+"""
+A colour limit that never errors on an all-NaN or constant matrix.
+"""
 function safe_clim(Z::AbstractMatrix)
     v = filter(isfinite, Z)
     isempty(v) && return (0.0, 1.0)
@@ -98,18 +126,28 @@ function annotated_heatmap(xlabels, ylabels, Z::AbstractMatrix, A::AbstractMatri
     return hm
 end
 
-"Annotation strings `gm\\n×/÷gsd` for a ratio heatmap."
-ratio_annotations(gm::AbstractMatrix, gsd::AbstractMatrix) =
+"""
+Annotation strings `gm\\n×/÷gsd` for a ratio heatmap.
+"""
+function ratio_annotations(gm::AbstractMatrix, gsd::AbstractMatrix)
     [isfinite(g) ? @sprintf("%.2f\n×/÷%.2f", g, s) : "" for (g, s) in zip(gm, gsd)]
+end
 
-"Annotation strings `mean\\n±sd` (or any pair)."
-pm_annotations(m::AbstractMatrix, s::AbstractMatrix) =
+"""
+Annotation strings `mean\\n±sd` (or any pair).
+"""
+function pm_annotations(m::AbstractMatrix, s::AbstractMatrix)
     [isfinite(a) ? @sprintf("%.3g\n±%.2g", a, b) : "" for (a, b) in zip(m, s)]
+end
 
-"Annotation strings for a CV heatmap, in percent."
+"""
+Annotation strings for a CV heatmap, in percent.
+"""
 cv_annotations(cv::AbstractMatrix) = [isfinite(c) ? @sprintf("%.1f%%", 100 * c) : "" for c in cv]
 
-"Geometric band `(lo, hi) = (gm/gsd, gm*gsd)` of vectors."
+"""
+Geometric band `(lo, hi) = (gm/gsd, gm*gsd)` of vectors.
+"""
 geo_band(gm, gsd) = (gm ./ gsd, gm .* gsd)
 
 """
@@ -123,12 +161,29 @@ the metric existed) are skipped; returns `nothing` when none has any.
 function step_profile_bands(series; title, ylabel, yaxis=:log10)
     series = [s for s in series if !isempty(s.M)]
     isempty(series) && return nothing
-    p = plot(title=title, xlabel="Chorin Time Step", ylabel=ylabel, yaxis=yaxis,
-        legend=:outertopright, size=(1050, 600), legendfont=font(8, "Computer Modern"))
+    p = plot(;
+        title=title,
+        xlabel="Chorin Time Step",
+        ylabel=ylabel,
+        yaxis=yaxis,
+        legend=:outertopright,
+        size=(1050, 600),
+        legendfont=font(8, "Computer Modern"),
+    )
     for s in series
         r = rowwise_stats(s.M)
-        band!(p, 1:length(r.median), r.median, r.q25, r.q75;
-            label=s.label, color=s.color, lw=s.lw, logy=(yaxis == :log10), alpha=0.10)
+        band!(
+            p,
+            1:length(r.median),
+            r.median,
+            r.q25,
+            r.q75;
+            label=s.label,
+            color=s.color,
+            lw=s.lw,
+            logy=(yaxis == :log10),
+            alpha=0.10,
+        )
     end
     return p
 end

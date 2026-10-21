@@ -26,7 +26,11 @@ using Statistics
 include(joinpath(@__DIR__, "..", "stats_utils.jl"))
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-default_base_folder = use_nocond ? "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results_nocond" : "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results"
+default_base_folder = if use_nocond
+    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results_nocond"
+else
+    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results"
+end
 base_folder = get(ENV, "TT_ANISOTROPY_STATS_RESULTS_DIR", default_base_folder)
 discard_first = get(ENV, "BENCH_DISCARD_FIRST_REPEAT", "0") in ("1", "true", "yes")
 samejob_only = get(ENV, "BENCH_SAMEJOB_PAIRS_ONLY", "0") in ("1", "true", "yes")
@@ -37,15 +41,30 @@ function postprocess(result)
     return result
 end
 
-collect_dataset(base_folder;
+collect_dataset(
+    base_folder;
     postprocess,
-    size_col = :case,
-    solve_col = :solve_time,
-    total_col = :total_time,
-    iters_col = :total_iters,
-    scalar_cols = [:solve_time, :total_time, :precond_build_time, :relative_residual, :relative_error,
-                   :solution_maxdim, :total_iters, :nsweeps, :avg_cond, :avg_pc_cond, :compile_time,
-                   :gc_time, :precond_maxlinkdim, :repeat_wall_time],
-    vector_cols = [:iters_per_site, :conds_per_site, :pc_conds_per_site],
+    size_col=:case,
+    solve_col=:solve_time,
+    total_col=:total_time,
+    iters_col=:total_iters,
+    scalar_cols=[
+        :solve_time,
+        :total_time,
+        :precond_build_time,
+        :relative_residual,
+        :relative_error,
+        :solution_maxdim,
+        :total_iters,
+        :nsweeps,
+        :avg_cond,
+        :avg_pc_cond,
+        :compile_time,
+        :gc_time,
+        :precond_maxlinkdim,
+        :repeat_wall_time,
+    ],
+    vector_cols=[:iters_per_site, :conds_per_site, :pc_conds_per_site],
     discard_first,
-    samejob_only)
+    samejob_only,
+)
