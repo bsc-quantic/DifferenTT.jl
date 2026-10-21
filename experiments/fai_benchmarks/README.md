@@ -12,7 +12,7 @@ iterations and the bond dimensions. The FAI is built with μ = 10⁷ in every wo
 |---|---|---|
 | `tt_anisotropy`, `tt_anisotropy_global` | Anisotropic diffusion −∇·(K∇u) = f on (0,1)ᴺ with K = (1−ρ)I + ρ𝟏𝟏ᵀ, in the non-quantized TT format (`common/anisotropy_problem.jl`) | N ∈ {5, 10}, anisotropy floor F ∈ {1, 2, 4, 10, 30, 100}, FAI and Sinc configurations, 15 nodes per dimension |
 | `tt_poisson`, `tt_poisson_global` | Poisson equation on (0,1)ᴺ, in the non-quantized TT format | N ∈ {5, 10, 15, 20, 25}, 15 nodes per dimension, FAI and Sinc configurations |
-| `chorin_pipeline`, `chorin_pipeline_globalcg` | Pressure Poisson systems that appear along the 2D Chorin projection of a flow past a cylinder in a channel [0,2]×[0,1] at Re = 3000, in the QTT format | 2⁸×2⁸ grid (100 steps) and 2¹⁰×2¹⁰ grid (50 steps), FAI with a bond dimension χ_G from 2 to 10 |
+| `chorin_pipeline`, `chorin_pipeline_globalcg` | Pressure Poisson systems that appear along the 2D Chorin projection of a flow past a cylinder in a channel [0,2]×[0,1] at Re = 3000, in the QTT format | Local variant: 2⁸×2⁸ grid (100 steps) and 2¹⁰×2¹⁰ grid (50 steps); global variant: 2⁸×2⁸ grid only (50 steps), the size that runs reliably with GlobalCG. FAI with a bond dimension χ_G from 2 to 10 |
 | `liddriven_pipeline`, `liddriven_pipeline_globalcg` | Stream function systems −Δψ = ω along the vorticity–streamfunction evolution of the lid-driven cavity, in the QTT format | 2¹¹×2¹¹ grid for the local variant (`CAVITY_LIDS=2` selects the doubly-driven cavity), 2⁸×2⁸ for the global one |
 
 The problem sizes above are the ones set in each `worker.jl`; they are the starting point, not a recommendation. The

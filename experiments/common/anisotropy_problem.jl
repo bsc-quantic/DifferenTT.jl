@@ -8,7 +8,7 @@ the identical problem
 
 Instead of ρ, the benchmarks sweep the modeling floor F = κ(L0⁻¹ L) ≤ (1+(N-1)ρ)/(1-ρ) of any
 preconditioner built on the separable L0 = -Δ (e.g. sinc quadrature), so every N is compared at
-equal difficulty. See benchmark_rotated_anisotropy.md.
+equal difficulty. See Sec. 5.1 and Appendix A of the paper.
 """
 
 """

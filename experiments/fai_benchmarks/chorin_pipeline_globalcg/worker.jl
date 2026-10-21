@@ -13,13 +13,13 @@ Laplacian. This operator does not change in time, and therefore the FAI is built
 
 # Problem and parameters
 
-We use a 2⁸ × 2⁸ grid with 50 time steps of dt = 1e-3, and a 2¹⁰ × 2¹⁰ grid with 20 steps of dt = 2e-4.
+We use a 2⁸ × 2⁸ grid with 50 time steps of dt = 1e-3. Only this size runs reliably with the global solver, so that is the
+only entry of `system_sizes`; the constants of the larger grids stay in the file.
 
 Each task is one preconditioner: the unpreconditioned baseline, or the FAI with μ = 10⁷ and a bond dimension χ_G ∈ {2,
-…, 10}, for each grid size (20 tasks in total; note that the job script requests an array of 10, which covers only the
-first grid size). We solve every step with the global TT-CG solver (`GlobalCG`) instead of `ResidualALS`: the
+…, 10} (10 tasks in total, the array of the job script). We solve every step with the global TT-CG solver (`GlobalCG`) instead of `ResidualALS`: the
 preconditioner acts on a CG solve of the whole pressure system, rather than on the local problem of every site. The
-iterates have a bond dimension capped at 150 (8 × 8) and 200 (10 × 10), a cutoff of 1e-13, and at most 3000 iterations.
+iterates have a bond dimension capped at 150, a cutoff of 1e-13, and at most 3000 iterations.
 `GlobalCG` runs to a relative tolerance of 1e-2 at every step, and the FAI is built to a residual tolerance of 0.1.
 
 # Inputs and outputs
@@ -94,7 +94,8 @@ const STENCIL_ORDER = 8
 const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002, (12, 12) => 0.00001)
 
 # Smoke mode: one grid size, two steps, the baseline and one FAI task, on the cylinder mask that smoke.jl generates.
-const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (12, 12) => 2) : Dict((8, 8) => 50, (10, 10) => 20, (12, 12) => 5)
+const n_steps_map =
+    SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (12, 12) => 2) : Dict((8, 8) => 50, (10, 10) => 20, (12, 12) => 5)
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -102,8 +103,9 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
     return isempty(override) ? n_steps_map[nodes] : parse(Int, override)
 end
 
-# const system_sizes = [(8, 8), (10, 10), (12, 12)]
-const system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
+# Only the 2⁸ × 2⁸ grid runs reliably with GlobalCG: the array of submit.sh (10 tasks) covers exactly this size.
+# const system_sizes = [(8, 8), (10, 10)]
+const system_sizes = [(8, 8)]
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
@@ -115,7 +117,11 @@ const maxdims_map = Dict((8, 8) => 150, (10, 10) => 200, (12, 12) => 250)
 const cutoff_map = Dict((8, 8) => 1e-13, (10, 10) => 1e-13, (12, 12) => 1e-13)
 
 # Smoke mode caps the global iterations: it checks that the solver runs, not that it converges.
-const maxiter_map = SMOKE ? Dict((8, 8) => 30, (10, 10) => 30, (12, 12) => 30) : Dict((8, 8) => 3000, (10, 10) => 3000, (12, 12) => 5000)
+const maxiter_map = if SMOKE
+    Dict((8, 8) => 30, (10, 10) => 30, (12, 12) => 30)
+else
+    Dict((8, 8) => 3000, (10, 10) => 3000, (12, 12) => 5000)
+end
 
 const tol_map = Dict((8, 8) => 1e-2, (10, 10) => 1e-2, (12, 12) => 1e-2)
 
