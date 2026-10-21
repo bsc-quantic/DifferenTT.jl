@@ -1,18 +1,45 @@
 """
-    TT Anisotropy Benchmark (local ResidualALS): Plotting Script
+    TT anisotropy benchmark (local ResidualALS): plotting script
 
-Uses nocond results for timings, iterations and residuals, and cond results (if present) for the
-local condition numbers. Generates, per dimension N, with the floor F on the x-axis:
-    1. Solve / total speedup vs baseline
-    2. Total local Krylov iterations
-    3. Local condition numbers κ(A) and κ(P⁻¹A), with the analytic and discrete floors as reference
-    4. Sinc plateau: local κ(P⁻¹A) (or iterations) vs M, one line per F
-    5. Preconditioner build time and solution bond dimension
-    6. Final relative residual (convergence check)
-plus crossover_summary.md / crossover_ratio.png across N.
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
 
-Note: `avg_pc_cond` is the average over sites of the local κ(P⁻¹A) of the projected problems, not
-the global κ(P L), so the floor lines are a reference, not a bound.
+# Figures
+
+1. Solve / total speedup vs baseline
+2. Total local Krylov iterations
+3. Local condition numbers κ(A) and κ(P⁻¹A), with the analytic and discrete floors as reference
+4. Sinc plateau: local κ(P⁻¹A) (or iterations) vs M, one line per F
+5. Preconditioner build time and solution bond dimension
+6. Final relative residual (convergence check)
+
+We take the timings, iterations and residuals from the `nocond` results and the local condition numbers from the results
+that record them. We plot, per dimension N, the floor F on the x axis, and, in addition, the file `crossover_summary.md`
+and the figure `crossover_ratio.png` across N. `avg_pc_cond` is the average over sites of the local κ(P⁻¹A) of the
+projected problems, not the global κ(P L), so the floor lines are a reference, not a bound.
+
+# Inputs and outputs
+
+Reads `results_nocond/collected_results.jld2` and, if it exists, `results/collected_results.jld2` of this folder, plus
+the discrete floor of `paper/anisotropy_floor/discrete_floor.jld2` when that file exists, and writes PNG figures and
+`crossover_summary.md` to `plots/`.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/tt_anisotropy/plot_results.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+None.
 """
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))

@@ -1,9 +1,54 @@
 """
-    TT Anisotropy Benchmark (Global CG): Parallel Worker
+    TT anisotropy benchmark (global TT-CG): worker
 
-Global (GlobalCG) solve of -∇⋅(K∇u) = f with the equicorrelated diffusion tensor
-K = (1-ρ) I + ρ 𝟏𝟏ᵀ, sweeping the floor F of separable preconditioners instead of N.
-Problem definition in ../../common/anisotropy_problem.jl.
+We solve the anisotropic diffusion equation -∇⋅(K∇u) = 1 on (0, 1)ᴺ with homogeneous Dirichlet conditions and the
+equicorrelated tensor K = (1-ρ) I + ρ 𝟏𝟏ᵀ, in the non-quantized TT format with 15 nodes per dimension, as
+`tt_anisotropy/worker.jl` does, but with the global TT-CG solver (`GlobalCG`): the preconditioner acts on a CG solve of
+the whole system, instead of on the local problem of every site. We sweep the floor F = κ(L₀⁻¹ L) of the separable
+preconditioners (Sec. 5.1 of the paper) instead of ρ, with ρ = (F-1)/(F+N-1), so that dimensions are compared at equal
+difficulty. The problem is defined in `common/anisotropy_problem.jl`.
+
+# Problem and parameters
+
+Each task is one combination of dimension, floor and preconditioner:
+
+- N ∈ {5, 10} and F ∈ {1, 2, 4, 10, 30, 100};
+- no preconditioner (baseline); Sinc on L₀ with M ∈ {3, 4, 5, 7, 10}; FAI on L with μ = 10⁷ and χ_G ∈ {4, 6, 8, 10}; FAI
+  on L₀ with μ = 10⁷ and χ_G = 10, as a control (11 tasks per (N, F), 132 in total).
+
+`GlobalCG` runs to a relative tolerance of 1e-3, with at most 1000 iterations, and the bond dimension of the iterates is
+capped at 80 for N = 5 and 100 for N = 10. The right-hand side is f ≡ 1 (`TT_ANISOTROPY_RHS` selects `ones`, `random` or
+`manufactured`). The FAI is built with the two-site ALS solver (30 sweeps, `TT_ANISOTROPY_GLOBAL_FAI_NSWEEPS`) after a
+warm-up outside the timed region. Every task times the solve twice (cold and warm), and `solve_time` is the warm one.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1). The worker writes `tasks/task_NNN.jld2` (key `"result"`) under `results/` of
+this folder, or under `TT_ANISOTROPY_GLOBAL_RESULTS_DIR` if set.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/tt_anisotropy_global/worker.jl
+    julia --project=experiments experiments/fai_benchmarks/tt_anisotropy_global/worker.jl 3
+    bash experiments/fai_benchmarks/tt_anisotropy_global/submit.sh
+
+# Resources
+
+The job script requests an array of 132 tasks, each on one node with 20 CPUs, for up to 36 h (`--time=01-12:00:00`),
+without a `--mem` directive; the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+None: Sec. 5.1 of the paper uses the local `tt_anisotropy_stats` variant (see `paper/`).
 """
 
 using ITensors

@@ -1,9 +1,58 @@
 """
-    TT Anisotropy Benchmark: Parallel Worker
+    TT anisotropy benchmark (local ResidualALS): worker
 
-Local (ResidualALS) solve of -∇⋅(K∇u) = f with the equicorrelated diffusion tensor
-K = (1-ρ) I + ρ 𝟏𝟏ᵀ, sweeping the floor F of separable preconditioners instead of N.
-Problem definition in ../../common/anisotropy_problem.jl.
+We solve the anisotropic diffusion equation -∇⋅(K∇u) = 1 on (0, 1)ᴺ with homogeneous Dirichlet conditions, where K =
+(1-ρ) I + ρ 𝟏𝟏ᵀ is the equicorrelated diffusion tensor, in the non-quantized TT format with 15 nodes per dimension (Sec.
+5.1 of the paper; the problem is defined in `common/anisotropy_problem.jl`). The coupling ρ tunes how far the operator
+is from the separable Laplacian L₀ = -Δ, for which the Sinc preconditioner is nearly exact: the condition number κ(L₀⁻¹
+L) bounds from below how well any preconditioner built on L₀ can do, and it is bounded above by F = (1 + (N-1)ρ)/(1-ρ).
+To compare dimensions at equal difficulty, we sweep F instead of ρ, with ρ = (F-1)/(F+N-1). The FAI is built from L
+itself, and is therefore not bound by that floor.
+
+# Problem and parameters
+
+Each task is one combination of dimension, floor and preconditioner:
+
+- N ∈ {5, 10} and F ∈ {1, 2, 4, 10, 30, 100} (F = 1 is the Poisson equation);
+- no preconditioner (baseline); Sinc on L₀ with M ∈ {3, 4, 5, 7, 10}; FAI on L with μ = 10⁷ and χ_G ∈ {4, 6, 8, 10};
+  and, as a control that shows whether the FAI owes its advantage to the coupling, FAI on L₀ with μ = 10⁷ and χ_G = 10
+  (11 tasks per (N, F), 132 in total, `NTASKS` of `submit.sh`).
+
+We solve with `ResidualALS` to a relative residual of 1e-3, preconditioning the local problem of every site (Sec. 4 of
+the paper). The solution bond dimension is capped at 50 for N = 5 and 70 for N = 10, with 30 sweeps. The right-hand side
+is f ≡ 1 (`TT_ANISOTROPY_RHS` selects `ones`, `random` or `manufactured`). The FAI is built with the two-site ALS solver
+(30 sweeps, `TT_ANISOTROPY_FAI_NSWEEPS`) after a warm-up that compiles every code path outside the timed region.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1) and `nocond` is `ARGS[2]`. With `nocond` we do not estimate the local condition
+numbers and we time every solve twice (cold and warm; `solve_time` is the warm one); without it we estimate κ(A) and
+κ(P⁻¹A) of every local problem and time the solve once. The worker writes `tasks/task_NNN.jld2` (key `"result"`) under
+`results/` or `results_nocond/` of this folder, or under `TT_ANISOTROPY_RESULTS_DIR` if set.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/tt_anisotropy/worker.jl
+    julia --project=experiments experiments/fai_benchmarks/tt_anisotropy/worker.jl 3 nocond
+    bash experiments/fai_benchmarks/tt_anisotropy/submit.sh nocond
+
+# Resources
+
+The job script requests an array of 132 tasks, each on one node with 20 CPUs, for up to 36 h (`--time=01-12:00:00`),
+without a `--mem` directive; the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+Sec. 5.1 (anisotropic diffusion) uses the `tt_anisotropy_stats` variant of this benchmark (see `paper/`).
 """
 
 using ITensors

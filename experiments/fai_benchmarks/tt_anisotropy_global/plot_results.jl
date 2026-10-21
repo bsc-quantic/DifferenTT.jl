@@ -1,13 +1,42 @@
 """
-    TT Anisotropy Benchmark (GlobalCG): Plotting Script
+    TT anisotropy benchmark (global TT-CG): plotting script
 
-Generates, per dimension N, with the floor F on the x-axis:
-    1. Solve / total speedup vs baseline
-    2. Global CG iterations
-    3. Sinc plateau: global CG iterations vs M, one line per F
-    4. Preconditioner build time and solution bond dimension
-    5. Final relative residual (convergence check; runs hitting maxiter are listed)
-plus crossover_summary.md / crossover_ratio.png across N.
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
+
+# Figures
+
+1. Solve / total speedup vs baseline
+2. Global CG iterations
+3. Sinc plateau: global CG iterations vs M, one line per F
+4. Preconditioner build time and solution bond dimension
+5. Final relative residual (convergence check; runs hitting maxiter are listed)
+
+We plot, per dimension N, the floor F on the x axis, and, in addition, the file `crossover_summary.md` and the figure
+`crossover_ratio.png` across N. Runs that hit `maxiter` are listed.
+
+# Inputs and outputs
+
+Reads `results/collected_results.jld2` of this folder, plus the discrete floor of
+`paper/anisotropy_floor/discrete_floor.jld2` when that file exists, and writes PNG figures and `crossover_summary.md` to
+`plots/`.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/tt_anisotropy_global/plot_results.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+None.
 """
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_plot_utils.jl"))

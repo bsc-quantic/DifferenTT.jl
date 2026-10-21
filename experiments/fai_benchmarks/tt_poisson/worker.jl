@@ -1,5 +1,63 @@
 """
-    TT Poisson Benchmark: Parallel Worker
+    TT Poisson benchmark (local ResidualALS): worker
+
+We solve the Poisson equation -Δu = f on the unit hypercube (0, 1)ᴺ with homogeneous Dirichlet conditions, in the
+non-quantized TT format with 15 nodes per dimension, that is, with a site dimension of 15. The discrete Laplacian is a
+Kronecker sum, which is the most favorable case for the Sinc preconditioner of Khoromskij (2009), and therefore the
+reference against which we measure the factorized approximate inverse (FAI) when no coupling between dimensions degrades
+the Sinc preconditioner. The solution is the manufactured function u(x) = (r² + ε²)^(-1/2) ∏ sin(π xₗ), with ε = 0.2 and
+r the distance to the center of the cube. We compress it by cross interpolation, and we take A u as right-hand side, so
+that the finite-difference error does not enter the residual of the solve.
+
+# Problem and parameters
+
+Each task is one combination of dimension and preconditioner, in the order baseline, Sinc, FAI for each N:
+
+- dimension N ∈ {5, 10, 15, 20, 25};
+- no preconditioner (baseline); Sinc with M ∈ {3, 4, 5, 7, 10}; FAI with μ = 10⁷ and a bond dimension χ_G ∈ {4, 6, 8,
+  10} (10 tasks per N, 50 in total).
+
+We solve with `ResidualALS` (two-site ALS with residual-based truncation), preconditioning the local problem of every
+site as in Sec. 4 of the paper, down to a relative residual of 1e-7. The solution bond dimension is capped at 20 for N =
+5, 25 for N = 10, 15 and 30 for N = 20, 25, with 50 sweeps for N ≤ 15 and 60 for N = 20, 25. The FAI is built with the
+two-site ALS solver (30 sweeps, `TT_POISSON_FAI_NSWEEPS`) after a warm-up that compiles every code path outside the
+timed region.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1) and `nocond` is `ARGS[2]`. With `nocond` we do not estimate the local condition
+numbers and we time every solve twice, a cold and a warm one, and `solve_time` is the warm one. Without it we estimate
+κ(A) and κ(P⁻¹A) of every local problem and time the solve once. We use the `nocond` run for the timings and the other
+for the condition numbers. The worker writes `tasks/task_NNN.jld2` (key `"result"`: build and solve times, total and
+per-site Krylov iterations, relative residual, solution bond dimension and, without `nocond`, the local condition
+numbers) under `results/` or `results_nocond/` of this folder. `TT_POISSON_RESULTS_DIR` overrides that folder.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/tt_poisson/worker.jl
+    julia --project=experiments experiments/fai_benchmarks/tt_poisson/worker.jl 3 nocond
+    bash experiments/fai_benchmarks/tt_poisson/submit.sh nocond
+
+The last command submits the array and a dependent collector job (`collect.jl`); `plot_results.jl` then draws the
+figures.
+
+# Resources
+
+The job script requests an array of 50 tasks, each on one node with 20 CPUs, for up to 36 h (`--time=01-12:00:00`),
+without a `--mem` directive; the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+None: Sec. 5.1 of the paper uses the anisotropic problem of `tt_anisotropy`, whose ρ = 0 case is this equation.
 """
 
 using ITensors

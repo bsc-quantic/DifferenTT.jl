@@ -1,17 +1,42 @@
 """
-    FAI / Sinc Preconditioner Benchmark: Plotting Script
+    TT Poisson benchmark (local ResidualALS): plotting script
 
-    Reads the extended grid search JLD2 results and generates comprehensive
-    visualizations using Plots.jl, including:
-    1. Heatmaps of Speedup (μ vs G_maxdim) for FAI
-    2. Pareto fronts of Build Time vs Solve Time (FAI + sinc)
-    3. Heatmap of Avg Condition Number Improvement (μ vs G_maxdim) for FAI
-    4. Site-by-site Iteration and Condition Number profiles (baseline / FAI / sinc)
-    5. Scaling behavior across system sizes
-    Uses nocond results for accurate timings, and cond results for iteration
-    and condition number profiles.
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
 
-    Note: `pc_conds_per_site` is the absolute local κ(P⁻¹A), not a ratio.
+# Figures
+
+1. Heatmaps of Speedup (μ vs G_maxdim) for FAI
+2. Pareto fronts of Build Time vs Solve Time (FAI + sinc)
+3. Heatmap of Avg Condition Number Improvement (μ vs G_maxdim) for FAI
+4. Site-by-site Iteration and Condition Number profiles (baseline / FAI / sinc)
+5. Scaling behavior across system sizes
+
+We take the timings from the `nocond` results and the local condition numbers from the results that record them;
+`pc_conds_per_site` is the absolute local κ(P⁻¹A), not a ratio.
+
+# Inputs and outputs
+
+Reads `results_nocond/collected_results.jld2` (timings) and, if it exists, `results/collected_results.jld2` (condition
+numbers) of this folder, and writes PNG figures to `plots/` (per-dimension subfolders `N_<N>/chi_<χ_G>/` for the
+profiles).
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/tt_poisson/plot_results.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+None.
 """
 
 using JLD2

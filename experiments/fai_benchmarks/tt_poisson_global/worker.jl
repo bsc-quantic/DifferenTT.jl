@@ -1,5 +1,56 @@
 """
-    TT Poisson Benchmark: Parallel Worker
+    TT Poisson benchmark (global TT-CG): worker
+
+We solve the Poisson equation -Δu = f on the unit hypercube (0, 1)ᴺ with homogeneous Dirichlet conditions, in the
+non-quantized TT format with 15 nodes per dimension, exactly as `tt_poisson/worker.jl` does, but with the global TT-CG
+solver (`GlobalCG`) instead of `ResidualALS`. The preconditioner then acts on a CG solve of the whole system, rather
+than on the local problem of every site, so that this benchmark measures the other way of using it. The manufactured
+solution is u(x) = (r² + ε²)^(-1/2) ∏ sin(π xₗ) with ε = 0.2, compressed by cross interpolation, and the right-hand side
+is A u.
+
+# Problem and parameters
+
+Each task is one combination of dimension and preconditioner, in the order baseline, Sinc, FAI for each N:
+
+- dimension N ∈ {5, 10, 15, 20, 25};
+- no preconditioner (baseline); Sinc with M ∈ {3, 4, 5, 7, 10}; FAI with μ = 10⁷ and χ_G ∈ {4, 6, 8, 10} (10 tasks per
+  N, 50 in total).
+
+`GlobalCG` runs to a relative tolerance of 1e-4, with at most 2000 iterations for N ≤ 15 and 3000 for N = 20, 25, and
+the bond dimension of the iterates (and of their orthogonalization) is capped at 20 for N = 5, 25 for N = 10, 15 and 30
+for N = 20, 25. The FAI is built with the two-site ALS solver (30 sweeps, `TT_POISSON_GLOBAL_FAI_NSWEEPS`) after a
+warm-up that compiles every code path outside the timed region. Every task times the solve twice (cold and warm), and
+`solve_time` is the warm one.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1). The worker writes `tasks/task_NNN.jld2` (key `"result"`: build and solve
+times, global iterations, relative residual, solution bond dimension) under `results/` of this folder, or under
+`TT_POISSON_GLOBAL_RESULTS_DIR` if set.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/tt_poisson_global/worker.jl
+    julia --project=experiments experiments/fai_benchmarks/tt_poisson_global/worker.jl 3
+    bash experiments/fai_benchmarks/tt_poisson_global/submit.sh
+
+# Resources
+
+The job script requests an array of 50 tasks, each on one node with 20 CPUs, for up to 36 h (`--time=01-12:00:00`),
+without a `--mem` directive; the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+None.
 """
 
 using ITensors
