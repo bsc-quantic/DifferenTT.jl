@@ -10,6 +10,13 @@ of site indices that all of them share. We first describe the layout of the site
 conditions that turn the layout into an operator, and finally the solver. The remaining pages of the manual describe each
 step in detail.
 
+!!! note "Precompilation"
+    The first `using DifferenTT` after installing or updating the package precompiles it, and runs on small problems
+    the common paths of the library (QTT operators, solvers, preconditioners and Navier–Stokes steps), so that their
+    first calls in every later session are several times faster. This takes about two minutes once. Since it is
+    repeated after every change to the source, we recommend to turn it off while developing the package, with
+    `DifferenTT.set_precompile_workload(false)` and a restart of Julia; see [`set_precompile_workload`](@ref).
+
 ```@example gs
 using DifferenTT, ITensors, ITensorMPS, TensorCrossInterpolation, LinearAlgebra
 nothing # hide
