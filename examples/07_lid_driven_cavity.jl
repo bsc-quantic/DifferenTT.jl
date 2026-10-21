@@ -242,6 +242,11 @@ end
 # ``dt = 0.028``, which costs about four times as much, both differences drop to about ``3 \cdot 10^{-3}`` at
 # ``t \approx 8.4``. At this size the agreement is only qualitative for the details, such as the strong gradient below
 # the lid, but the profiles already reproduce the shape and the extrema of the reference solution.
+#
+# The same scheme also reproduces the harder case of the original benchmark, given enough resolution. The experiment
+# `experiments/inse/liddriven_cavity` runs it at ``Re = 1000`` on ``2^7 \times 2^7`` interior nodes for 8000 steps; with
+# the code of the `paper-ttfai-data` tag, its centrelines differed from the ``Re = 1000`` columns of Ghia et al. by an
+# rms of ``5.4 \cdot 10^{-3}``, and its primary vortex had ``\psi_{\min} = -0.1173`` against their ``-0.1179``.
 
 # ## Summary
 #
