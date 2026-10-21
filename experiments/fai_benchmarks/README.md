@@ -19,6 +19,11 @@ The problem sizes above are the ones set in each `worker.jl`; they are the start
 Chorin benchmarks read the cylinder mask from `masks.jld2` in their own folder, which `generate_masks.jl` writes with
 Tensor Cross Interpolation (`maskplots/` holds the pictures of the masks). The masks and the collected data tracked here
 were produced before the library fixes listed in `experiments/README.md`, so they are not comparable with new runs.
+`chorin_pipeline/generate_masks.jl` now samples the mask on the periodic grid of the workers and stores the description of
+that grid next to every mask (`common/mask_grid.jl`); the committed `masks.jld2` has none, so the workers that check it
+(`paper/chorin_pipeline_stats`, `paper/linsolve_spd`; the benchmarks of this folder follow in the update of their API)
+stop until the masks are regenerated. The statistics run of `paper/chorin_pipeline_stats` reads the masks of
+`chorin_pipeline` on purpose.
 
 ## How to run
 
