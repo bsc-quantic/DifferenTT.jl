@@ -322,6 +322,7 @@ by `crossinterpolate2`, and the products are computed by [`tt_mul`](@ref) with `
 `mask = nothing`, `u_mpss` is returned unchanged.
 """
 function mask_correction(u_mpss::NTuple{N,MPS}, mask::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where {N}
+    # TODO(release): RSI product with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
     return ntuple(i -> tt_mul(u_mpss[i], mask; cutoff=cutoff, maxdim=maxdim), N)
 end
 
@@ -407,6 +408,9 @@ function chorin_step(
     # TODO(v0.2): reconsider the order of the step. Predict -> mask -> project, with chorin_evolve! masking and
     # projecting the initial velocity once, applies the same operations (step k becomes P(M(old step k))), solves the
     # same pressure systems, and returns the projected velocity instead of the provisional u*
+    # TODO(release): chorin_step (through poisson_pressure) and chorin_evolve! take no preconditioner, so a reused FAI
+    # needs a wrapper solver (see examples/06_chorin_cylinder.jl). Accept an optional AbstractPreconditioner and pass
+    # it to the preconditioned linearsolve; vorticity_step and vorticity_evolve! have the same limitation.
 
     @timeit_debug timeit_to "mask correction" begin
         masked_u_mpss = mask_correction(
