@@ -54,10 +54,10 @@ exact_mps = replace_siteinds!(MPS(sol_tci), sites)
 
 fig_size = (1200, 1200)
 visualize_scalar(
-    rhs_mps, grid, arch, "experiments/qtt_poisson/rhs_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
+    rhs_mps, grid, arch, "experiments/archive/qtt_poisson/rhs_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
 )
 visualize_scalar(
-    exact_mps, grid, arch, "experiments/qtt_poisson/exact_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
+    exact_mps, grid, arch, "experiments/archive/qtt_poisson/exact_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
 )
 
 # Build 2D Laplacian with homogeneous Dirichlet BCs on all sides.
@@ -73,7 +73,7 @@ visualize_scalar(
     -1.0 * apply(Δ, exact_mps),
     grid,
     arch,
-    "experiments/qtt_poisson/opexact_2d.png";
+    "experiments/archive/qtt_poisson/opexact_2d.png";
     npoints=200,
     aspect_ratio=:equal,
     size=fig_size,
@@ -110,7 +110,7 @@ ttcg_solver = GlobalCG(; updater_kwargs=global_updater_kwargs)
 
 output_mps = linearsolve(ttcg_solver, -1.0 * Δ, rhs_mps, nothing)
 visualize_scalar(
-    output_mps, grid, arch, "experiments/qtt_poisson/numerical_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
+    output_mps, grid, arch, "experiments/archive/qtt_poisson/numerical_2d.png"; npoints=200, aspect_ratio=:equal, size=fig_size
 )
 
 # Compare against exact solution directly in MPS space.
