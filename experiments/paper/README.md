@@ -18,8 +18,7 @@ paper repository and we did not change them. The benchmarks that the paper does 
 The statistics benchmarks run every task `BENCH_N_REPEATS` times and write one file per task and repeat; the collector
 turns them into one table and the plotter draws the spread over the repeats. Their shared helpers are in
 `../common/`: `stats_harness.jl` (the repeats and the layout of the jobs), `stats_utils.jl` (collection, paired speedups and
-the sanity checks of the repeats), and `stats_plot_utils.jl` and `anisotropy_stats_plot_utils.jl` (plotting helpers of the
-non-paper plotters of the cluster mirror, which we did not port; no script of this folder includes them). The Chorin worker
+the sanity checks of the repeats). The Chorin worker
 and `linsolve_spd` read the masks of `../fai_benchmarks/chorin_pipeline/masks.jld2`, and the anisotropy worker the problem
 of `../common/anisotropy_problem.jl`.
 

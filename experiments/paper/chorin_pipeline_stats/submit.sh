@@ -47,11 +47,12 @@
 # pairing is preserved): BENCH_REPEAT_OFFSET=10 BENCH_N_REPEATS=5 bash .../submit.sh nocond
 #
 # --- Wall clock and queue footprint --------------------------------------------------------
-# Per-unit times (Oct 2026 nocond run: 500 steps (8,8), 250 steps (10,10), 20 cores):
+# Per-unit times measured in the nocond run of Oct 2026, which ran 500 steps on (8,8) and 250 steps on (10,10), 20 cores
+# (the worker now runs 500 steps on (8,8) and 1000 steps on (10,10); the times below were NOT re-measured at those counts):
 #     (8,8)   500 steps: ~1.2 h per unit  -> a 10-method block ~12 h
 #     (10,10) 250 steps: ~4.3 h per unit, ~62 s/step, dominated by RK4/masking, not the solve;
-#             the bond dimension is at the 200 cap from step ~50, so 500 steps ~ 9-12 h per unit.
-# UNIT_TIME=1 day leaves a ~2x margin for (10,10) at 500 steps; raise it if n_steps grows.
+#             the bond dimension is at the 200 cap from step ~50.
+# Check UNIT_TIME (default 1 day) against the 1000 steps of (10,10) before submitting: it was sized for fewer steps.
 # Cores held at once: 10 repeats -> 10 block jobs + 100 unit jobs = 110 x 20 = 2200 cores
 # (5 repeats: 1100), well inside the 4608-core limit of the QOS.
 # A block stopped by the guard, or a failed/killed unit: run the SAME command again, units whose
