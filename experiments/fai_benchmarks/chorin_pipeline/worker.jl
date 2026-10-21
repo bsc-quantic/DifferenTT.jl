@@ -99,12 +99,13 @@ const STENCIL_ORDER = 8
 
 const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0002, (12, 12) => 0.00001)
 
-# Smoke mode: one grid size, two steps, the baseline and one FAI task, on the cylinder mask that smoke.jl generates.
+# Smoke mode: one grid size, two steps, the baseline and one FAI task, on the cylinder mask that smoke.jl generates, without
+# local condition numbers (their dense eigenproblems take minutes; tt_poisson and tt_anisotropy smoke-test that path).
 const n_steps_map =
     SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (12, 12) => 2) : Dict((8, 8) => 100, (10, 10) => 50, (12, 12) => 20)
 
 const system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
-const cond_nodes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
+const cond_nodes = SMOKE ? Tuple{Int,Int}[] : [(8, 8), (10, 10)]
 # const system_sizes = [(10, 10)]
 # const cond_nodes  = [(10, 10)]
 

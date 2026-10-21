@@ -128,7 +128,7 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
 end
 
 const system_sizes = SMOKE ? [(8, 8)] : [(11, 11)]
-const cond_nodes = SMOKE ? [(8, 8)] : [(11, 11)]
+const cond_nodes = SMOKE ? Tuple{Int,Int}[] : [(11, 11)]
 # 2^11 x 2^11 at Re = 24000 (no condition numbers; the array has 1 + length(g_maxdims) = 10 tasks):
 # const system_sizes = [(11, 11)]
 # const cond_nodes  = Tuple{Int,Int}[]

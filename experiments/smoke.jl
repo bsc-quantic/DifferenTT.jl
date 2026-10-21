@@ -4,7 +4,8 @@
 An experiment script that no longer runs after a change of the library is only discovered when someone submits a job that
 takes hours. We therefore run here every non-archived script of `experiments/` once, on a tiny problem (smoke mode,
 `DIFFERENTT_SMOKE=1`), and report which ones fail. For each benchmark we run, in this order, the generator of its inputs (if
-any), the worker on a few tasks (the baseline and one FAI task, and, for the local benchmarks, a run with condition numbers),
+any), the worker on a few tasks (the baseline and one FAI task; `tt_poisson` and `tt_anisotropy` also run once with local condition
+numbers),
 the collector and the plotter. Every step is a separate `julia --project=experiments` process, run one at a time, with a
 timeout of 5 minutes. The steps of one benchmark share a temporary folder (`DIFFERENTT_SMOKE_DIR`), so that the collector and
 the plotter read what the smoke worker wrote and never the committed results.
@@ -45,6 +46,7 @@ function benchmark(
     folder::String;
     masks::Bool=false,
     nocond_tasks::Vector{Int}=[1, 2],
+    has_nocond::Bool=false,
     cond_tasks::Vector{Int}=Int[],
     collect_args::Vector{String}=String[],
     plot_args::Vector{String}=String[],
@@ -53,25 +55,25 @@ function benchmark(
     steps = Step[]
     masks && push!(steps, Step("$dir/generate_masks.jl", String[]))
     for t in nocond_tasks
-        push!(steps, Step("$dir/worker.jl", [string(t), (isempty(cond_tasks) ? String[] : ["nocond"])...]))
+        push!(steps, Step("$dir/worker.jl", [string(t), (has_nocond ? ["nocond"] : String[])...]))
     end
     for t in cond_tasks
         push!(steps, Step("$dir/worker.jl", [string(t)]))
     end
-    push!(steps, Step("$dir/collect.jl", [collect_args; (isempty(cond_tasks) ? String[] : ["nocond"])]))
+    push!(steps, Step("$dir/collect.jl", [collect_args; (has_nocond ? ["nocond"] : String[])]))
     isempty(cond_tasks) || push!(steps, Step("$dir/collect.jl", collect_args))
     push!(steps, Step("$dir/plot_results.jl", plot_args))
     return Job(folder, steps)
 end
 
 const JOBS = [
-    benchmark("tt_poisson"; cond_tasks=[2]),
+    benchmark("tt_poisson"; has_nocond=true, cond_tasks=[2]),
     benchmark("tt_poisson_global"),
-    benchmark("tt_anisotropy"; nocond_tasks=[1, 2, 3], cond_tasks=[2]),
+    benchmark("tt_anisotropy"; has_nocond=true, nocond_tasks=[1, 2, 3], cond_tasks=[2]),
     benchmark("tt_anisotropy_global"; nocond_tasks=[1, 2, 3]),
-    benchmark("chorin_pipeline"; masks=true, cond_tasks=[2]),
+    benchmark("chorin_pipeline"; masks=true, has_nocond=true),
     benchmark("chorin_pipeline_globalcg"; masks=true),
-    benchmark("liddriven_pipeline"; cond_tasks=[2]),
+    benchmark("liddriven_pipeline"; has_nocond=true),
     benchmark("liddriven_pipeline_globalcg"),
     Job(
         "liddriven_cavity",
