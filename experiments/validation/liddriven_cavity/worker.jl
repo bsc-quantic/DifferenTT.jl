@@ -30,9 +30,13 @@ CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-base_folder =
-    (use_nocond ? "experiments/validation/liddriven_cavity/results_nocond" : "experiments/validation/liddriven_cavity/results") *
-    RESULTS_SUFFIX
+base_folder = (
+    if use_nocond
+        "experiments/validation/liddriven_cavity/results_nocond"
+    else
+        "experiments/validation/liddriven_cavity/results"
+    end
+) * RESULTS_SUFFIX
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 

@@ -117,7 +117,9 @@ if save_mask
     @show ranks_mask
     @show error_mask
     object_mask = replace_siteinds!(MPS(tci_mask), sites)
-    visualize_scalar(object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
+    visualize_scalar(
+        object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size
+    )
 
     # save(mask_path, mask_name, object_mask)
 end
@@ -127,7 +129,9 @@ if load_mask
     length(object_mask) != sum(nodes) && throw(ArgumentError("Given object_mask does not have the required length."))
     siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
 
-    visualize_scalar(object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size)
+    visualize_scalar(
+        object_mask, grid, arch, "experiments/validation/tunnel2d/"*mask_name*".png"; npoints=200, size=fig_size
+    )
 end
 
 isnothing(object_mask) && @warn "Mask was not initialized."

@@ -24,8 +24,11 @@ using Statistics
 get(ENV, "CAVITY_LIDS", "1") == "1" || error("ghia_comparison.jl only applies to the single-lid cavity (CAVITY_LIDS=1)")
 
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder =
-    use_nocond ? "experiments/validation/liddriven_cavity/results_nocond" : "experiments/validation/liddriven_cavity/results"
+base_folder = if use_nocond
+    "experiments/validation/liddriven_cavity/results_nocond"
+else
+    "experiments/validation/liddriven_cavity/results"
+end
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 isfile(snapshots_file) || error("Snapshots file not found at $snapshots_file")
 

@@ -10,9 +10,13 @@ const CAVITY_LIDS = parse(Int, get(ENV, "CAVITY_LIDS", "1"))
 CAVITY_LIDS in (1, 2) || error("CAVITY_LIDS must be 1 or 2, got $CAVITY_LIDS")
 const RESULTS_SUFFIX = CAVITY_LIDS == 2 ? "_doublelid" : ""
 const use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-base_folder =
-    (use_nocond ? "experiments/validation/liddriven_cavity/results_nocond" : "experiments/validation/liddriven_cavity/results") *
-    RESULTS_SUFFIX
+base_folder = (
+    if use_nocond
+        "experiments/validation/liddriven_cavity/results_nocond"
+    else
+        "experiments/validation/liddriven_cavity/results"
+    end
+) * RESULTS_SUFFIX
 snapshots_file = joinpath(base_folder, "snapshots.jld2")
 
 if !isfile(snapshots_file)
