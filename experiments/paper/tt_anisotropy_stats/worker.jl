@@ -25,7 +25,7 @@ using TensorCrossInterpolation
 using DifferenTT
 using Random
 
-include(joinpath(@__DIR__, "..", "anisotropy_problem.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_problem.jl"))
 
 # ---- Runtime configuration ----
 # Match BLAS threads to the SLURM allocation (falls back to Julia's default if not under SLURM).
@@ -34,43 +34,21 @@ if haskey(ENV, "SLURM_CPUS_PER_TASK")
 end
 @info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
 
-# ---- GC memory ballast ----
-# Julia 1.12 derives its GC thresholds from the heap size, so a small live heap (as in this
-# benchmark) collects very often and forces full sweeps, which are expensive. The ballast is a
-# large, never-written buffer: the GC counts it as heap (raising the thresholds) but its pages
-# are never touched, so it costs no resident memory. See chorin_gc_report.md.
-const GC_BALLAST_GB = parse(Float64, get(ENV, "GC_BALLAST_GB", "0"))
-const GIB = 2^30
-gc_max_memory() = ccall(:jl_gc_get_max_memory, UInt64, ())
-
-function allocate_ballast(gb::Float64)
-    gb > 0 || return UInt8[]
-    max_gb = 0.4 * 0.8 * gc_max_memory() / GIB   # keep well below the GC's heap cap
-    if gb > max_gb
-        @warn "Clamping GC ballast" requested_gb=gb max_gb
-        gb = max_gb
-    end
-    try
-        return Vector{UInt8}(undef, round(Int, gb * GIB))
-    catch e
-        e isa OutOfMemoryError || rethrow()
-        @warn "Could not reserve the GC ballast, running without it" gb
-        return UInt8[]
-    end
-end
-
-# Must stay a global: if it is ever freed, the effect disappears. Never write into it.
-const GC_BALLAST = allocate_ballast(GC_BALLAST_GB)
-@info "GC ballast" gb=length(GC_BALLAST) / GIB heap_cap_gb=gc_max_memory() / GIB
+# ---- GC memory ballast (see common/gc_ballast.jl) ----
+include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-include(joinpath(@__DIR__, "..", "stats_harness.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "stats_harness.jl"))
+
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results_nocond"
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results"
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "TT_ANISOTROPY_STATS_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -84,7 +62,7 @@ mkpath(TASKS_DIR)
 const N_SOLVE_REPEATS = 1
 
 # Number of sweeps used to build the FAI preconditioner. Overridable for fast local verification.
-const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_ANISOTROPY_STATS_FAI_NSWEEPS", "10"))
+const FAI_BUILD_NSWEEPS = parse(Int, get(ENV, "TT_ANISOTROPY_STATS_FAI_NSWEEPS", SMOKE ? "3" : "10"))
 
 # Right-hand side: :ones (mean exit time, default), :random or :manufactured. See build_rhs.
 const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
@@ -94,24 +72,25 @@ const RHS_KIND = Symbol(get(ENV, "TT_ANISOTROPY_RHS", "ones"))
 # The number of tasks is length(system_dims) * length(floor_values) *
 # (1 + length(sinc_M_values) + length(fai_configs) + length(fai_L0_configs)); keep NTASKS in
 # submit.sh in sync.
-const system_dims = [10, 20]
-const floor_values = [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
-const N_NODES_PER_DIM = 15
+# Smoke mode: N = 5, F = 10, 7 nodes per dimension, and baseline, Sinc (M = 3), FAI and FAI(L0) at χ_G = 4 (one block).
+const system_dims = SMOKE ? [5] : [10, 20]
+const floor_values = SMOKE ? [10.0] : [1.0, 2.0, 4.0, 10.0, 30.0, 100.0]
+const N_NODES_PER_DIM = SMOKE ? 7 : 15
 const residual_tol = 1e-5
 
 # Cap on the solution bond dimension. The f ≡ 1 solution rank grows with F: at N = 5 a relative
 # residual of 1e-7 needs χ ≈ 70 (F = 10) and χ ≈ 90 (F = 100), see anisotropy_floor/.
 const maxdims_map = Dict(5 => 80, 10 => 150, 15 => 150, 20 => 300)
 
-const nsweeps_map = Dict(5 => 30, 10 => 30, 15 => 40, 20 => 50)
+const nsweeps_map = SMOKE ? Dict(5 => 5) : Dict(5 => 30, 10 => 30, 15 => 40, 20 => 50)
 
 const pc_tol_map = Dict(5 => 1e-1, 10 => 1e-1, 15 => 1e-1, 20 => 1e-1)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
-const sinc_M_values = [3, 4, 5, 7, 10]
-const fai_configs = [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
-const fai_L0_configs = [(1e7, 10)]
+const sinc_M_values = SMOKE ? [3] : [3, 4, 5, 7, 10]
+const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
+const fai_L0_configs = SMOKE ? [(1e7, 4)] : [(1e7, 10)]
 
 ITensors.disable_warn_order()
 ENV["JULIA_DEBUG"] = ""
@@ -189,13 +168,13 @@ end
 
 Build the FAI factorized preconditioner. Used both by `warmup()` and by every timed FAI task,
 with the same keyword set as the real build (including `residual_tol`), so the
-`sweep_observer!` path inside `fai_dg` is compiled ahead of time.
+`sweep_observer!` path inside the FAI build is compiled ahead of time.
 """
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
     fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
 
     fai_updater_kwargs = LocalUpdaterArgs(;
-        ishermitian=true, isposdef=true, compute_cond=false, rtol=1e-5, krylovdim=1, maxiter=2000
+        ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000
     )
 
     fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
@@ -204,10 +183,16 @@ function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build
         sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=2, enrichment_cutoff=1e-10
     )
 
-    D_kwargs_local = (; cutoff=1e-11, oversample=20, maxdim=gdim)
-
     return fai_preconditioner(
-        A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build
+        A;
+        μ=μ,
+        solver=fai_als_solver,
+        D_cutoff=1e-11,
+        D_oversample=20,
+        D_maxdim=gdim,
+        totalmaxdim=gdim,
+        preconditioning=false,
+        residual_tol=residual_tol_build,
     )
 end
 

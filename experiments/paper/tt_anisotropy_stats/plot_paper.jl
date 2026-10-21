@@ -67,8 +67,11 @@ XLABEL_F = L"Floor $F$ (bound on $\kappa(L_0^{-1} L)$)"
 # -------------------------------------------------------------------------
 # Data selection
 # -------------------------------------------------------------------------
-RESULTS_FILE = joinpath(@__DIR__, "results_nocond", "collected_results.jld2")
-PLOTS_DIR = joinpath(@__DIR__, "plots_paper")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+RESULTS_FILE = joinpath(OUT_ROOT, "results_nocond", "collected_results.jld2")
+PLOTS_DIR = joinpath(OUT_ROOT, "plots_paper")
 
 SELECTED_N = nothing   # e.g. [20]; nothing = every dimension in the data
 SELECTED_F = nothing   # e.g. [1, 4, 10, 100]; nothing = every floor
@@ -210,7 +213,7 @@ PAIR_VS_F = [   # one vs-F pair per entry: (field, ylabel, yscale, name)
     (:iters, "Total Local CG Iterations", YSCALE_ITERS_VS_F, "iters_vs_F"),
     (:solve, "Solve Time (s)", YSCALE_TIME_VS_F, "solve_time_vs_F"),
 ]
-PAIR_SITE_CASES = [(10, 1.0), (10, 100.0), (20, 1.0), (20, 100.0)]   # (N, F) panels of the site-iteration pairs
+PAIR_SITE_CASES = SMOKE ? [(5, 10.0)] : [(10, 1.0), (10, 100.0), (20, 1.0), (20, 100.0)]   # (N, F) panels of the site-iteration pairs
 # Short axis labels: the long ones do not fit a panel this small (the captions explain F)
 PAIR_XLABEL_F = L"Floor $F$"
 PAIR_SITE_YLABEL = "Local CG Iterations"

@@ -2,12 +2,12 @@
 #
 # The saved "df" has SEVERAL rows per key (one per repeat). The original
 # tt_anisotropy/plot_results.jl expects one row per key and produces nonsense from it: use this
-# directory's plot_results.jl.
+# directory's plot_paper.jl.
 #
 # A configuration is a (case, key) pair, where `case = (N, F)`: the baseline that a configuration's
 # speedups are paired against is the one at the same dimension AND floor.
 #
-# Usage: julia --project=. experiments/preconditioner_benchmarks/tt_anisotropy_stats/collect.jl [nocond]
+# Usage: julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl [nocond]
 #
 # Environment:
 #   TT_ANISOTROPY_STATS_RESULTS_DIR  override the results folder (same variable as the worker)
@@ -23,13 +23,16 @@ using JLD2
 using DataFrames
 using Statistics
 
-include(joinpath(@__DIR__, "..", "stats_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "stats_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 default_base_folder = if use_nocond
-    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results_nocond"
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    "experiments/preconditioner_benchmarks/tt_anisotropy_stats/results"
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "TT_ANISOTROPY_STATS_RESULTS_DIR", default_base_folder)
 discard_first = get(ENV, "BENCH_DISCARD_FIRST_REPEAT", "0") in ("1", "true", "yes")
