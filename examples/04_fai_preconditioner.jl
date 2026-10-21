@@ -1,12 +1,12 @@
 # # Factorized approximate inverse preconditioners
 #
-# The alternating solvers of the previous tutorials reduce a linear system in the TT format to a sequence of small
-# local problems, which they solve with CG when the operator is SPD. The number of CG iterations grows with the square
-# root of the condition number, and for the second-order elliptic operators of PDEs the condition number grows as
+# The alternating solvers of the previous tutorials reduce a linear system in the TT format to a sequence of small local
+# problems, which they solve with CG when the operator is SPD. The number of CG iterations grows with the square root of
+# the condition number, and for the second-order elliptic operators of PDEs the condition number grows as
 # ``\mathcal{O}(h^{-2})``, so that fine grids, which the QTT format makes affordable in memory, make the solves slow.
 # This tutorial reproduces in miniature the main argument of Torrente et al., *Factorized approximate inverse
-# preconditioners in the tensor train format* ("the paper"): an approximate inverse used as a preconditioner for CG
-# must be SPD, truncated TT approximate inverses are not guaranteed to be, and a factorized construction is.
+# preconditioners in the tensor train format* ("the paper"): an approximate inverse used as a preconditioner for CG must
+# be SPD, truncated TT approximate inverses are not guaranteed to be, and a factorized construction is.
 #
 # The guiding idea is that of the factorized sparse approximate inverses of Kolotilina & Yeremin (1993): instead of
 # approximating ``A^{-1}``, we approximate the inverse ``G_L \approx L_A^{-1}`` of the Cholesky factor of
@@ -36,8 +36,8 @@ ITensors.disable_warn_order()
 # ``A = -W\Delta`` of [`symmetrized_laplacian`](@ref), whose Neumann rows are weighted by ``W`` so that ``A`` is
 # symmetric. The periodic axis is built with the `periodic` flag of [`Grid`](@ref), which gives it the spacing
 # ``h_y = 1/2^{n_y}`` and the period 1; [`periodic_axes`](@ref), which is not exported, reads the flags from the
-# boundary conditions. The runs of the paper used the plain grid, whose periodic axis has the period ``1 + h_y``, so
-# the numbers below are not those of Fig. 3, although they follow the same pattern.
+# boundary conditions. The runs of the paper used the plain grid, whose periodic axis has the period ``1 + h_y``, so the
+# numbers below are not those of Fig. 3, although they follow the same pattern.
 
 pressure_bcs = BoundaryConditions(
     BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -54,9 +54,9 @@ end
 A, sites = pressure_operator((5, 5))
 maxlinkdim(A)
 
-# The operator has bond dimension 6, as in the paper (Sec. 5.2). On ``2^5 \times 2^5 = 1024`` nodes we can still
-# afford its dense matrix, from [`contract_mpo`](@ref), and its spectrum. The matrix is symmetric up to rounding and
-# SPD, with a condition number of order ``10^4``:
+# The operator has bond dimension 6, as in the paper (Sec. 5.2). On ``2^5 \times 2^5 = 1024`` nodes we can still afford
+# its dense matrix, from [`contract_mpo`](@ref), and its spectrum. The matrix is symmetric up to rounding and SPD, with
+# a condition number of order ``10^4``:
 
 Ad = contract_mpo(A)
 λA = eigvals(Symmetric(Ad))
@@ -65,23 +65,23 @@ Ad = contract_mpo(A)
 
 # ## Truncated inverses lose definiteness
 #
-# Operator inversion is well established in the TT format. [`linsolve_preconditioner`](@ref) solves the matrix
-# equation ``AX + XA = 2I`` (Oseledets & Dolgov, 2012), vectorized into a linear system for an MPS whose sites have
-# dimension ``d^2 = 4``, with a solver whose maximum bond dimension sets that of ``X``. Its solution is ``A^{-1}``,
-# but the truncation to a bond dimension ``\chi`` controls the norm error, not the sign of the eigenvalues. By Weyl's
+# Operator inversion is well established in the TT format. [`linsolve_preconditioner`](@ref) solves the matrix equation
+# ``AX + XA = 2I`` (Oseledets & Dolgov, 2012), vectorized into a linear system for an MPS whose sites have dimension
+# ``d^2 = 4``, with a solver whose maximum bond dimension sets that of ``X``. Its solution is ``A^{-1}``, but the
+# truncation to a bond dimension ``\chi`` controls the norm error, not the sign of the eigenvalues. By Weyl's
 # inequality, the symmetric part ``S = (P + P^\top)/2`` of an approximate inverse ``P`` satisfies
 # ``\lambda_{\min}(S) \ge \lambda_{\min}(A^{-1}) - \|S - A^{-1}\|_2``, so ``S`` is only guaranteed to be positive
 # definite once the error falls below ``\lambda_{\min}(A^{-1}) = 1/\lambda_{\max}(A)``, a relative accuracy of order
 # ``1/\kappa(A)``.
 #
-# As in Fig. 3 of the paper, we count the negative eigenvalues of ``S`` for two such inverses and ``\chi = 1, \dots,
-# 6``. The first is the TT solution of ``AX + XA = 2I``, built with 10 MALS sweeps ([`ResidualALS`](@ref)). The second
-# is the exact ``A^{-1}``, converted to a tensor train operator by successive SVDs truncated to ``\chi``. Since only
-# the truncated operator matters, and not its cores, we perform these SVDs on the dense matrix, site by site: we order
-# its entries by site, with the row and column indices of each site side by side, and split off one site of dimension
-# ``2 \times 2 = 4`` at a time, keeping the ``\chi`` largest singular values. This is the factorization that
-# [`mat2mpo`](@ref) performs with `maxdim = χ`. An eigenvalue counts as negative below ``-n\, \epsilon
-# \max|\lambda|``, the rounding level of the dense eigensolver for ``n`` nodes.
+# As in Fig. 3 of the paper, we count the negative eigenvalues of ``S`` for two such inverses and
+# ``\chi = 1, \dots, 6``. The first is the TT solution of ``AX + XA = 2I``, built with 10 MALS sweeps
+# ([`ResidualALS`](@ref)). The second is the exact ``A^{-1}``, converted to a tensor train operator by successive SVDs
+# truncated to ``\chi``. Since only the truncated operator matters, and not its cores, we perform these SVDs on the
+# dense matrix, site by site: we order its entries by site, with the row and column indices of each site side by side,
+# and split off one site of dimension ``2 \times 2 = 4`` at a time, keeping the ``\chi`` largest singular values. This
+# is the factorization that [`mat2mpo`](@ref) performs with `maxdim = χ`. An eigenvalue counts as negative below
+# ``-n\, \epsilon \max|\lambda|``, the rounding level of the dense eigensolver for ``n`` nodes.
 
 function svd_truncated(M, nsites, χ)
     perm = [k for s in nsites:-1:1 for k in (s, nsites + s)]
@@ -135,9 +135,9 @@ println("truncated A⁻¹       ", join((lpad(k, 4) for k in truncated_negative)
 # ```
 #
 # which does not involve ``L_A``. We then set ``G_L = D \tilde{G}_L``, where the diagonal
-# ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` of Eq. (23) gives ``G_L A G_L^\top`` a unit diagonal. In the TT format
-# the triangularity cannot be imposed entry by entry, so [`fai_preconditioner`](@ref) solves the projected system of
-# Eq. (22),
+# ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` of Eq. (23) gives ``G_L A G_L^\top`` a unit diagonal. In the TT format the
+# triangularity cannot be imposed entry by entry, so [`fai_preconditioner`](@ref) solves the projected system of Eq.
+# (22),
 #
 # ```math
 # \left[\mathbb{P}_L (\mathbf{I} \otimes A) \mathbb{P}_L + \mu (\mathbb{I} - \mathbb{P}_L)\right]
@@ -181,18 +181,18 @@ for χG in χGs
     )
 end
 
-# The first build includes the compilation of the code, so its time is not representative. The condition number
-# drops from ``\kappa(A) \approx 1.5 \cdot 10^4`` by a factor of 10 for ``\chi_{G_L} = 2`` and of 100 for
-# ``\chi_{G_L} = 4``, and the smallest eigenvalue of ``M^{-1}`` stays positive, as it must. The bond dimension of
-# ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the
-# preconditioner, at the expense of its quality.
+# The first build includes the compilation of the code, so its time is not representative. The condition number drops
+# from ``\kappa(A) \approx 1.5 \cdot 10^4`` by a factor of 10 for ``\chi_{G_L} = 2`` and of 100 for ``\chi_{G_L} = 4``,
+# and the smallest eigenvalue of ``M^{-1}`` stays positive, as it must. The bond dimension of ``G_L`` plays the role of
+# the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at the
+# expense of its quality.
 
 # ## Inside the FAI
 #
-# In order to see the two factors, we call the internal `DifferenTT.fai_dg`, which [`fai_preconditioner`](@ref) uses
-# and which returns ``\tilde{G}_L`` and ``D`` before their product. It is not part of the public API; we use it here
-# only to inspect the construction. With the settings and the seed of the ``\chi_{G_L} = 3`` build, its factors
-# reproduce that preconditioner:
+# In order to see the two factors, we call the internal `DifferenTT.fai_dg`, which [`fai_preconditioner`](@ref) uses and
+# which returns ``\tilde{G}_L`` and ``D`` before their product. It is not part of the public API; we use it here only to
+# inspect the construction. With the settings and the seed of the ``\chi_{G_L} = 3`` build, its factors reproduce that
+# preconditioner:
 
 G̃, D = DifferenTT.fai_dg(
     A, 1e7, fai_builder(3), (; cutoff=1e-15, maxdim=typemax(Int), oversample=10); residual_tol=0.1, rng=StableRNG(1)
@@ -240,10 +240,10 @@ d = diag(DG̃) ./ g
 # We now use the preconditioners in MALS, the two-site [`ResidualALS`](@ref), on a random right-hand side of bond
 # dimension 4, with the settings of Sec. 5.2 at a tighter tolerance: no singular value cutoff, a local CG tolerance of
 # ``10^{-7}`` and sweeps stopped at a relative residual of ``10^{-6}``. We time the solves after a first call of each
-# method, which compiles the code. A [`FactorizedPreconditioner`](@ref) is not
-# contracted into ``G_L^\top G_L``: MALS projects ``G_L`` onto the sites of every local problem and applies the two
-# layers ``(U^\top G_L^\top U)(U^\top G_L U)`` of Fig. 8, so the local preconditioner is positive semidefinite as
-# well. A [`KrylovSweepStats`](@ref) records the iterations of every local CG solve.
+# method, which compiles the code. A [`FactorizedPreconditioner`](@ref) is not contracted into ``G_L^\top G_L``: MALS
+# projects ``G_L`` onto the sites of every local problem and applies the two layers
+# ``(U^\top G_L^\top U)(U^\top G_L U)`` of Fig. 8, so the local preconditioner is positive semidefinite as well. A
+# [`KrylovSweepStats`](@ref) records the iterations of every local CG solve.
 
 b = random_mps(StableRNG(2), sites; linkdims=4)
 b /= norm(b)
@@ -282,14 +282,14 @@ for (name, preconditioner) in preconditioners
     )
 end
 
-# The FAI reduces the local iterations by a factor of 2.2 to 3.3, less than the reduction of the global condition
-# number would suggest, since ``\sqrt{\kappa}`` drops by a factor of 3 to 10. The local problems of MALS are
-# projections ``U^\top A U``, whose spectra lie within that of ``A`` (Sec. 2.1), so their condition numbers can only be
-# smaller than ``\kappa(A)`` and there is less to gain; the next tutorial measures them site by site. Each
-# preconditioned local iteration moreover costs ``1 + 2\chi_{G_L}/\chi_A`` unpreconditioned ones, about 2.3 for
-# ``\chi_{G_L} = 4`` and ``\chi_A = 6`` (Sec. 4), and the build takes seconds, while the solve takes a fraction of a
-# second. The FAI therefore pays off only when it is reused over many solves with the same operator, as in the Chorin
-# projection of the paper, which the tutorial on the channel flow reproduces.
+# The FAI reduces the local iterations by a factor of 2.2 to 3.3, less than the reduction of the global condition number
+# would suggest, since ``\sqrt{\kappa}`` drops by a factor of 3 to 10. The local problems of MALS are projections
+# ``U^\top A U``, whose spectra lie within that of ``A`` (Sec. 2.1), so their condition numbers can only be smaller than
+# ``\kappa(A)`` and there is less to gain; the next tutorial measures them site by site. Each preconditioned local
+# iteration moreover costs ``1 + 2\chi_{G_L}/\chi_A`` unpreconditioned ones, about 2.3 for ``\chi_{G_L} = 4`` and
+# ``\chi_A = 6`` (Sec. 4), and the build takes seconds, while the solve takes a fraction of a second. The FAI therefore
+# pays off only when it is reused over many solves with the same operator, as in the Chorin projection of the paper,
+# which the tutorial on the channel flow reproduces.
 #
 # As an aside, the same preconditioner can be applied globally, to the residual of the whole tensor train, by
 # [`GlobalCG`](@ref), which applies ``G_L`` and then ``G_L^\top``, each truncated as the iterates. The paper does not
