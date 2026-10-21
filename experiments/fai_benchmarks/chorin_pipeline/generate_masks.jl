@@ -35,6 +35,8 @@ using ITensorMPS
 using TensorCrossInterpolation
 using LinearAlgebra
 using JLD2
+ENV["GKSwstype"] = "100" # headless GR backend, as in the plotters
+using Plots # loads the plotting extension of DifferenTT (visualize_scalar)
 using DifferenTT
 
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
