@@ -98,7 +98,7 @@ const SPD_TOL = 1e-8
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.jld2"
+const MASK_FILE = "experiments/fai_benchmarks/chorin_pipeline/masks.jld2"
 
 const CHORIN_DENSE_NODES = [(4, 4), (5, 5), (6, 6), (7, 7)]
 const CHORIN_LARGE_NODES = [(8, 8), (10, 10)]
