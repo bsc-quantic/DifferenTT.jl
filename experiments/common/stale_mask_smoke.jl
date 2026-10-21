@@ -10,6 +10,8 @@ an `ArgumentError` (`common/mask_grid.jl`).
 """
 
 using JLD2
+using ITensors   # JLD2 needs the types of the stored masks (MPS) loaded to read them
+using ITensorMPS
 
 include(joinpath(@__DIR__, "mask_grid.jl"))
 
