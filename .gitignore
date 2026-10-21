@@ -1,5 +1,6 @@
 */Manifest.toml
 /Manifest*.toml
+!experiments/Manifest.toml
 .vscode
 
 # Maintainer notes, logs and coverage output
