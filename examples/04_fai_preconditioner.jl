@@ -186,6 +186,21 @@ end
 # and the smallest eigenvalue of ``M^{-1}`` stays positive, as it must. The bond dimension of ``G_L`` plays the role of
 # the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at the
 # expense of its quality.
+#
+# The value of ``\mu`` matters for the build, although not for its exact solution (Appendix B.1). Since ``\mathbb{P}_L``
+# acts on each row of the unknown separately, the operator of Eq. (22) is block diagonal, with the leading principal
+# submatrices of ``A``, whose eigenvalues lie in ``[\lambda_{\min}(A), \lambda_{\max}(A)]``, and ``\mu`` times the
+# identity on the entries above the diagonal. Its condition number is therefore
+# ``\max(\mu, \lambda_{\max}) / \min(\mu, \lambda_{\min})``. On this coarse grid
+# ``\lambda_{\max}(A) \approx 8.2 \cdot 10^3``, so ``\mu = 10^7`` lies three orders of magnitude above the top of the
+# spectrum and raises the condition number of Eq. (22) to about ``2 \cdot 10^7``, while any ``\mu`` inside the spectrum
+# keeps it at ``\kappa(A)``. Since ``\lambda_{\max}(A)`` grows as ``h^{-2}``, it reaches about ``8 \cdot 10^6`` on the
+# ``2^{10} \times 2^{10}`` grid of Sec. 5.2, where ``\mu = 10^7`` is close to the top of the spectrum. A build with a
+# capped number of sweeps, such as the 30 of Table 2, is therefore slower to converge on coarse grids, and can return a
+# worse preconditioner, the larger ``\mu`` is above ``\lambda_{\max}(A)``. A value at the top of the spectrum,
+# ``\mu \approx \lambda_{\max}(A)``, is a reasonable choice: it keeps the condition number of the build at that of ``A``
+# and still weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. We keep the
+# ``\mu = 10^7`` of Table 2 in this tutorial.
 
 # ## Inside the FAI
 #
