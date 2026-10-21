@@ -1,8 +1,33 @@
 """
-    Generate masks for global cg chorin pipeline
+    Cylinder masks of the Chorin pipeline
 
-    Creates and saves circle obstacle masks for system sizes (8,8), (10,10), (12,12)
-    into a single JLD2 file for consistent, reproducible RHS construction.
+The Chorin benchmarks impose the obstacle through a mask that multiplies the velocity at every step, and the mask must
+be the same in every task so that the right-hand sides are reproducible. We therefore precompute it once. The obstacle
+is a cylinder of radius 0.1 centered at (0.5, 0.5) in the box [0, 2] × [0, 1], smoothed as ½[1 + tanh(700 ((x-0.5)² +
+(y-0.5)² - 0.1²))], and we compress it into an MPS by cross interpolation (tolerance 1e-10, bond dimension at most 50)
+for the grids 2⁸ × 2⁸, 2¹⁰ × 2¹⁰ and 2¹² × 2¹² (keys `mask_8_8`, `mask_10_10`, `mask_12_12`).
+
+# Inputs and outputs
+
+No input. Output: `masks.jld2` and a picture of each mask in `maskplots/`, both in this folder (the committed copies are
+overwritten). The script prints the bond dimensions and the error of every mask.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it generates only the 2⁸ × 2⁸ mask, into `DIFFERENTT_SMOKE_DIR` (a fresh temporary
+folder if it is unset), and the smoke worker reads it from there.
+
+# How to run
+
+From the root of the repository:
+
+    julia --project=experiments experiments/fai_benchmarks/chorin_pipeline_globalcg/generate_masks.jl
+
+# Resources
+
+There is no job script: we run it locally.
+
+# Paper
+
+None.
 """
 
 using ITensors

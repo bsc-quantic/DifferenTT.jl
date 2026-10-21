@@ -1,3 +1,28 @@
+"""
+    Chorin pipeline benchmark (global TT-CG): collector
+
+The workers of this benchmark write one file per task, and the plotter needs them as one table. We read every
+`tasks/task_NNN.jld2` of the results folder and stack the `"result"` dictionaries into a DataFrame with one row per task
+(missing fields are filled with `missing`). Tasks whose file cannot be read are reported and skipped.
+
+# Inputs and outputs
+
+Input: the task files in the `tasks/` folder of `results/`, in this folder. Output: `collected_results.jld2` (key
+`"df"`) next to `tasks/`.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository:
+
+    julia --project=experiments experiments/fai_benchmarks/chorin_pipeline_globalcg/collect.jl
+
+`submit.sh` submits it as a collector job that depends on the worker array; the job script requests 1 CPU for 10
+minutes.
+"""
+
 using JLD2
 using DataFrames
 

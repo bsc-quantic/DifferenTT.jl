@@ -1,15 +1,52 @@
 """
-    Lid-Driven Cavity (ψ–ω) Pipeline Benchmark with GlobalCG: Parallel Worker
+    Lid-driven cavity pipeline benchmark (global TT-CG): worker
 
-FAI preconditioner benchmark with GlobalCG on the stream function Poisson systems `-Δψ = ω` of the lid-driven
-cavity (`INSVorticityExperiment`, walls as ghost nodes). The operator is the plain Dirichlet 5-point Laplacian,
-so it is exactly symmetric positive definite. Mirrors `chorin_pipeline_globalcg/worker.jl`: one timed Poisson
-solve per step, followed by the explicit vorticity transport.
+We benchmark the FAI on the stream function Poisson systems -Δψ = ω that appear along the vorticity–streamfunction
+evolution of the lid-driven cavity of Kiffner & Jaksch (arXiv:2303.03010) in the QTT format (`INSVorticityExperiment`,
+walls as ghost nodes). The operator is the plain Dirichlet five-point Laplacian, which is exactly SPD and does not
+change in time, and therefore the FAI is built once per task and reused at every step. The box is the unit square with a
+lid of velocity 1 moving in +x, and the fluid starts at rest; at every step we solve for ψ once and advance the
+vorticity explicitly with RK4 and the Jensen wall formula. `CAVITY_LIDS=2` selects the doubly-driven cavity of the same
+paper (Fig. 5), whose bottom lid moves with velocity -1; its results go to the `*_doublelid` folders.
 
-Set `CAVITY_LIDS=2` for the doubly-driven cavity of Kiffner & Jaksch (arXiv:2303.03010, Fig. 5): the bottom lid
-also moves, with velocity `-U_LID`. Its results go to the `results_doublelid` folder.
+# Problem and parameters
 
-Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/worker.jl [task_id]
+The grid is 2⁸ × 2⁸ at Re = 1000, with 50 steps of dt = 1e-3. Each task is one preconditioner: the unpreconditioned
+baseline, or the FAI with μ = 10⁷ and a bond dimension χ_G ∈ {2, …, 10} (10 tasks). We solve every step with the global
+TT-CG solver (`GlobalCG`) instead of `ResidualALS`: the preconditioner acts on a CG solve of the whole stream function
+system, rather than on the local problem of every site. The iterates have a bond dimension capped at 120, a cutoff of
+1e-13 and at most 3000 iterations, and `GlobalCG` runs to a relative tolerance of 1e-3; the FAI is built to a residual
+tolerance of 0.1.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1). The worker writes `tasks/task_NNN.jld2` (key `"result"`) under `results/` of
+this folder (`results_doublelid/` for two lids), or under `LIDDRIVEN_GLOBALCG_RESULTS_DIR` if set;
+`LIDDRIVEN_GLOBALCG_N_STEPS_OVERRIDE` overrides the number of steps.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/worker.jl
+    [CAVITY_LIDS=1|2] julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/worker.jl 3
+    [CAVITY_LIDS=1|2] bash experiments/fai_benchmarks/liddriven_pipeline_globalcg/submit.sh
+
+# Resources
+
+The job script requests an array of 10 tasks, each on one node with 20 CPUs on an exclusive node (`--exclusive`), for up
+to 36 h (`--time=01-12:00:00`); the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+None.
 """
 
 using ITensors

@@ -1,25 +1,46 @@
 """
-    FAI Preconditioner Benchmark: Evolution Plotting Script
+    Lid-driven cavity pipeline benchmark (local ResidualALS): plotting script
 
-    Reads the evolution distributed JLD2 results and generates comprehensive
-    visualizations using Plots.jl, including:
-    1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
-    2. Pareto fronts of Build Time vs Total Solve Time
-    3. Step-by-step Iteration profiles (total Krylov iterations)
-    4. Step-by-step Speedup profiles
-    5. Site-by-site condition-number profiles (κ absolute, not a ratio)
-    6. Site-by-site iteration profiles (sum across full time evolution)
-    7. Step-by-step relative residual of every configuration
-    8. Step-by-step divergence norm ratio of the stream function velocity of every configuration
-    9. Scaling behavior across system sizes
-    Uses nocond results for accurate timings, and cond results for
-    condition-number profiles.
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
 
-    Note: `pc_conds_per_site` is the absolute local κ(P^{-1}A), not a ratio.
+# Figures
 
-    Usage: julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline/plot_results.jl [single|double]
-    The lid count selects the results folders (`results*_singlelid`/`results*` or `results*_doublelid`, and the
-    matching `plots*`); without it, it is detected from the folders that exist.
+1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
+2. Pareto fronts of Build Time vs Total Solve Time
+3. Step-by-step Iteration profiles (total Krylov iterations)
+4. Step-by-step Speedup profiles
+5. Site-by-site condition-number profiles (κ absolute, not a ratio)
+6. Site-by-site iteration profiles (sum across full time evolution)
+7. Step-by-step relative residual of every configuration
+8. Step-by-step divergence norm ratio of the stream function velocity of every configuration
+9. Scaling behavior across system sizes
+
+We take the timings from the `nocond` results and the condition numbers from the results that record them;
+`pc_conds_per_site` is the absolute local κ(P⁻¹A), not a ratio.
+
+# Inputs and outputs
+
+Reads `results_nocond*/collected_results.jld2` and, if it exists, `results*/collected_results.jld2` of this folder and
+writes PNG figures to `plots*/`; the lid count (`single` or `double`, or `CAVITY_LIDS`) selects the suffix of the
+folders, as `common/plot_cond_utils.jl` documents.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline/plot_results.jl [single|double]
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+None.
 """
 
 using JLD2

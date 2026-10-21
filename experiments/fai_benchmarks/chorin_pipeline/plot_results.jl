@@ -1,24 +1,50 @@
 """
-    FAI Preconditioner Benchmark: Evolution Plotting Script
+    Chorin pipeline benchmark (local ResidualALS): plotting script
 
-    Reads the evolution distributed JLD2 results and generates comprehensive
-    visualizations using Plots.jl, including:
-    1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
-    2. Pareto fronts of Build Time vs Total Solve Time
-    3. Step-by-step Iteration profiles (total Krylov iterations)
-    4. Step-by-step Speedup profiles
-    5. Site-by-site condition-number profiles (κ absolute, not a ratio)
-    6. Site-by-site iteration profiles (sum across full time evolution)
-    7. Step-by-step relative residual of every configuration
-    8. Step-by-step divergence norm ratio (after / before the pressure correction) of every configuration
-    9. Step-by-step bond dimension of the pressure field of every configuration
-    10. Scaling behavior across system sizes
-    11. Velocity, vorticity and pressure of the last snapshot of every configuration
-        (`<size>/last_snapshots/`, read from the nocond task files)
-    Uses nocond results for accurate timings, and cond results for
-    condition-number profiles.
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
 
-    Note: `pc_conds_per_site` is the absolute local κ(P^{-1}A), not a ratio.
+# Figures
+
+1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
+2. Pareto fronts of Build Time vs Total Solve Time
+3. Step-by-step Iteration profiles (total Krylov iterations)
+4. Step-by-step Speedup profiles
+5. Site-by-site condition-number profiles (κ absolute, not a ratio)
+6. Site-by-site iteration profiles (sum across full time evolution)
+7. Step-by-step relative residual of every configuration
+8. Step-by-step divergence norm ratio (after / before the pressure correction) of every configuration
+9. Step-by-step bond dimension of the pressure field of every configuration
+10. Scaling behavior across system sizes
+11. Velocity, vorticity and pressure of the last snapshot of every configuration (`<size>/last_snapshots/`, read from
+   the nocond task files)
+
+We take the timings from the `nocond` results and the condition numbers from the results that record them;
+`pc_conds_per_site` is the absolute local κ(P⁻¹A), not a ratio.
+
+# Inputs and outputs
+
+Reads `results_nocond/collected_results.jld2` (timings), `results/collected_results.jld2` (condition numbers, if it
+exists) and the task files of `results_nocond/tasks/` (last snapshots) of this folder, and writes PNG figures to
+`plots/` (per-size subfolders `<nx>x<ny>/chi_<χ_G>/` for the profiles and `<nx>x<ny>/last_snapshots/` for the
+snapshots).
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/chorin_pipeline/plot_results.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+Sec. 5.2 of the paper uses the `chorin_pipeline_stats` variant (see `paper/`).
 """
 
 using JLD2

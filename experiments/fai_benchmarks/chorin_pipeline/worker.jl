@@ -1,5 +1,60 @@
 """
-    Chorin Pipeline Benchmark: Parallel Worker
+    Chorin pipeline benchmark (local ResidualALS): worker
+
+We simulate a uniform flow past a cylinder in a channel, the setup of Sec. 5.2 of the paper, in the QTT format. The box
+is [0, 2] × [0, 1], discretized with 2^nx × 2^ny points, with the fields in a non-interleaved QTT. At the inlet (x = 0)
+the velocity is (1, 0) and the pressure has a homogeneous Neumann condition; at the outlet (x = 2) the velocity has a
+Neumann condition and the pressure a Dirichlet condition with the constant 1, which makes the pressure operator
+non-singular; the y direction is periodic. A cylinder of radius 0.1 centered at (0.5, 0.5) is imposed through the
+smoothed indicator ½[1 + tanh(700 ((x-0.5)² + (y-0.5)² - 0.1²))], which `generate_masks.jl` precomputes as an MPS by
+cross interpolation and stores in `masks.jld2`. We evolve the flow at Re = 3000 with RK4, eighth-order stencils and the
+Chorin projection, in which every time step solves the pressure Poisson equation ∇²p = ∇⋅u*/dt with the compact
+Laplacian. This operator does not change in time, and therefore the FAI is built once per task and reused at every step.
+
+# Problem and parameters
+
+We use a 2⁸ × 2⁸ grid with 100 time steps of dt = 1e-3, and a 2¹⁰ × 2¹⁰ grid with 50 steps of dt = 2e-4.
+
+Each task is one preconditioner: the unpreconditioned baseline, or the FAI with μ = 10⁷ and a bond dimension χ_G ∈ {2,
+…, 10}, for each grid size (20 tasks in total). We solve every step with `ResidualALS` (two-site ALS with residual-based
+truncation), preconditioning the local problem of every site as in Sec. 4 of the paper, with at most 100 sweeps and a
+solution bond dimension capped at 150 (8 × 8) and 200 (10 × 10), and no cutoff on the truncation. The relative residual
+of every step must reach 1e-3 (both sizes), and the FAI is built to a residual tolerance of 0.1.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1) and `nocond` is `ARGS[2]`. The worker writes `tasks/task_NNN.jld2` (key
+`"result"`) under `results/` or `results_nocond/` of this folder: per step, the solve time, the local Krylov iterations,
+the relative residual, the bond dimension of the pressure and the divergence norm before and after the pressure
+correction; the build time of the preconditioner; and the final fluid state (`"last_snapshot"`), which the plotter
+draws. With `nocond` we do not estimate local condition numbers (the timings we use); without it we estimate κ(A) and
+κ(P⁻¹A) of the local problems of every site, on the sizes listed in `cond_nodes`. `CHORIN_RESULTS_DIR` overrides the
+results folder. The cylinder mask is read from `masks.jld2` in this folder; without it, the worker warns and runs
+without obstacle.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/chorin_pipeline/worker.jl
+    julia --project=experiments experiments/fai_benchmarks/chorin_pipeline/worker.jl 3 nocond
+    bash experiments/fai_benchmarks/chorin_pipeline/submit.sh nocond
+
+# Resources
+
+The job script requests an array of 20 tasks, each on one node with 20 CPUs on an exclusive node (`--exclusive`), for up
+to 36 h (`--time=01-12:00:00`); the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and
+`GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`). We have not measured the run time or the memory of a
+task here.
+
+# Paper
+
+Sec. 5.2 (Chorin projection) uses the `chorin_pipeline_stats` variant of this benchmark (see `paper/`).
 """
 
 using ITensors

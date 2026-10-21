@@ -1,21 +1,42 @@
 """
-    FAI Preconditioner Benchmark: Evolution Plotting Script
+    Lid-driven cavity pipeline benchmark (global TT-CG): plotting script
 
-    Reads the evolution distributed JLD2 results and generates comprehensive
-    visualizations using Plots.jl, including:
-    1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
-    2. Pareto fronts of Build Time vs Total Solve Time
-    3. Step-by-step Iteration profiles
-    4. Step-by-step Speedup profiles
-    5. Step-by-step relative residual of every configuration
-    6. Step-by-step divergence norm ratio of the stream function velocity of every configuration
-    7. Scaling behavior across system sizes
+We draw here the figures that compare the preconditioners of this benchmark from the collected results: speedup and
+iteration counts against the baseline, and how they depend on the system size or on the preconditioner parameters.
 
-    Global CG does not record local Krylov condition numbers.
+# Figures
 
-    Usage: julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/plot_results.jl [single|double]
-    The lid count selects the results folder (`results_singlelid`/`results` or `results_doublelid`); without it, it
-    is detected from the folders that exist.
+1. Heatmaps of Aggregate Solve/Total Speedup (μ vs G_maxdim)
+2. Pareto fronts of Build Time vs Total Solve Time
+3. Step-by-step Iteration profiles
+4. Step-by-step Speedup profiles
+5. Step-by-step relative residual of every configuration
+6. Step-by-step divergence norm ratio of the stream function velocity of every configuration
+7. Scaling behavior across system sizes
+
+Global CG does not record local Krylov condition numbers.
+
+# Inputs and outputs
+
+Reads `results*/collected_results.jld2` of this folder and writes PNG figures to `results*/plots/`; the lid count
+(`single` or `double`, or `CAVITY_LIDS`) selects the suffix of the folder, as `common/plot_cond_utils.jl` documents.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl`:
+
+    julia --project=experiments experiments/fai_benchmarks/liddriven_pipeline_globalcg/plot_results.jl [single|double]
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+None.
 """
 
 using JLD2
