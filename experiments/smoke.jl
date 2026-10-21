@@ -6,7 +6,9 @@ takes hours. We therefore run here every non-archived script of `experiments/` o
 `DIFFERENTT_SMOKE=1`), and report which ones fail. For each benchmark we run, in this order, the generator of its inputs (if
 any), the worker on a few tasks (the baseline and one FAI task; `tt_poisson` and `tt_anisotropy` also run once with local condition
 numbers),
-the collector and the plotter. Every step is a separate `julia --project=experiments` process, run one at a time, with a
+the collector and the plotter; the paper's statistics benchmarks (`paper/*_stats`) run two blocks (two repeats) of their
+worker, and `chorin_pipeline_stats` ends with a step that must fail, to check the safeguard against a stale mask (the
+worker is given a mask whose metadata do not match its grid and must stop with the `ArgumentError`). Every step is a separate `julia --project=experiments` process, run one at a time, with a
 timeout of 5 minutes. The steps of one benchmark share a temporary folder (`DIFFERENTT_SMOKE_DIR`), so that the collector and
 the plotter read what the smoke worker wrote and never the committed results.
 
@@ -34,6 +36,16 @@ const TIMEOUT = 5 * 60  # seconds per step
 struct Step
     script::String          # relative to experiments/
     args::Vector{String}
+    env::Vector{Pair{String,String}}   # more environment variables; "{dir}" in a value is the folder of the benchmark
+    expect_error::String    # "" for a step that must succeed; else the step must fail with this text in its log
+end
+function Step(
+    script::String,
+    args::Vector{String};
+    env::Vector{Pair{String,String}}=Pair{String,String}[],
+    expect_error::String="",
+)
+    return Step(script, args, env, expect_error)
 end
 
 struct Job
@@ -86,9 +98,44 @@ const JOBS = [
     Job("tunnel2d", [Step("validation/tunnel2d/tunnel2d.jl", String[])]),
     Job("tunnel2dsteps", [Step("validation/tunnel2dsteps/tunnel2dpoisson.jl", String[])]),
     Job("anisotropy_floor", [Step("paper/anisotropy_floor/discrete_floor.jl", String[])]),
+    Job("mask_grid_selftest", [Step("common/mask_grid_selftest.jl", String[])]),
     Job(
         "linsolve_spd",
-        [Step("paper/linsolve_spd/worker.jl", String[]), Step("paper/linsolve_spd/plot_results.jl", String[])],
+        [
+            Step("fai_benchmarks/chorin_pipeline/generate_masks.jl", String[]),
+            Step("paper/linsolve_spd/worker.jl", String[]),
+            Step("paper/linsolve_spd/plot_paper.jl", String[]),
+            Step("paper/linsolve_spd/plot_results.jl", String[]),
+        ],
+    ),
+    # The paper's statistics runs: two blocks (two repeats), the collector and the paper plotter. The Chorin one reads the
+    # mask of chorin_pipeline, so the generator runs first, and a last step checks that the worker refuses a mask whose
+    # metadata do not match its grid.
+    Job(
+        "tt_anisotropy_stats",
+        [
+            Step("paper/tt_anisotropy_stats/worker.jl", ["1", "nocond"]),
+            Step("paper/tt_anisotropy_stats/worker.jl", ["2", "nocond"]),
+            Step("paper/tt_anisotropy_stats/collect.jl", ["nocond"]),
+            Step("paper/tt_anisotropy_stats/plot_paper.jl", String[]),
+        ],
+    ),
+    Job(
+        "chorin_pipeline_stats",
+        [
+            Step("fai_benchmarks/chorin_pipeline/generate_masks.jl", String[]),
+            Step("paper/chorin_pipeline_stats/worker.jl", ["1", "nocond"]),
+            Step("paper/chorin_pipeline_stats/worker.jl", ["2", "nocond"]),
+            Step("paper/chorin_pipeline_stats/collect.jl", ["nocond"]),
+            Step("paper/chorin_pipeline_stats/plot_paper.jl", String[]),
+            Step("common/stale_mask_smoke.jl", String[]),
+            Step(
+                "paper/chorin_pipeline_stats/worker.jl",
+                ["1", "nocond"];
+                env=["CHORIN_MASK_FILE" => "{dir}/masks_stale.jld2"],
+                expect_error="does not belong to the grid of this run",
+            ),
+        ],
     ),
 ]
 
@@ -113,7 +160,10 @@ function run_step(job::Job, step::Step, root::String, logdir::String, index::Int
     script = joinpath(EXPERIMENTS, step.script)
     label = join([basename(dirname(step.script)), basename(step.script), step.args...], " ")
     log = joinpath(logdir, @sprintf("%02d_%s_%s.log", index, job.name, replace(basename(step.script), ".jl" => "")))
-    env = ["DIFFERENTT_SMOKE" => "1", "DIFFERENTT_SMOKE_DIR" => joinpath(root, job.name)]
+    dir = joinpath(root, job.name)
+    env = ["DIFFERENTT_SMOKE" => "1", "DIFFERENTT_SMOKE_DIR" => dir]
+    append!(env, [k => replace(v, "{dir}" => dir) for (k, v) in step.env])
+    isempty(step.expect_error) || (label *= " (expect an error)")
     julia = joinpath(Sys.BINDIR, Base.julia_exename())
     cmd = `$julia --project=$EXPERIMENTS --heap-size-hint=2G -t 1 $script $(step.args)`
     t0 = time()
@@ -131,7 +181,13 @@ function run_step(job::Job, step::Step, root::String, logdir::String, index::Int
             sleep(1)
         end
         wait(proc)
-        status == "pass" && !success(proc) && (status = "FAIL")
+        if isempty(step.expect_error)
+            status == "pass" && !success(proc) && (status = "FAIL")
+        elseif status == "pass"
+            # a step that tests a safeguard passes only if it fails, and for the reason that it names
+            failed_as_expected = !success(proc) && occursin(step.expect_error, read(log, String))
+            failed_as_expected || (status = "FAIL")
+        end
     end
     seconds = time() - t0
     # A collector that finds no task file still exits normally: a smoke run must not count it as a pass.

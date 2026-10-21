@@ -34,6 +34,9 @@ jobs:
           - tunnel2dsteps
           - anisotropy_floor
           - linsolve_spd
+          - mask_grid_selftest
+          - tt_anisotropy_stats
+          - chorin_pipeline_stats
     env:
       GKSwstype: "100" # headless GR backend for the plotting scripts
     steps:
