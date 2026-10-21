@@ -1,16 +1,34 @@
 """
-    Lid-Driven Cavity: comparison with Ghia, Ghia & Shin (1982)
+    Lid-driven cavity validation: comparison with Ghia, Ghia & Shin (1982)
 
-Reads the last snapshot of the worker and compares the centreline velocities and the primary vortex with the
-Re = 1000 benchmark of Ghia, Ghia & Shin, J. Comput. Phys. 48, 387-411 (1982), Tables I, II and V.
+The lid-driven cavity at Re = 1000 has reference data from Ghia, Ghia & Shin, J. Comput. Phys. 48, 387-411 (1982),
+Tables I, II and V: the velocity along the two centerlines and the position and strength of the primary vortex. We read
+the last snapshot of the worker and compare it with them. The walls are ghost nodes: interior node k (1-based) sits at
+the physical coordinate k·h, and the walls at 0 and (K + 1)·h = L. We rebuild the velocity on the nodes and the walls
+from ψ with the same central differences as the solver, and we interpolate it linearly on the centerlines x = 0.5 and y
+= 0.5. The comparison exists only for the single-lid cavity, since Ghia et al. have no data for the doubly-driven one.
 
-The walls are ghost nodes: interior node k (1-based) sits at the physical coordinate k·h, and the walls at 0 and
-(K + 1)·h = L. The velocity is rebuilt on the nodes and the walls from ψ with the same central differences as the
-solver, then interpolated linearly on the centrelines x = 0.5 and y = 0.5.
+# Inputs and outputs
 
-Only for the single-lid cavity: Ghia et al. have no doubly-driven reference data.
+Input: `snapshots.jld2` in `results/` (or `results_nocond/` with `nocond`) of this folder. Output, in the same folder:
+`ghia_comparison.txt` (the report), `ghia_comparison.jld2` and `ghia_centrelines.svg`.
 
-Usage: julia --project=experiments experiments/validation/liddriven_cavity/ghia_comparison.jl [nocond]
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository:
+
+    julia --project=experiments experiments/validation/liddriven_cavity/ghia_comparison.jl [nocond]
+
+# Resources
+
+`submit.sh` runs it after the worker, in the same job; we have not measured its run time.
+
+# Paper
+
+None.
 """
 
 using ITensors

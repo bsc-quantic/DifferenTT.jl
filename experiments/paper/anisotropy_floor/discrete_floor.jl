@@ -1,16 +1,42 @@
 """
-    Rotated anisotropy benchmark: discrete floor and exact solution ranks (full format)
+    Discrete floor of the rotated anisotropy benchmark and ranks of its exact solution
 
-For small N, compares the analytic floor F = (1+(N-1)ρ)/(1-ρ) with the discrete floor κ(L0⁻¹ L)
-on the benchmark grid, and measures the TT ranks of the exact solution of L u = 𝟏 (the default
-rhs), which set the `maxdims_map` of the workers.
+For preconditioners built on the separable Laplacian L₀, the condition number κ(L₀⁻¹ L) is a floor for any
+preconditioner that approximates L₀⁻¹, whatever the number of quadrature terms. Its analytic bound F = (1+(N-1)ρ)/(1-ρ)
+is not attained on the coarse grid of the benchmark, and Table 1 of the paper (`tab:anisotropy_floor`) therefore reports
+the discrete floor, together with the TT ranks of the exact solution of L u = 1, which set the bond dimension caps of
+the workers. We compute them here in full format, for N = 3, 4, 5 (the table reports N = 5) and F ∈ {1, 2, 4, 10, 30,
+100} on 15 nodes per dimension, with the one-dimensional operators of DifferenTT, so that the conventions (grid spacing,
+stencils) are those of the benchmarks. We apply L₀⁻¹ exactly through the eigendecomposition of the one-dimensional
+Laplacian, and we obtain the extreme eigenvalues of L₀⁻¹ L from the Lanczos tridiagonal matrix built with the
+coefficients of an L₀-preconditioned CG run (Saad 2003, §6.7). The ranks are those of the TT-SVD of the exact solution
+at the relative accuracies 1e-4, 1e-6 and 1e-8.
 
-Everything is done in full format with 1D operators taken from DifferenTT, so the conventions
-(grid spacing, stencils) are those of the benchmarks. L0⁻¹ is applied exactly through the
-eigendecomposition of the 1D Laplacian, and the extreme eigenvalues of L0⁻¹ L come from the
-Lanczos tridiagonal built from the L0-preconditioned CG coefficients (Saad 2003, §6.7).
+# Inputs and outputs
 
-Usage: julia --project=experiments experiments/paper/anisotropy_floor/discrete_floor.jl [N...]
+The dimensions are the command-line arguments (default 3, 4, 5). Output, in this folder: `discrete_floor.jld2` (key
+`"rows"`) and `discrete_floor.md`, merged with the rows of an earlier run for the same (N, F), so that a slow N = 6 run
+can be added later. `common/anisotropy_plot_utils.jl` reads the `.jld2` file to draw the discrete floor in the plots of
+`tt_anisotropy`.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it runs N = 3 for two values of F and writes to `DIFFERENTT_SMOKE_DIR` (a fresh
+temporary folder if it is unset), so that the committed table is not touched.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/anisotropy_floor/discrete_floor.jl
+    julia --project=experiments experiments/paper/anisotropy_floor/discrete_floor.jl [N...]
+
+# Resources
+
+There is no job script. The array sizes grow as 15ᴺ, so N = 6 is the slow case that the merge above allows to run
+separately; we have not measured the run time or the memory.
+
+# Paper
+
+Table 1 (`tab:anisotropy_floor`).
 """
 
 using LinearAlgebra

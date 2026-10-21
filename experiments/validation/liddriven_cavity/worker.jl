@@ -1,15 +1,50 @@
 """
-    Lid-Driven Cavity (vorticity-streamfunction): Parallel Worker
+    Lid-driven cavity validation (vorticity–streamfunction): worker
 
-Long time evolution of the lid-driven cavity of Kiffner & Jaksch (arXiv:2303.03010) with the ψ–ω scheme of
-`INSVorticityExperiment`: walls are ghost nodes, the lid moves in +x and the fluid starts at rest. Each step
-solves the SPD stream function Poisson system `-Δψ = ω` once and advances ω explicitly with the resulting
-velocity and wall vorticity.
+A solver for incompressible flows has to reproduce a flow whose answer is known, and the lid-driven cavity is the
+standard one. We evolve the cavity of Kiffner & Jaksch (arXiv:2303.03010) in the QTT format with the ψ–ω scheme of
+`INSVorticityExperiment`: the walls are ghost nodes, the lid moves in +x with velocity 1 and the fluid starts at rest.
+At every step we solve the SPD stream function Poisson system -Δψ = ω once, and we advance ω explicitly with RK4 using
+the resulting velocity and the Jensen wall vorticity. `ghia_comparison.jl` then compares the final state with Ghia, Ghia
+& Shin (1982), and `plot_snapshots.jl` draws the fields. `CAVITY_LIDS=2` selects the doubly-driven cavity of the same
+paper (Fig. 5), whose bottom lid moves with velocity -1; its results go to the `*_doublelid` folders.
 
-Set `CAVITY_LIDS=2` for the doubly-driven cavity of the same paper (Fig. 5): the bottom lid also moves, with
-velocity `-U_LID`. Its results go to the `*_doublelid` folders.
+# Problem and parameters
 
-Usage: [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/worker.jl [task_id] [nocond]
+The box is the unit square at Re = 1000, with second-order stencils, up to time 40 on the 2⁷ × 2⁷ grid (8000 steps of dt
+= 0.005) or on the 2⁸ × 2⁸ grid (20000 steps of dt = 0.002); the worker's task list holds one task, the baseline on 2⁷ ×
+2⁷ (no preconditioner), with a solution bond dimension capped at 50 and a relative residual of 1e-3. The fields are
+saved every 200 steps in `snapshots.jld2`, and a rerun resumes from the last saved step.
+
+# Inputs and outputs
+
+The task number is `ARGS[1]` (default 1) and `nocond` is `ARGS[2]`. The worker writes `tasks/task_NNN.jld2` (key
+`"result"`) and `snapshots.jld2` (grid, ω, ψ and the Poisson residual at every saved step) under `results/` or
+`results_nocond/` of this folder (with the suffix `_doublelid` for two lids). With `nocond` the local condition numbers
+are not estimated. `LIDDRIVEN_CAVITY_N_STEPS_OVERRIDE` stops the run after the given number of steps.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
+to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
+committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
+benchmark in turn.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/validation/liddriven_cavity/worker.jl
+    [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/worker.jl 1 nocond
+    [CAVITY_LIDS=1|2] bash experiments/validation/liddriven_cavity/submit.sh nocond
+
+# Resources
+
+The job script requests one task (`--array=1`) on one node with 16 CPUs for up to 36 h (`--time=01-12:00:00`), without a
+`--mem` directive, and sets Julia's heap-size hint to 28 GB; after the worker it runs `plot_snapshots.jl` and, for one
+lid, `ghia_comparison.jl`. We have not measured the run time or the memory of the task here.
+
+# Paper
+
+None.
 """
 
 using ITensors

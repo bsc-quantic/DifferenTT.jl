@@ -1,3 +1,35 @@
+"""
+    Lid-driven cavity validation: snapshot plots
+
+We look at the fields of the cavity before trusting a number computed from them. This script reads `snapshots.jld2`,
+written by `worker.jl`, and draws, for every saved step, the vorticity (color range clipped to [-5, 5], since ω is of
+order U/h at the lid), the stream function, the velocity (u, v) = (∂ᵧψ, -∂ₓψ) as arrows and, if stored, the residual of
+the Poisson solve, as SVG files.
+
+# Inputs and outputs
+
+Input: `snapshots.jld2` in `results/` (or `results_nocond/` with `nocond`) of this folder, with the suffix `_doublelid`
+when `CAVITY_LIDS=2`. Output: `vorticity_<step>.svg`, `streamfunction_<step>.svg`, `vector_<step>.svg` and
+`poisson_residual_<step>.svg` in that folder.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository:
+
+    [CAVITY_LIDS=1|2] julia --project=experiments experiments/validation/liddriven_cavity/plot_snapshots.jl [nocond]
+
+# Resources
+
+`submit.sh` runs it after the worker, in the same job; we have not measured its run time.
+
+# Paper
+
+None.
+"""
+
 using ITensors
 using ITensorMPS
 using DifferenTT
