@@ -1,23 +1,40 @@
-# Collector for tt_anisotropy_stats: one row per (task, repeat) plus one row per configuration.
-#
-# The saved "df" has SEVERAL rows per key (one per repeat). The original
-# tt_anisotropy/plot_results.jl expects one row per key and produces nonsense from it: use this
-# directory's plot_paper.jl.
-#
-# A configuration is a (case, key) pair, where `case = (N, F)`: the baseline that a configuration's
-# speedups are paired against is the one at the same dimension AND floor.
-#
-# Usage: julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl [nocond]
-#
-# Environment:
-#   TT_ANISOTROPY_STATS_RESULTS_DIR  override the results folder (same variable as the worker)
-#   BENCH_DISCARD_FIRST_REPEAT=1     drop the first repeat each worker process ran. With a single
-#                                    solve per repeat (N_SOLVE_REPEATS = 1) that repeat can still
-#                                    carry residual JIT cost, which matters for sub-second solves;
-#                                    default 0. The variability summary then reports before/after.
-#   BENCH_SAMEJOB_PAIRS_ONLY=1       block layout: compute the speedups only from pairs that ran
-#                                    in the same job (same node), dropping those of blocks refilled
-#                                    in a later job; default 0 (all pairs, n_pairs_samejob counted).
+"""
+    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): collector
+
+The workers of this benchmark write one file per task and repeat, and the plotter needs them as one table. We read every
+`tasks/task_NNN_rep_RRR.jld2` of the results folder with `collect_dataset` (`common/stats_utils.jl`), which checks that the
+repeats are consistent (hosts, seeds, blocks), and save a long table with one row per (task, repeat) (`"df"`) and a table
+with the statistics of every configuration (`"df_stats"`). A configuration is a pair (case, key), where the case is (N, F):
+the baseline that a configuration is compared with is the one of the same dimension and floor. The long table has
+several rows per key, so the plotter of the non-statistics benchmark, `fai_benchmarks/tt_anisotropy/plot_results.jl`,
+cannot read it: use `plot_paper.jl` of this folder.
+
+# Inputs and outputs
+
+Input: the task files in the `tasks/` folder of `results/` (or `results_nocond/` with `nocond`), in this folder, or in
+`TT_ANISOTROPY_STATS_RESULTS_DIR` if set. Output: `collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`,
+`"df_dropped"`). Two environment variables change the statistics: `BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat
+that each worker process ran (with a single solve per repeat it can still carry residual JIT cost, which matters for
+solves of less than a second; the summary then reports the numbers before and after), and `BENCH_SAMEJOB_PAIRS_ONLY=1`
+computes the speedups only from pairs that ran in the same job, that is on the same node (a block that was refilled in a
+later job is dropped); by default all the pairs are used and `n_pairs_samejob` counts the ones of the same job.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository:
+
+    julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl [nocond]
+
+`submit.sh` queues it as a collector job after each submission of the worker array (4 CPUs, 30 minutes); the one that
+runs last sees every finished unit.
+
+# Paper
+
+Figs. 9-11 of Sec. 5.1 (through `plot_paper.jl`).
+"""
 
 using JLD2
 using DataFrames

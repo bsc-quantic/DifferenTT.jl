@@ -1,23 +1,48 @@
 """
-    Paper-Ready Plotter Script: Chorin Pipeline Preconditioner Benchmark (multi-repeat statistics)
+    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): paper plotter
 
-    Targets: `results_nocond/collected_results.jld2` written by this directory's collect.jl
-             (`df`: one row per (configuration, repeat)).
-    Outputs: `plots_paper/` (and subdirectories per system size / χ_max).
+We draw here the figures of Sec. 5.2 of the paper from the table of repeats that `collect.jl` wrote. Every statistic is
+recomputed from the per-repeat rows, so the centre and the band that we draw are chosen in the parameter block below
+(mean ± sd, median and IQR, geometric mean ×/÷ gsd, ...), and the speedups are paired by repeat index with the baseline of
+the same grid (repeat r uses the same seed in every configuration; `PAIRED_SPEEDUPS = false` gives the ratios of all
+pairs).
 
-    Same figure families as `../chorin/plot_paper.jl`, now showing the spread over repeats:
-      * every statistic is recomputed here from the per-repeat rows, so the centre and the band
-        drawn are chosen in the parameter block below (mean ± sd, median + IQR, geo. mean ×/÷ gsd, ...);
-      * speedups are paired by repeat index with the baseline of the same grid (repeat r uses the
-        same seed in every configuration); set PAIRED_SPEEDUPS = false for all-pairs ratios;
-      * per-step curves of the single-χ plots can show every repeat behind the central line;
-      * new: cumulative-time plots (amortization), per-step residual / divergence-ratio overlays and
-        per-repeat distribution plots;
-      * `plots_paper/pairs/`: legend-free panels per grid (per-step iterations and speedups on log axes,
-        Pareto front), placed two per row in the paper, plus the shared `legend_strip` (see PLOT_PAIRS);
-      * `plots_paper/stats_used.txt` records which statistics were drawn, for the figure captions.
+# Figures
 
-    This dataset carries no condition numbers, so the κ profiles of the single-run script are not produced.
+  - speedup against χ_max, heatmaps (μ × χ_max), Pareto front, per-χ_max plots (iterations and speedup per step,
+    cumulative time, iterations per site), combined overlays, per-repeat distributions and the scaling summary. The
+    per-step curves of the single-χ plots can show every repeat behind the central line;
+  - cumulative-time plots (amortization of the preconditioner build), per-step overlays of the residual and of the
+    divergence ratio;
+  - `plots_paper/pairs/`: legend-free panels per grid (iterations per step and speedups on log axes, Pareto front),
+    drawn at their printed size and placed two per row in the paper, plus the shared `legend_strip` (`PLOT_PAIRS`).
+    These are the figures of the paper;
+  - `plots_paper/stats_used.txt` records which statistics we drew, for the figure captions.
+
+The families other than the pairs are switched off by default (`PLOT_*` flags below). The dataset carries no condition
+numbers, so the κ profiles are not drawn.
+
+# Inputs and outputs
+
+Reads `results_nocond/collected_results.jld2` (`"df"`: one row per configuration and repeat) of this folder, written by
+`collect.jl nocond`, and writes PDF figures to `plots_paper/` (and subfolders per grid and χ_max) of this folder. In
+smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, and
+draws the single smoke grid; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl nocond`:
+
+    julia --project=experiments experiments/paper/chorin_pipeline_stats/plot_paper.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+Figs. 12-13 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) of Sec. 5.2; the parameters of Table 2
+(`tab:chorin_mals_params`) are the constants of the worker.
 """
 
 using JLD2
@@ -822,9 +847,9 @@ function plot_system_size(nodes)
             idx = findall(==(g), chis)
             err = if PARETO_ERRORBARS
                 (;
-                xerror=(bx[1][idx] .- bx[2][idx], bx[3][idx] .- bx[1][idx]),
-                yerror=(sx[1][idx] .- sx[2][idx], sx[3][idx] .- sx[1][idx]),
-            )
+                    xerror=(bx[1][idx] .- bx[2][idx], bx[3][idx] .- bx[1][idx]),
+                    yerror=(sx[1][idx] .- sx[2][idx], sx[3][idx] .- sx[1][idx]),
+                )
             else
                 (;)
             end

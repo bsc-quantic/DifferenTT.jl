@@ -1,18 +1,41 @@
-# Collector for chorin_pipeline_stats: one row per (task, repeat) plus one row per configuration.
-#
-# The saved "df" has SEVERAL rows per key (one per repeat). The original chorin_pipeline/plot_results.jl
-# expects one row per key and produces nonsense from it: use this directory's plot_paper.jl.
-#
-# Usage: julia --project=experiments experiments/paper/chorin_pipeline_stats/collect.jl [nocond]
-#
-# Environment:
-#   CHORIN_STATS_RESULTS_DIR      override the results folder (same variable as the worker)
-#   BENCH_DISCARD_FIRST_REPEAT=1  drop the first repeat each worker process ran (may still carry
-#                                 JIT cost); default 0. The plot script's variability summary then
-#                                 reports before/after.
-#   BENCH_SAMEJOB_PAIRS_ONLY=1    block layout: compute the speedups only from pairs that ran
-#                                 in the same job (same node), dropping those of blocks refilled
-#                                 in a later job; default 0 (all pairs, n_pairs_samejob counted).
+"""
+    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): collector
+
+The workers of this benchmark write one file per task and repeat, and the plotter needs them as one table. We read every
+`tasks/task_NNN_rep_RRR.jld2` of the results folder with `collect_dataset` (`common/stats_utils.jl`), which checks that the
+repeats are consistent (hosts, seeds, blocks), and save a long table with one row per (task, repeat) (`"df"`) and a table
+with the statistics of every configuration (`"df_stats"`). The long table has several rows per key, so the plotter of the
+non-statistics benchmark, `fai_benchmarks/chorin_pipeline/plot_results.jl`, cannot read it: use `plot_paper.jl` of this
+folder. Per task we add the total time (solve plus preconditioner build), the iterations per step, the largest residual,
+the largest solution bond dimension and the largest ratio of the divergence after and before the projection.
+
+# Inputs and outputs
+
+Input: the task files in the `tasks/` folder of `results/` (or `results_nocond/` with `nocond`), in this folder, or in
+`CHORIN_STATS_RESULTS_DIR` if set. The files of repeat 1 also hold the final fluid state, which we load (this needs
+DifferenTT and ITensors) and drop, since only the snapshot plots use it. Output: `collected_results.jld2` next to
+`tasks/` (keys `"df"`, `"df_stats"`, `"df_dropped"`). Two environment variables change the statistics:
+`BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat that each worker process ran (it can still carry residual JIT
+cost), and `BENCH_SAMEJOB_PAIRS_ONLY=1` computes the speedups only from pairs that ran in the same job, that is on the
+same node (a block that was refilled in a later job is dropped); by default all the pairs are used and `n_pairs_samejob`
+counts the ones of the same job.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
+committed results; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository:
+
+    julia --project=experiments experiments/paper/chorin_pipeline_stats/collect.jl [nocond]
+
+`submit.sh` queues it as a collector job after each submission of the worker arrays (4 CPUs, 30 minutes); the one that
+runs last sees every finished unit.
+
+# Paper
+
+Figs. 12-13 of Sec. 5.2 (through `plot_paper.jl`); the parameters of Table 2 are the constants of the worker.
+"""
 
 using JLD2
 using DataFrames

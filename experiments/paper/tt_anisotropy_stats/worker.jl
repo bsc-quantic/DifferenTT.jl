@@ -223,9 +223,7 @@ with the same keyword set as the real build (including `residual_tol`), so the
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
     fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
 
-    fai_updater_kwargs = LocalUpdaterArgs(;
-        ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000
-    )
+    fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
 
     fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 

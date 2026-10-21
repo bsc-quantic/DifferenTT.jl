@@ -1,23 +1,44 @@
 """
-    Paper-Ready Plotter Script: TT Anisotropy Benchmark (FAI, FAI(L0) & Sinc), multi-repeat statistics
+    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): paper plotter
 
-    Targets: `results_nocond/collected_results.jld2` written by this directory's collect.jl
-             (`df`: one row per (N, F, configuration, repeat)).
-    Outputs: `plots_paper/` (and subdirectories `N_<N>/F_<F>/` per case).
+We draw here the figures of Sec. 5.1 of the paper from the table of repeats that `collect.jl` wrote. A case is a pair
+(dimension N, floor F); every configuration is compared with the baseline of the same case. We recompute every
+statistic from the per-repeat rows, so the centre and the band that we draw are chosen in the parameter block below, and
+the speedups are paired by repeat index with the baseline.
 
-    A case is a (dimension N, floor F) pair; every configuration is compared with the baseline of the
-    same case. Every statistic is recomputed here from the per-repeat rows, so the centre and band drawn
-    are chosen in the parameter block below; speedups are paired by repeat index with the baseline.
+# Figures
 
-    Figures:
-      * per N, against the floor F: solve / total speedup, solve / total / build time, iterations
-        (`*_vs_F_N_<N>`), and a configuration × F speedup heatmap (`heatmap_speedup_*_N_<N>`);
-      * all N in one figure (`*_vs_F_all_N`), line style per N;
-      * per case, like `../tt/plot_paper.jl`: speedup vs χ_max with Sinc reference lines, Pareto front,
-        site-by-site iterations, and the per-repeat distributions;
-      * `plots_paper/pairs/`: legend-free panels drawn at their printed size, to be placed two per row in the
-        paper, plus the shared `legend_strip` that goes under each pair (see PLOT_PAIRS);
-      * `plots_paper/stats_used.txt` records which statistics were drawn, for the figure captions.
+  - per N, against the floor F: solve and total speedup, solve, total and build time, and iterations
+    (`*_vs_F_N_<N>`), and a configuration × F heatmap of the speedup (`heatmap_speedup_*_N_<N>`);
+  - all N in one figure (`*_vs_F_all_N`), with a line style per N;
+  - per case: speedup against χ_max with Sinc reference lines, Pareto front, site-by-site iterations, and the
+    distributions over the repeats;
+  - `plots_paper/pairs/`: legend-free panels drawn at their printed size, to be placed two per row in the paper, plus
+    the shared `legend_strip` that goes under each pair (`PLOT_PAIRS`). These are the figures of the paper;
+  - `plots_paper/stats_used.txt` records which statistics we drew, for the figure captions.
+
+The families other than the pairs are switched off by default (`PLOT_*` flags below).
+
+# Inputs and outputs
+
+Reads `results_nocond/collected_results.jld2` (`"df"`: one row per N, F, configuration and repeat) of this folder, written
+by `collect.jl nocond`, and writes PDF figures to `plots_paper/` (and `N_<N>/F_<F>/` for the per-case ones) of this folder.
+In smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote,
+and draws the single smoke case; `experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after `collect.jl nocond`:
+
+    julia --project=experiments experiments/paper/tt_anisotropy_stats/plot_paper.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+Figs. 9-11 (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) of Sec. 5.1.
 """
 
 using JLD2
@@ -612,20 +633,26 @@ for (keys_, scheme, zr) in (
     end
 end
 length(SINC_KEYS) == 1 && (SERIES_COLOR[only(SINC_KEYS)] = COLOR_SINC_BEST)   # a single Sinc M keeps the plain orange
-series_marker(k) = (m=INFO[k].method; if m == "sinc"
-    :diamond
-elseif m == "fai_L0"
-    :utriangle
-else
-    :circle
-end)
-series_ls(k) = (m=INFO[k].method; if m == "sinc"
-    :dashdot
-elseif m == "fai_L0"
-    :dot
-else
-    :solid
-end)
+series_marker(k) = (
+    m=INFO[k].method;
+    if m == "sinc"
+        :diamond
+    elseif m == "fai_L0"
+        :utriangle
+    else
+        :circle
+    end
+)
+series_ls(k) = (
+    m=INFO[k].method;
+    if m == "sinc"
+        :dashdot
+    elseif m == "fai_L0"
+        :dot
+    else
+        :solid
+    end
+)
 
 function series_label(k)
     k == "baseline" && return "Baseline"

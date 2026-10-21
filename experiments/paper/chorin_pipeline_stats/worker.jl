@@ -68,8 +68,9 @@ each unit as measured in the run of October 2026.
 
 # Paper
 
-Table 2 (`tab:chorin_mals_params`) and Figs. 12-13 (`fig:chorin_mals_iterations`,
-`fig:chorin_mals_cumulative_speedup`) of Sec. 5.2, drawn by `plot_paper.jl` from the output of `collect.jl`.
+Sec. 5.2: Table 2 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
+and Figs. 12-13 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
+the output of `collect.jl`.
 """
 
 using ITensors
@@ -546,9 +547,7 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
 
         fai_sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12)
 
-        fai_updater_kwargs = LocalUpdaterArgs(;
-            ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000
-        )
+        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000)
 
         fai_resals_solver = ResidualALS(;
             sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
