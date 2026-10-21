@@ -146,10 +146,13 @@ end
 function main(names::Vector{String})
     jobs = isempty(names) ? JOBS : filter(j -> j.name in names, JOBS)
     unknown = setdiff(names, [j.name for j in JOBS])
-    isempty(unknown) || error("unknown benchmark(s) $(join(unknown, ", ")); known: $(join([j.name for j in JOBS], ", "))")
+    isempty(unknown) ||
+        error("unknown benchmark(s) $(join(unknown, ", ")); known: $(join([j.name for j in JOBS], ", "))")
     root = mktempdir(; cleanup=false)  # kept, so that the logs can be read after the run
     logdir = mkpath(joinpath(root, "logs"))
-    println("Smoke run of $(length(jobs)) benchmarks, $(Dates.format(now(), "yyyy-mm-dd HH:MM")); logs and outputs in $root")
+    println(
+        "Smoke run of $(length(jobs)) benchmarks, $(Dates.format(now(), "yyyy-mm-dd HH:MM")); logs and outputs in $root"
+    )
     outcomes = Outcome[]
     index = 0
     for job in jobs, step in job.steps
@@ -159,7 +162,9 @@ function main(names::Vector{String})
 
     println("\n", rpad("benchmark", 28), rpad("step", 62), rpad("result", 9), rpad("time (s)", 10), "last error line")
     for o in outcomes
-        println(rpad(o.job, 28), rpad(o.step, 62), rpad(o.status, 9), rpad(@sprintf("%.1f", o.seconds), 10), o.last_error)
+        println(
+            rpad(o.job, 28), rpad(o.step, 62), rpad(o.status, 9), rpad(@sprintf("%.1f", o.seconds), 10), o.last_error
+        )
     end
     nfail = count(o -> o.status != "pass", outcomes)
     println("\n$(length(outcomes) - nfail) of $(length(outcomes)) steps passed; logs in $(logdir)")

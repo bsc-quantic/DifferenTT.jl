@@ -107,7 +107,11 @@ const dt_map = Dict(
 )
 
 # Smoke mode: two steps, the baseline and one FAI task.
-const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2) : Dict((8, 8) => 50, (10, 10) => 20, (11, 11) => 10, (12, 12) => 10)
+const n_steps_map = if SMOKE
+    Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2)
+else
+    Dict((8, 8) => 50, (10, 10) => 20, (11, 11) => 10, (12, 12) => 10)
+end
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -130,7 +134,11 @@ const maxdims_map = Dict((8, 8) => 120, (10, 10) => 150, (11, 11) => 200, (12, 1
 const cutoff_map = Dict((8, 8) => 1e-13, (10, 10) => 1e-13, (11, 11) => 1e-13, (12, 12) => 1e-13)
 
 # Smoke mode caps the global iterations: it checks that the solver runs, not that it converges.
-const maxiter_map = SMOKE ? Dict((8, 8) => 30, (10, 10) => 30, (11, 11) => 30, (12, 12) => 30) : Dict((8, 8) => 3000, (10, 10) => 3000, (11, 11) => 4000, (12, 12) => 5000)
+const maxiter_map = if SMOKE
+    Dict((8, 8) => 30, (10, 10) => 30, (11, 11) => 30, (12, 12) => 30)
+else
+    Dict((8, 8) => 3000, (10, 10) => 3000, (11, 11) => 4000, (12, 12) => 5000)
+end
 
 const tol_map = Dict((8, 8) => 1e-3, (10, 10) => 1e-3, (11, 11) => 1e-3, (12, 12) => 1e-3)
 

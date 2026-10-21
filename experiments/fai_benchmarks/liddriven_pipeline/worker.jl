@@ -115,7 +115,11 @@ const dt_map = Dict(
 )
 
 # Smoke mode: one grid size, two steps, the baseline and one FAI task.
-const n_steps_map = SMOKE ? Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2) : Dict((8, 8) => 1000, (10, 10) => 500, (11, 11) => 100, (12, 12) => 100)
+const n_steps_map = if SMOKE
+    Dict((8, 8) => 2, (10, 10) => 2, (11, 11) => 2, (12, 12) => 2)
+else
+    Dict((8, 8) => 1000, (10, 10) => 500, (11, 11) => 100, (12, 12) => 100)
+end
 
 # Overridable for fast verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
