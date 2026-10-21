@@ -63,8 +63,11 @@ SITE_MARKERS = true    # markers on per-site curves
 # -------------------------------------------------------------------------
 # Data selection
 # -------------------------------------------------------------------------
-RESULTS_FILE = joinpath(@__DIR__, "results_nocond", "collected_results.jld2")
-PLOTS_DIR = joinpath(@__DIR__, "plots_paper")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+RESULTS_FILE = joinpath(OUT_ROOT, "results_nocond", "collected_results.jld2")
+PLOTS_DIR = joinpath(OUT_ROOT, "plots_paper")
 
 SELECTED_NODES = nothing   # e.g. [(8, 8)]; nothing = every grid in the data
 SELECTED_CHI = nothing   # e.g. [2, 4, 6, 8, 10]; nothing = every χ_max in the data

@@ -7,7 +7,7 @@
 # SLURM job arrays (one per layout, see below) and a collector job that depends on both. Every
 # submission queues a collector; the one that runs last sees every finished unit.
 #
-# Usage: bash experiments/preconditioner_benchmarks/chorin_pipeline_stats/submit.sh [nocond]
+# Usage: bash experiments/paper/chorin_pipeline_stats/submit.sh [nocond]
 #
 # By default, condition-number estimates are collected for (8,8) and (10,10). Pass "nocond" to
 # skip them. Timings/iteration statistics should come from a "nocond" run; a condition-number run
@@ -16,7 +16,7 @@
 # --- Layout: blocks for (8,8), single units for (10,10) ------------------------------------
 # About 1 allocation in 6 runs 24-37% slower for its whole lifetime (measured on the Chorin
 # benchmarks, in shared AND exclusive runs, so --exclusive does not help). How the units are
-# spread over jobs decides where that slowdown ends up (details in ../stats_harness.jl):
+# spread over jobs decides where that slowdown ends up (details in experiments/common/stats_harness.jl):
 #
 # BLOCK_SIZES (block layout, default 8x8): one job = one block = every method of one system size
 #   at one repeat index, in a seeded random order. Speedups are within-node ratios and the node
@@ -59,15 +59,21 @@
 # within-node; the collector counts them (n_pairs_samejob), BENCH_SAMEJOB_PAIRS_ONLY=1 drops them.
 #
 # The physics/solver configuration is identical to chorin_pipeline/worker.jl, and the masks are
-# read from the ORIGINAL chorin_pipeline/masks.jld2.
+# read from the masks of fai_benchmarks/chorin_pipeline/ (masks.jld2); the worker stops if they were not
+# sampled on its grid, so regenerate them first (fai_benchmarks/chorin_pipeline/generate_masks.jl).
 #
 
-SCRIPT_DIR="experiments/preconditioner_benchmarks/chorin_pipeline_stats"
+SCRIPT_DIR="experiments/paper/chorin_pipeline_stats"
+
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/paper/chorin_pipeline_stats/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
 
 # Tasks per system size: baseline + FAI chi=2..10, must match build_task_list() in worker.jl.
 TASKS_PER_SIZE=10
 
-# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+# GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
 BLOCK_SIZES="${BLOCK_SIZES-8x8}"
@@ -141,15 +147,15 @@ submit_array() {
         --error="${LOGS_DIR}/${layout}_%03a_off${BENCH_REPEAT_OFFSET}_n${BENCH_N_REPEATS}.err" <<ARRAY_EOF
 #!/bin/bash
 #SBATCH --job-name=chorin_stats_${layout}
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --array=1-${narray}
 #SBATCH --nodes=1
 #SBATCH --cpus-per-task=${CPUS_PER_TASK}
 #SBATCH --time=${walltime}
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0
+module load ${JULIA_MODULE}
 
 if [ -n "\${SLURM_MEM_PER_NODE}" ]; then
     TASK_MEM_MB=\${SLURM_MEM_PER_NODE}
@@ -170,7 +176,7 @@ echo "Array index \${SLURM_ARRAY_TASK_ID} / ${narray} (${layout} layout, sizes $
 echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB"
 echo "Repeats: LAYOUT=${layout} SIZES=${sizes} N_REPEATS=${BENCH_N_REPEATS} REPEAT_OFFSET=${BENCH_REPEAT_OFFSET} BASE_SEED=${BENCH_BASE_SEED} TIME_BUDGET_S=${BENCH_TIME_BUDGET_S}"
 
-julia --project=. -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=experiments -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 }
 
@@ -199,18 +205,18 @@ COLLECT_JOB_ID=$(sbatch --parsable --open-mode=append --dependency=afterany${ARR
     --error="${LOGS_DIR}/collect_off${BENCH_REPEAT_OFFSET}_n${BENCH_N_REPEATS}.err" <<COLLECT_EOF
 #!/bin/bash
 #SBATCH --job-name=chorin_st_coll
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0 2>/dev/null || true
+module load ${JULIA_MODULE} 2>/dev/null || true
 
 echo "Collecting results from array job(s)${ARRAY_JOB_IDS}..."
 
-julia --project=. ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
+julia --project=experiments ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
 COLLECT_EOF
 )
 

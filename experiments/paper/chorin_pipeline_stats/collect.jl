@@ -1,9 +1,9 @@
 # Collector for chorin_pipeline_stats: one row per (task, repeat) plus one row per configuration.
 #
 # The saved "df" has SEVERAL rows per key (one per repeat). The original chorin_pipeline/plot_results.jl
-# expects one row per key and produces nonsense from it: use this directory's plot_results.jl.
+# expects one row per key and produces nonsense from it: use this directory's plot_paper.jl.
 #
-# Usage: julia --project=. experiments/preconditioner_benchmarks/chorin_pipeline_stats/collect.jl [nocond]
+# Usage: julia --project=experiments experiments/paper/chorin_pipeline_stats/collect.jl [nocond]
 #
 # Environment:
 #   CHORIN_STATS_RESULTS_DIR      override the results folder (same variable as the worker)
@@ -22,13 +22,16 @@ using ITensorMPS
 using DifferenTT
 using Statistics
 
-include(joinpath(@__DIR__, "..", "stats_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "stats_utils.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
 default_base_folder = if use_nocond
-    "experiments/preconditioner_benchmarks/chorin_pipeline_stats/results_nocond"
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    "experiments/preconditioner_benchmarks/chorin_pipeline_stats/results"
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "CHORIN_STATS_RESULTS_DIR", default_base_folder)
 discard_first = get(ENV, "BENCH_DISCARD_FIRST_REPEAT", "0") in ("1", "true", "yes")

@@ -1,20 +1,70 @@
 """
-    TT Anisotropy Benchmark, statistics variant: Parallel Worker
+    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): worker
 
-Local (ResidualALS) solve of -∇⋅(K∇u) = f with the equicorrelated diffusion tensor
-K = (1-ρ) I + ρ 𝟏𝟏ᵀ, sweeping the floor F of separable preconditioners instead of N.
-Problem definition in ../anisotropy_problem.jl.
+We solve the anisotropic diffusion equation -∇⋅(K∇u) = 1 on (0, 1)ᴺ with homogeneous Dirichlet conditions, where K =
+(1-ρ) I + ρ 𝟏𝟏ᵀ is the equicorrelated diffusion tensor, in the non-quantized TT format with 15 nodes per dimension (Sec.
+5.1 of the paper; the problem is defined in `common/anisotropy_problem.jl`). We sweep the floor F = κ(L₀⁻¹ L) of the
+preconditioners built on the separable Laplacian L₀ = -Δ instead of the coupling ρ, with ρ = (F-1)/(F+N-1), so that the
+dimensions are compared at equal difficulty. This is the benchmark of `fai_benchmarks/tt_anisotropy`, repeated: every
+task is run `BENCH_N_REPEATS` times (`common/stats_harness.jl`), and the worker writes one result file per task and
+repeat, so that the plotter can draw the spread of the times and the speedups paired by repeat.
 
-Same problem and solver configuration as `tt_anisotropy/worker.jl`, but each task is run
-`BENCH_N_REPEATS` times (see ../stats_harness.jl) and one result file is written per repeat. The
-problem (`build_problem`) is built ONCE per job under the original seed `task.N`, so every repeat
-solves the same system. What varies per repeat is the random initial guess and, for FAI, the
-randomized preconditioner build.
+# Problem and parameters
 
-Default `BENCH_LAYOUT=block`: `ARGS[1]` is a block index, and the job runs every method (baseline,
-sinc, FAI, FAI(L0)) of one (N, F) case at one repeat index, in a seeded random order and on one
-shared problem, so the paired speedups compare runs on the same node. With `BENCH_LAYOUT=task`,
-`ARGS[1]` is a task id and the job runs all repeats of that task.
+Each task is one combination of dimension, floor and preconditioner:
+
+- N ∈ {10, 20} and F ∈ {1, 2, 4, 10, 30, 100} (F = 1 is the Poisson equation);
+- no preconditioner (baseline); Sinc on L₀ with M ∈ {3, 4, 5, 7, 10}; FAI on L with μ = 10⁷ and χ_G ∈ {4, 6, 8, 10};
+  and, as a control, FAI on L₀ with μ = 10⁷ and χ_G = 10 (11 tasks per (N, F), 132 in total, `NTASKS` of `submit.sh`).
+
+We solve with `ResidualALS` (the "MALS" of the paper, local solves preconditioned at every site) to a relative
+residual of 1e-5, with `cutoff = 1e-13`, at most 3000 local iterations, 30 sweeps and a solution bond dimension of at
+most 150 for N = 10, and 50 sweeps and 300 for N = 20. The right-hand side is f ≡ 1 (`TT_ANISOTROPY_RHS` selects
+`ones`, `random` or `manufactured`). The FAI is built with the two-site ALS solver (10 sweeps,
+`TT_ANISOTROPY_STATS_FAI_NSWEEPS`, stopped at a relative residual of 0.1 of Eq. (22)), after a warm-up that compiles
+every code path outside the timed region. The problem is built once per job under the seed `task.N`, so every repeat
+solves the same system; what varies per repeat is the initial guess and the randomized build of the FAI.
+
+The setups above are those of the paper repository. Two changes of the library since the data of the current figures
+(tag `paper-ttfai-data`) make new runs not comparable with them: the FAI now solves the correct (not the transposed)
+FSAI problem, and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²`, so the bond dimensions
+and the solutions at `cutoff > 0` differ (see `NEWS.md`).
+
+# Inputs and outputs
+
+With the default layout (`BENCH_LAYOUT=block`), `ARGS[1]` is a block index and the job runs every method of one (N, F)
+case at one repeat index, in a seeded random order and on one problem, so that the speedups compare runs on the same
+node; array indices run over the 12 cases first and the repeats next. With `BENCH_LAYOUT=task`, `ARGS[1]` is a task id
+and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it, we estimate the local condition
+numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_rep_RRR.jld2` (key `"result"`) under
+`results/` or `results_nocond/` of this folder, or under `TT_ANISOTROPY_STATS_RESULTS_DIR` if set. The other
+configuration variables (`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`) are
+described in `common/stats_harness.jl` and `submit.sh`.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to N = 5, F = 10 and 7 nodes per dimension, with the baseline,
+Sinc (M = 3), FAI and FAI on L₀ at χ_G = 4, through the `SMOKE` branches next to the constants, and writes under
+`DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the committed data are never touched.
+`experiments/smoke.jl` runs two blocks, the collector and the plotter.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
+    julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
+    bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
+
+# Resources
+
+The job script requests an array of 12 × `BENCH_N_REPEATS` blocks (120 for the default 10 repeats), each on one node
+with 20 CPUs, for up to 2 days (`--time=02-00:00:00`), without a `--mem` directive; the worker sets Julia's heap-size
+hint to 80 % of the memory of the allocation, and `GC_BALLAST_GB` controls the GC ballast (`common/gc_ballast.jl`; the
+job script sets 7). The comments of `submit.sh` give the time of each block as measured in the run of October 2026.
+
+# Paper
+
+Figs. 9-11 (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) of Sec. 5.1, drawn by `plot_paper.jl` from the
+output of `collect.jl`.
 """
 
 using ITensors

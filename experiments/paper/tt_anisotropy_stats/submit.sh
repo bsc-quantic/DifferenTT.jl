@@ -8,9 +8,9 @@
 # a fresh randomized preconditioner). Submits a SLURM job array and a dependent collector job.
 # Every submission queues a collector; the one that runs last sees every finished unit.
 #
-# Usage: bash experiments/preconditioner_benchmarks/tt_anisotropy_stats/submit.sh [nocond]
+# Usage: bash experiments/paper/tt_anisotropy_stats/submit.sh [nocond]
 #
-# Pass "nocond" for the timing runs (no condition-number estimation overhead): plot_results.jl
+# Pass "nocond" for the timing runs (no condition-number estimation overhead): plot_paper.jl
 # reads its timings and iterations from results_nocond.
 #
 # --- Layout: why one job = one block -------------------------------------------------------
@@ -63,7 +63,12 @@
 #
 #
 
-SCRIPT_DIR="experiments/preconditioner_benchmarks/tt_anisotropy_stats"
+SCRIPT_DIR="experiments/paper/tt_anisotropy_stats"
+
+# Cluster settings: override from the environment, e.g. SLURM_ACCOUNT=<project> bash experiments/paper/tt_anisotropy_stats/submit.sh
+SLURM_ACCOUNT="${SLURM_ACCOUNT:-bsc21}"
+SLURM_QOS="${SLURM_QOS:-ngp_bsccase}"
+JULIA_MODULE="${JULIA_MODULE:-julia/1.12.0}"
 
 # Must equal length(build_task_list()) in worker.jl:
 # len(system_dims) * len(floor_values) * (1 + len(sinc_M_values) + len(fai_configs) + len(fai_L0_configs))
@@ -73,7 +78,7 @@ NTASKS=132
 # worker.jl: one per (N, F) case.
 NGROUPS=12
 
-# GC memory ballast (GB); see chorin_gc_report.md. Override with GC_BALLAST_GB=0 to disable.
+# GC memory ballast (GB); see experiments/common/gc_ballast.jl. Override with GC_BALLAST_GB=0 to disable.
 GC_BALLAST_GB="${GC_BALLAST_GB:-7}"
 
 # Right-hand side: ones (default), random or manufactured. See anisotropy_problem.jl.
@@ -140,16 +145,16 @@ ARRAY_JOB_ID=$(sbatch --parsable --open-mode=append \
     --error="${LOGS_DIR}/${LOG_PREFIX}_%03a_off${BENCH_REPEAT_OFFSET}_n${BENCH_N_REPEATS}.err" <<ARRAY_EOF
 #!/bin/bash
 #SBATCH --job-name=tt_aniso_stats
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --array=1-${NARRAY}
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=20
 #SBATCH --time=02-00:00:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0
+module load ${JULIA_MODULE}
 
 if [ -n "\${SLURM_MEM_PER_NODE}" ]; then
     TASK_MEM_MB=\${SLURM_MEM_PER_NODE}
@@ -170,7 +175,7 @@ echo "Array index \${SLURM_ARRAY_TASK_ID} / ${NARRAY} (${BENCH_LAYOUT} layout) â
 echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB, rhs ${TT_ANISOTROPY_RHS}"
 echo "Repeats: LAYOUT=${BENCH_LAYOUT} N_REPEATS=${BENCH_N_REPEATS} REPEAT_OFFSET=${BENCH_REPEAT_OFFSET} BASE_SEED=${BENCH_BASE_SEED} TIME_BUDGET_S=${BENCH_TIME_BUDGET_S}"
 
-julia --project=. -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
+julia --project=experiments -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 )
 
@@ -182,18 +187,18 @@ COLLECT_JOB_ID=$(sbatch --parsable --open-mode=append --dependency=afterany:${AR
     --error="${LOGS_DIR}/collect_off${BENCH_REPEAT_OFFSET}_n${BENCH_N_REPEATS}.err" <<COLLECT_EOF
 #!/bin/bash
 #SBATCH --job-name=tt_aniso_st_coll
-#SBATCH --account=bsc21
+#SBATCH --account=${SLURM_ACCOUNT}
 #SBATCH --chdir=.
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --time=00:30:00
-#SBATCH --qos=ngp_bsccase
+#SBATCH --qos=${SLURM_QOS}
 
-module load julia/1.12.0 2>/dev/null || true
+module load ${JULIA_MODULE} 2>/dev/null || true
 
 echo "Collecting results from array job..."
 
-julia --project=. ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
+julia --project=experiments ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
 COLLECT_EOF
 )
 

@@ -1,17 +1,75 @@
 """
-    Chorin Pipeline Benchmark, statistics variant: Parallel Worker
+    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): worker
 
-    Same physics and solver configuration as `chorin_pipeline/worker.jl`, but each task is run
-    `BENCH_N_REPEATS` times (see ../stats_harness.jl) and one result file is written per repeat.
-    Default `BENCH_LAYOUT=block`: `ARGS[1]` is a block index, and the job runs every task of one
-    system size (baseline and all FAI configurations) at one repeat index, in a seeded random
-    order, so the paired speedups compare runs on the same node. With `BENCH_LAYOUT=task`,
-    `ARGS[1]` is a task id and the job runs all repeats of that task.
-    Every repeat rebuilds the grid from the initial condition (`chorin_step!` mutates it in
-    place), and the per-repeat seed varies the FAI preconditioner build. Note that the baseline
-    is NOT deterministic across seeds either: ResidualALS consumes the global RNG, so baseline
-    iteration counts and residuals also vary with the repeat (verified: the same seed reproduces
-    them bit-for-bit in a fresh process, only wall times differ).
+We solve the pressure Poisson system of every time step of a Chorin projection of the flow past a cylinder, the setup of
+Sec. 5.2 of the paper: Re = 3000 in the box [0, 2] × [0, 1] (periodic in y), a cylinder of radius 0.1 at (0.5, 0.5)
+imposed through a mask, an RK4 predictor and stencils of order 8, in the quantized TT format on 2⁸ × 2⁸ and 2¹⁰ × 2¹⁰
+nodes. This is the benchmark of `fai_benchmarks/chorin_pipeline`, repeated: every task is run `BENCH_N_REPEATS` times
+(`common/stats_harness.jl`), and the worker writes one result file per task and repeat, so that the plotter can draw the
+spread of the times and the speedups paired by repeat. Every repeat rebuilds the grid from the initial condition, since
+`chorin_step!` changes it in place, and the repeat sets the seed of the solver's random inputs and of the FAI build.
+
+# Problem and parameters
+
+Each task is one system size with either no preconditioner (the baseline) or the FAI with μ = 10⁷ and χ_G ∈ {2, …, 10}
+(10 tasks per size, 20 in total, `TASKS_PER_SIZE` of `submit.sh`):
+
+- 2⁸ × 2⁸ nodes, 500 steps of dt = 0.001, solution bond dimension at most 150;
+- 2¹⁰ × 2¹⁰ nodes, 1000 steps of dt = 0.0005, solution bond dimension at most 200.
+
+At each step we solve with `ResidualALS` (the "MALS" of the paper, local solves preconditioned at every site) to a relative
+residual of 1e-3, with `cutoff = 0` and at most 100 sweeps and 2000 local iterations, starting from the previous
+pressure. We build the FAI once per task, before the time loop, on the pressure operator with the two-site ALS solver (30 sweeps, `cutoff = 1e-12`, stopped at a
+relative residual of 0.1 of Eq. (22)); the element-wise map D uses `cutoff = 1e-11` and an oversampling of 20. The mask is
+that of `fai_benchmarks/chorin_pipeline/masks.jld2` (the worker deliberately shares it with that benchmark). The grid is
+`Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the worker stops with an
+`ArgumentError` if the metadata of the mask do not match that grid (`common/mask_grid.jl`).
+
+The setups above are those of the paper repository. Three changes of the library since the data of the current figures
+(tag `paper-ttfai-data`) make new runs not comparable with them: the FAI now solves the correct (not the transposed)
+FSAI problem, the grid has the period of the box in y (it was the box plus one cell, so the masks had to be regenerated),
+and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²` (no effect here, where `cutoff = 0`).
+A known limitation of the library bears on the numbers: the Dirichlet closure with `stencil_order = 8` is only first-order
+accurate (see "Known limitations" in `NEWS.md`).
+
+# Inputs and outputs
+
+With the default layout (`BENCH_LAYOUT=block`), `ARGS[1]` is a block index and the job runs every task of one system size
+at one repeat index, in a seeded random order; with `BENCH_LAYOUT=unit` it is a (task, repeat) unit, as `submit.sh` does
+for the 2¹⁰ × 2¹⁰ grid (`CHORIN_STATS_SIZES` selects the sizes of an array); with `BENCH_LAYOUT=task` it is a task id
+and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it, we estimate the local condition
+numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_rep_RRR.jld2` (key `"result"`) under
+`results/` or `results_nocond/` of this folder, or under `CHORIN_STATS_RESULTS_DIR` if set; repeat 1 also stores the final
+fluid state. The mask file is `CHORIN_MASK_FILE` if set, else the committed one. The other configuration variables
+(`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`, `CHORIN_STATS_N_STEPS_OVERRIDE`)
+are described in `common/stats_harness.jl` and `submit.sh`.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the run to the 2⁸ × 2⁸ grid, 2 steps, the baseline and FAI at χ_G = 2, without
+local condition numbers, through the `SMOKE` branches next to the constants. It reads the mask that the smoke generator
+`fai_benchmarks/chorin_pipeline/generate_masks.jl` wrote into `DIFFERENTT_SMOKE_DIR` and writes there too (a fresh
+temporary folder if it is unset), so that the committed masks and data are never touched. `experiments/smoke.jl` runs
+the generator, two blocks, the collector and the plotter.
+
+# How to run
+
+From the root of the repository, after regenerating the masks (see `paper/README.md`):
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
+    julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
+    bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
+
+# Resources
+
+The job script requests, for the default 10 repeats, an array of 10 block jobs for the 2⁸ × 2⁸ grid (2 days each) and
+an array of 100 unit jobs for the 2¹⁰ × 2¹⁰ grid (1 day each), each on one node with 20 CPUs (`CPUS_PER_TASK`), without a
+`--mem` directive; the worker sets Julia's heap-size hint to 80 % of the memory of the allocation, and `GC_BALLAST_GB`
+controls the GC ballast (`common/gc_ballast.jl`; the job script sets 7). The comments of `submit.sh` give the time of
+each unit as measured in the run of October 2026.
+
+# Paper
+
+Table 2 (`tab:chorin_mals_params`) and Figs. 12-13 (`fig:chorin_mals_iterations`,
+`fig:chorin_mals_cumulative_speedup`) of Sec. 5.2, drawn by `plot_paper.jl` from the output of `collect.jl`.
 """
 
 using ITensors
@@ -29,43 +87,22 @@ flush(stderr)
 @info "Runtime" blas_threads=LinearAlgebra.BLAS.get_num_threads() julia_threads=Threads.nthreads() host=gethostname()
 flush(stderr)
 
-# ---- GC memory ballast ----
-# Julia 1.12 derives its GC thresholds from the heap size, so a small live heap (as in this
-# benchmark) collects very often and forces full sweeps, which are expensive. The ballast is a
-# large, never-written buffer: the GC counts it as heap (raising the thresholds) but its pages
-# are never touched, so it costs no resident memory. See chorin_gc_report.md.
-const GC_BALLAST_GB = parse(Float64, get(ENV, "GC_BALLAST_GB", "0"))
-const GIB = 2^30
-gc_max_memory() = ccall(:jl_gc_get_max_memory, UInt64, ())
-
-function allocate_ballast(gb::Float64)
-    gb > 0 || return UInt8[]
-    max_gb = 0.4 * 0.8 * gc_max_memory() / GIB   # keep well below the GC's heap cap
-    if gb > max_gb
-        @warn "Clamping GC ballast" requested_gb=gb max_gb
-        gb = max_gb
-    end
-    try
-        return Vector{UInt8}(undef, round(Int, gb * GIB))
-    catch e
-        e isa OutOfMemoryError || rethrow()
-        @warn "Could not reserve the GC ballast, running without it" gb
-        return UInt8[]
-    end
-end
-
-# Must stay a global: if it is ever freed, the effect disappears. Never write into it.
-const GC_BALLAST = allocate_ballast(GC_BALLAST_GB)
-@info "GC ballast" gb=length(GC_BALLAST) / GIB heap_cap_gb=gc_max_memory() / GIB
+# ---- GC memory ballast (see common/gc_ballast.jl) ----
+include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
-include(joinpath(@__DIR__, "..", "stats_harness.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "stats_harness.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mask_grid.jl"))
+
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
 const default_base_folder = if use_nocond
-    "experiments/preconditioner_benchmarks/chorin_pipeline_stats/results_nocond"
+    joinpath(OUT_ROOT, "results_nocond")
 else
-    "experiments/preconditioner_benchmarks/chorin_pipeline_stats/results"
+    joinpath(OUT_ROOT, "results")
 end
 base_folder = get(ENV, "CHORIN_STATS_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
@@ -74,7 +111,17 @@ mkpath(TASKS_DIR)
 # Deliberately the ORIGINAL directory's masks: masks.jld2 is a 770 KB binary that the gitignore of
 # `*_stats/` would not re-include, and a divergent copy would silently make these runs
 # non-comparable to the originals. Do not copy it here.
-const MASK_FILE = "experiments/preconditioner_benchmarks/chorin_pipeline/masks.jld2"
+# Smoke mode reads the mask that the smoke generator wrote into DIFFERENTT_SMOKE_DIR, never the committed file;
+# CHORIN_MASK_FILE overrides either.
+const MASK_FILE = get(
+    ENV,
+    "CHORIN_MASK_FILE",
+    if SMOKE
+        joinpath(OUT_ROOT, "masks.jld2")
+    else
+        joinpath(@__DIR__, "..", "..", "fai_benchmarks", "chorin_pipeline", "masks.jld2")
+    end,
+)
 # Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
 
 const BOX_SIZE = (2.0, 1.0)
@@ -83,7 +130,9 @@ const STENCIL_ORDER = 8
 
 const dt_map = Dict((8, 8) => 0.001, (10, 10) => 0.0005, (12, 12) => 0.00001)
 
-const n_steps_map = Dict((8, 8) => 500, (10, 10) => 1000, (12, 12) => 20)
+# Smoke mode: the 8×8 grid, 2 steps, the baseline and FAI at χ_G = 2, and no local condition numbers (the dense local
+# eigenproblems take about ten minutes even on this grid).
+const n_steps_map = SMOKE ? Dict((8, 8) => 2) : Dict((8, 8) => 500, (10, 10) => 1000, (12, 12) => 20)
 
 # Overridable for fast local verification only — the default reproduces n_steps_map[nodes] exactly.
 function resolve_n_steps(nodes::Tuple{Int,Int})
@@ -91,8 +140,8 @@ function resolve_n_steps(nodes::Tuple{Int,Int})
     return isempty(override) ? n_steps_map[nodes] : parse(Int, override)
 end
 
-const system_sizes = [(8, 8), (10, 10)]
-const cond_nodes = [(8, 8), (10, 10)]
+const system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
+const cond_nodes = SMOKE ? Tuple{Int,Int}[] : [(8, 8), (10, 10)]
 # const system_sizes = [(10, 10)]
 # const cond_nodes  = [(10, 10)]
 
@@ -103,7 +152,7 @@ end
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
 const mu_values = [1e7]
 
-const g_maxdims = 2:10
+const g_maxdims = SMOKE ? (2:2) : (2:10)
 
 const maxdims_map = Dict((8, 8) => 150, (10, 10) => 200, (12, 12) => 250)
 
@@ -148,22 +197,6 @@ function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{No
     # warmup grid reuse the real grid's indices so cross-grid objects like `precond` stay valid.
     sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
-    grid = Grid(arch, BOX_SIZE)
-
-    # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
-    # The benchmark requires the true masks to reflect exact conditions.
-    # For now, we will create an empty mask if the file doesn't exist, to prevent crashing.
-    if isfile(MASK_FILE)
-        mask_key = "mask_$(nodes[1])_$(nodes[2])"
-        object_mask = load(MASK_FILE, mask_key)
-        siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
-    else
-        object_mask = ones_mps(sites)
-        @warn "mask not found; using ones_mps (all fluid)"
-    end
-
-    mps_vx = tt_mul(object_mask, ones_mps(sites))
-    mps_vy = 0.0 * ones_mps(sites)
 
     bcsvxx = BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
@@ -177,6 +210,27 @@ function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{No
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
     bcsp = BoundaryConditions(bcspx, bcspy)
+
+    # The y axis is periodic: the grid takes the flags from the boundary conditions, so the wrapped stencils have period L
+    periodic = DifferenTT.periodic_axes(bcsvx)
+    grid = Grid(arch, BOX_SIZE; periodic=periodic)
+
+    # We will assume object_mask is generated properly somewhere or just create a dummy one for now.
+    # The benchmark requires the true masks to reflect exact conditions.
+    # For now, we will create an empty mask if the file doesn't exist, to prevent crashing.
+    if isfile(MASK_FILE)
+        mask_key = "mask_$(nodes[1])_$(nodes[2])"
+        object_mask = load(MASK_FILE, mask_key)
+        # The mask is only valid on the grid it was sampled on: stop if the file says otherwise (or says nothing)
+        check_mask_grid(load_mask_grid(MASK_FILE, mask_key), nodes, BOX_SIZE, periodic; file=MASK_FILE, key=mask_key)
+        siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
+    else
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
+    end
+
+    mps_vx = tt_mul(object_mask, ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
 
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
@@ -493,7 +547,7 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
         fai_sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12)
 
         fai_updater_kwargs = LocalUpdaterArgs(;
-            ishermitian=true, isposdef=true, compute_cond=false, rtol=1e-8, krylovdim=1, maxiter=3000
+            ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000
         )
 
         fai_resals_solver = ResidualALS(;
@@ -504,7 +558,6 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
 
         fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=20, maxdim=gdim)
         fai_builder_solver = fai_als_solver
 
         # The driver already seeded with solver_seed(global_rep); re-seed right before the build so
@@ -512,11 +565,17 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
         Random.seed!(solver_seed(global_rep))
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(
-                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol
+            precond = fai_preconditioner(
+                grid.A;
+                μ=μ,
+                solver=fai_builder_solver,
+                D_cutoff=1e-11,
+                D_oversample=20,
+                D_maxdim=gdim,
+                totalmaxdim=gdim,
+                preconditioning=false,
+                residual_tol=faibuild_tol,
             )
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = FactorizedPreconditioner(Gl)
         end
         t_build = build_stats.time
 
@@ -632,15 +691,17 @@ function warmup()
         )
         # Pass residual_tol like the timed build does: it adds a ResidualObserver to the FAI solves,
         # a different code path that would otherwise be compiled inside the timed build.
-        unscaledG, D = DifferenTT.fai_dg(
-            dummy_grid.A,
-            1.0,
-            dummy_als_solver,
-            (; cutoff=1e-11, oversample=2, maxdim=2);
+        dummy_fai = fai_preconditioner(
+            dummy_grid.A;
+            μ=1.0,
+            solver=dummy_als_solver,
+            D_cutoff=1e-11,
+            D_oversample=2,
+            D_maxdim=2,
+            totalmaxdim=2,
             preconditioning=false,
             residual_tol=fai_tol_map[(8, 8)],
         )
-        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         # When running with condition numbers, compute time does not really count, so it is better to avoid
         # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation
