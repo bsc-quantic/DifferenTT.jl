@@ -24,7 +24,7 @@ xᵀPx), and the spectrum of S·A is found as the spectrum of the symmetric Lᵀ
 All results go to a single JLD2 file, one entry per case written as soon as the case finishes. Entries already in the
 file are skipped, so a timed-out job can be resubmitted and continues where it stopped.
 
-Usage: julia --project=. experiments/preconditioner_benchmarks/linsolve_spd/worker.jl
+Usage: julia --project=. experiments/paper/linsolve_spd/worker.jl
 """
 
 using ITensors
@@ -67,7 +67,7 @@ progress(
 )
 
 # ---- Configuration ----
-const BASE_FOLDER = "experiments/preconditioner_benchmarks/linsolve_spd"
+const BASE_FOLDER = "experiments/paper/linsolve_spd"
 const DEFAULT_RESULTS_FILE = joinpath(BASE_FOLDER, "results", "linsolve_spd.jld2")
 const RESULTS_FILE = get(ENV, "LINSOLVE_SPD_RESULTS", DEFAULT_RESULTS_FILE)
 

@@ -85,7 +85,7 @@ end
 Load the full-format discrete floor table (anisotropy_floor/discrete_floor.jl), if it exists.
 """
 function load_discrete_floor()
-    file = joinpath(@__DIR__, "..", "preconditioner_benchmarks", "anisotropy_floor", "discrete_floor.jld2")
+    file = joinpath(@__DIR__, "..", "paper", "anisotropy_floor", "discrete_floor.jld2")
     isfile(file) || return Dict{Tuple{Int,Float64},Float64}()
     rows = load(file, "rows")
     return Dict((r["N"], Float64(r["F"])) => r["floor_discrete"] for r in rows)

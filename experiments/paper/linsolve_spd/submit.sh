@@ -3,13 +3,13 @@
 # Linsolve preconditioner SPD benchmark: a single job that runs every section of worker.jl and writes all results to
 # results/linsolve_spd.jld2. Cases already in that file are skipped, so a timed-out job can simply be resubmitted.
 #
-# Usage: bash experiments/preconditioner_benchmarks/linsolve_spd/submit.sh [section1,section2,...]
+# Usage: bash experiments/paper/linsolve_spd/submit.sh [section1,section2,...]
 #
 # Sections: chorin_linsolve_dense, chorin_truncinv_dense, chorin_linsolve_large (default: all, in this order).
-# Follow the progress with: tail -f experiments/preconditioner_benchmarks/linsolve_spd/results/logs/linsolve_spd_<jobid>.out
+# Follow the progress with: tail -f experiments/paper/linsolve_spd/results/logs/linsolve_spd_<jobid>.out
 #
 
-SCRIPT_DIR="experiments/preconditioner_benchmarks/linsolve_spd"
+SCRIPT_DIR="experiments/paper/linsolve_spd"
 RESULTS_DIR="${SCRIPT_DIR}/results"
 LOGS_DIR="${RESULTS_DIR}/logs"
 mkdir -p "${LOGS_DIR}"
