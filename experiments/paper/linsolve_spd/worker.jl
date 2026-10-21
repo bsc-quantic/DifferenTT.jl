@@ -1,30 +1,68 @@
 """
-    Linsolve preconditioner SPD benchmark: single worker
+    Linsolve preconditioner SPD benchmark (paper Fig. 3): worker
 
-Shows whether the TT preconditioner of `linsolve_preconditioner` (the TT solution X of AX + XA = 2I, truncated to
-bond dimension χ) is symmetric positive definite, for the pressure Poisson operator of `chorin_pipeline` (2D QTT).
+We show that the TT preconditioner of `linsolve_preconditioner`, the solution X of AX + XA = 2I in the TT format
+truncated to bond dimension χ, is not symmetric positive definite in general, so that it cannot be used with a solver that
+needs an SPD preconditioner. The operator is the pressure Poisson operator A = -Δ of the Chorin pipeline of Sec. 5.2 (2D
+QTT grids of 2ⁿ × 2ⁿ nodes, box [0, 2] × [0, 1], periodic in y, stencils of order 8), the same as in
+`fai_benchmarks/chorin_pipeline`. We call S = (P + Pᵀ)/2 the symmetric part of the preconditioner P: it alone sets the sign
+of xᵀPx, so a negative eigenvalue of S proves that P is not SPD.
 
-Sections (all of them run by default; select some with `LINSOLVE_SPD_SECTIONS=a,b`):
+# Problem and parameters
 
-- `chorin_linsolve_dense`: small systems. linsolve preconditioner for each χ, contracted to a
-  dense matrix and diagonalized exactly.
-- `chorin_truncinv_dense`: same systems. The exact A⁻¹, converted to an MPO and SVD
-  truncated to bond dimension χ. Shows that the indefiniteness comes from the TT truncation itself, not from the
-  solver that builds the linsolve preconditioner.
-- `chorin_linsolve_large`: the systems of the benchmark, too large for dense matrices.
-  The first solve of the benchmark (the first Chorin step) runs with `spd_tol` set, whose
-  local SPD checks stop the solve with a `NotSPDError` as soon as a local P⁻¹A has an eigenvalue with real part
-  below -SPD_TOL · max|λ|. The preconditioner is then marked as not SPD. The local blocks are congruences of the
-  global operators (Sylvester's law of inertia), so a negative local eigenvalue proves the global preconditioner is
-  indefinite. The converse does not hold: a solve that runs through only shows P⁻¹A is positive on the visited bases.
+Three sections, all of them run by default (select some with `LINSOLVE_SPD_SECTIONS=a,b`):
 
-In the dense analyses, the symmetric part S of the dense preconditioner P is diagonalized (it alone sets the sign of
-xᵀPx), and the spectrum of S·A is found as the spectrum of the symmetric LᵀSL, with A = LLᵀ.
+- `chorin_linsolve_dense`: the grids 2⁴ × 2⁴ to 2⁷ × 2⁷. We build the linsolve preconditioner for χ = 1, …, 15 (10 sweeps,
+  residual target 1e-6, below what a small χ can reach, so that the build runs all its sweeps and returns the best
+  preconditioner of each χ), contract it to a dense matrix and diagonalize S exactly. The spectrum of S·A is that of the
+  symmetric LᵀSL, with A = LLᵀ.
+- `chorin_truncinv_dense`: the same grids. The exact A⁻¹, converted to an MPO and truncated by SVD to bond dimension
+  χ = 1, …, 15 (and to its full bond dimension). It shows that the indefiniteness comes from the TT truncation itself, not
+  from the solver that builds the linsolve preconditioner.
+- `chorin_linsolve_large`: the grids 2⁸ × 2⁸ and 2¹⁰ × 2¹⁰, too large for dense matrices, with χ = 8, 10, …, 20. The
+  first solve of the benchmark (the first Chorin step, from the masked initial condition) runs with `spd_tol = 1e-8`: its
+  local SPD checks stop the solve with a `NotSPDError` as soon as a local P⁻¹A has an eigenvalue with real part below
+  `-spd_tol` · max|λ|, and the preconditioner is then marked as not SPD. The local blocks are congruences of the global
+  operators (Sylvester's law of inertia), so a negative local eigenvalue proves that the global preconditioner is
+  indefinite; the converse does not hold: a solve that runs through only shows that P⁻¹A is positive on the visited bases.
+  As a control, the FAI (μ = 10⁷, χ_G = 4, SPD by construction) goes through the same checks.
 
-All results go to a single JLD2 file, one entry per case written as soon as the case finishes. Entries already in the
-file are skipped, so a timed-out job can be resubmitted and continues where it stopped.
+The grid is `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the first step uses the
+mask of `fai_benchmarks/chorin_pipeline/masks.jld2` (or `CHORIN_MASK_FILE`); the worker stops with an `ArgumentError` if the
+metadata of the mask do not match that grid (`common/mask_grid.jl`). The setup is that of the paper repository. New runs are
+not comparable with the data of the current figures (tag `paper-ttfai-data`): the FAI now solves the correct FSAI problem,
+`linsolve_preconditioner` no longer returns the transpose of the inverse for a nonsymmetric operator, and the grid has the
+period of the box (see `NEWS.md`).
 
-Usage: julia --project=experiments experiments/paper/linsolve_spd/worker.jl
+# Inputs and outputs
+
+No input, apart from the mask above. All results go to one JLD2 file, `results/linsolve_spd.jld2` of this folder (or
+`LINSOLVE_SPD_RESULTS`), with one entry per case, `<section>/nodes_<nx>x<ny>/<entry>`, written as soon as the case
+finishes. The entries that are already in the file are skipped, so a job that timed out can be resubmitted and continues
+where it stopped.
+
+Smoke mode (`DIFFERENTT_SMOKE=1`) runs the 2⁴ × 2⁴ grid with χ = 1, 2 and 2 sweeps, and the 2⁸ × 2⁸ grid with χ = 8 and
+2 sweeps; it reads the mask that `fai_benchmarks/chorin_pipeline/generate_masks.jl` wrote into `DIFFERENTT_SMOKE_DIR` and
+writes there too (a fresh temporary folder if it is unset), so that the committed data and masks are never touched.
+`experiments/smoke.jl` runs the generator, the worker and the plotters.
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/linsolve_spd/worker.jl
+    julia --project=experiments experiments/paper/linsolve_spd/worker.jl
+    bash experiments/paper/linsolve_spd/submit.sh [section1,section2,...]
+
+# Resources
+
+The job script requests one job on one node with 20 CPUs for up to 36 h (`--time=01-12:00:00`), without a `--mem`
+directive. We have not measured the run time or the memory of the full run; the dense sections diagonalize matrices of up
+to 2¹⁴ rows, and the local SPD checks of the large section diagonalize local blocks of up to about 8000 rows.
+
+# Paper
+
+Fig. 3 (`fig:spd_nneg`), drawn by `plot_paper.jl`.
 """
 
 using ITensors
@@ -38,6 +76,7 @@ using Dates
 using Printf
 
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mask_grid.jl"))
 # Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
 const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
@@ -103,7 +142,17 @@ const SPD_TOL = 1e-8
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
 const STENCIL_ORDER = 8
-const MASK_FILE = joinpath(@__DIR__, "..", "..", "fai_benchmarks", "chorin_pipeline", "masks.jld2")
+# The masks of chorin_pipeline (one file and one generator for both benchmarks). Smoke mode reads the mask that the
+# smoke generator wrote into DIFFERENTT_SMOKE_DIR, never the committed file; CHORIN_MASK_FILE overrides either.
+const MASK_FILE = get(
+    ENV,
+    "CHORIN_MASK_FILE",
+    if SMOKE
+        joinpath(OUT_ROOT, "masks.jld2")
+    else
+        joinpath(@__DIR__, "..", "..", "fai_benchmarks", "chorin_pipeline", "masks.jld2")
+    end,
+)
 
 const CHORIN_DENSE_NODES = SMOKE ? [(4, 4)] : [(4, 4), (5, 5), (6, 6), (7, 7)]
 const CHORIN_LARGE_NODES = SMOKE ? [(8, 8)] : [(8, 8), (10, 10)]
@@ -308,7 +357,8 @@ Pressure Poisson operator A = -Δ of chorin_pipeline (it does not depend on the 
 function chorin_operator(nodes::NTuple{2,Int})
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
-    grid = Grid(arch, BOX_SIZE)
+    # The y axis is periodic: the grid takes the flags from the boundary conditions, so the wrapped stencils have period L
+    grid = Grid(arch, BOX_SIZE; periodic=DifferenTT.periodic_axes(bcsp))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
     return -1.0 * symmetrized_laplacian(p_field, grid; stencil_order=STENCIL_ORDER)
 end
@@ -319,11 +369,14 @@ Full Chorin setup of chorin_pipeline/worker.jl (copied from its `build_grid`), t
 function build_chorin_grid(nodes::NTuple{2,Int})
     sites = siteinds(2, sum(nodes))
     arch = QTTArchitecture(nodes; interleaved=false)
-    grid = Grid(arch, BOX_SIZE)
+    periodic = DifferenTT.periodic_axes(bcsp)   # as in chorin_operator
+    grid = Grid(arch, BOX_SIZE; periodic=periodic)
 
     mask_key = "mask_$(nodes[1])_$(nodes[2])"
     if isfile(MASK_FILE) && jldopen(f -> haskey(f, mask_key), MASK_FILE, "r")
         object_mask = load(MASK_FILE, mask_key)
+        # The mask is only valid on the grid it was sampled on: stop if the file says otherwise (or says nothing)
+        check_mask_grid(load_mask_grid(MASK_FILE, mask_key), nodes, BOX_SIZE, periodic; file=MASK_FILE, key=mask_key)
         siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
     else
         object_mask = ones_mps(sites)
@@ -592,14 +645,16 @@ function chorin_linsolve_large_section(section::AbstractString)
                 )
                 Random.seed!(nodes[1] + nodes[2])
                 t_build = @elapsed begin
-                    unscaledG, D = DifferenTT.fai_dg(
-                        cgrid.A,
-                        μ,
-                        fai_solver,
-                        (; cutoff=1e-11, oversample=10, maxdim=gdim);
+                    P = fai_preconditioner(
+                        cgrid.A;
+                        μ=μ,
+                        solver=fai_solver,
+                        D_cutoff=1e-11,
+                        D_oversample=10,
+                        D_maxdim=gdim,
+                        totalmaxdim=gdim,
                         residual_tol=CHORIN_FAI_TOL,
                     )
-                    P = FactorizedPreconditioner(apply(D, unscaledG; maxdim=gdim))
                 end
                 progress(@sprintf("  FAI gdim = %d built in %.1f s", gdim, t_build))
                 progress("  first Chorin step with local SPD checks")

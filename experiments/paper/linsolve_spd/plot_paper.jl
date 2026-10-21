@@ -1,31 +1,50 @@
 """
-    Paper-Ready Plotter Script: SPD Breakdown of Non-Factorized TT Approximate Inverses (linsolve_spd)
+    Linsolve preconditioner SPD benchmark (paper Fig. 3): paper plotter
 
-    Targets: `results/linsolve_spd.jld2` written by this directory's worker.jl (one entry per case, stored as
-             `<section>/nodes_<nx>x<ny>/<entry>`). This copy is byte-identical to the DifferenTT run
-             (experiments/preconditioner_benchmarks/linsolve_spd, SLURM job 412823, 2026-10-08).
-    Outputs: `plots_paper/`.
+We draw here the figure of the paper on the loss of symmetric positive definiteness of the non-factorized TT approximate
+inverses, from the results of `worker.jl`. S = (P + Pᵀ)/2 is the symmetric part of the preconditioner P: it alone sets
+the sign of xᵀPx, so a negative eigenvalue of S proves that P is not SPD.
 
-    S = (P + Pᵀ)/2 is the symmetric part of the preconditioner P. It alone sets the sign of xᵀPx, so a negative
-    eigenvalue of S proves that P is not SPD. Figure families (each can be switched off below):
-      * nneg:   number, fraction or percentage of negative eigenvalues of S against the maximum bond dimension χ,
-                one curve per grid. This is the motivation figure at the start of Sec. 3. On a log axis, cases
-                with no negative eigenvalue are drawn hollow on a "0" level under the decades.
-      * eigmin: |λ_min(S)| / λ_max(S), filled where λ_min(S) < 0; the dashed lines are 1/κ(A), the value of the
-                exact inverse.
-      * weyl:   ‖S − A⁻¹‖₂ / λ_min(A⁻¹). Below 1, S is SPD by Weyl's inequality. Above 1 nothing is guaranteed.
-      * large:  first Chorin step on the benchmark grids, with the local SPD checks of the solver:
-                |min Re λ| / max |λ| of the first local P⁻¹A found indefinite (filled, the solve stops there), or
-                hollow on the "passed" level when every visited local P⁻¹A was positive. The FAI control is a star.
-    The dense families are drawn as
-      * `pairs/<family>_<method>.pdf`: legend-free panels at their printed size, one per construction, placed side
-        by side as LaTeX subfigures, plus the shared `pairs/legend_strip_<family>.pdf` (as in the other paper
-        plotters);
-      * `<family>_combined.pdf`: every construction in one panel with its own legend (line style = construction).
-    The large family gives `pairs/large_spd_check.pdf` (+ `pairs/legend_strip_large.pdf`) and `large_spd_check.pdf`.
-    `plots_paper/figure_notes.txt` records the data, the selection and the numbers the text and captions quote.
+# Figures
 
-Usage: julia --project=. results/linsolve_spd/plot_paper.jl   (from the paper repository root)
+Each family can be switched off below.
+
+  - `nneg`: number, fraction or percentage of negative eigenvalues of S against the maximum bond dimension χ, one curve
+    per grid. This is the motivation figure at the start of Sec. 3. On a log axis, the cases with no negative eigenvalue are
+    drawn hollow on a "0" level under the decades;
+  - `eigmin`: |λ_min(S)| / λ_max(S), filled where λ_min(S) < 0; the dashed lines are 1/κ(A), the value of the exact inverse;
+  - `weyl`: ‖S − A⁻¹‖₂ / λ_min(A⁻¹). Below 1, S is SPD by Weyl's inequality. Above 1 nothing is guaranteed;
+  - `large`: the first Chorin step on the benchmark grids, with the local SPD checks of the solver: |min Re λ| / max |λ| of
+    the first local P⁻¹A found indefinite (filled; the solve stops there), or hollow on the "passed" level when every
+    visited local P⁻¹A was positive. The FAI control is a star.
+
+The dense families are drawn as `pairs/<family>_<method>.pdf` (legend-free panels at their printed size, one per
+construction, placed side by side as LaTeX subfigures, plus the shared `pairs/legend_strip_<family>.pdf`, as in the other
+paper plotters) and as `<family>_combined.pdf` (every construction in one panel with its own legend, with the line style
+for the construction). The large family gives `pairs/large_spd_check.pdf` (and `pairs/legend_strip_large.pdf`) and
+`large_spd_check.pdf`. `figure_notes.txt` records the data, the selection and the numbers that the text and the captions
+quote.
+
+# Inputs and outputs
+
+Reads `results/linsolve_spd.jld2` of this folder, written by `worker.jl` (one entry per case, stored as
+`<section>/nodes_<nx>x<ny>/<entry>`), and writes PDF figures and `figure_notes.txt` to `plots_paper/` of this folder. In
+smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote;
+`experiments/smoke.jl` sets it.
+
+# How to run
+
+From the root of the repository, after the worker:
+
+    julia --project=experiments experiments/paper/linsolve_spd/plot_paper.jl
+
+# Resources
+
+There is no job script: we run it locally on the collected data.
+
+# Paper
+
+Fig. 3 (`fig:spd_nneg`).
 """
 
 using JLD2
@@ -60,8 +79,11 @@ MARKER_STROKE_WIDTH = 1.5   # outline of the hollow markers and width of the cro
 # -------------------------------------------------------------------------
 # Data selection
 # -------------------------------------------------------------------------
-RESULTS_FILE = joinpath(@__DIR__, "results", "linsolve_spd.jld2")
-PLOTS_DIR = joinpath(@__DIR__, "plots_paper")
+include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+# Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
+const OUT_ROOT = output_root(@__DIR__)
+RESULTS_FILE = joinpath(OUT_ROOT, "results", "linsolve_spd.jld2")
+PLOTS_DIR = joinpath(OUT_ROOT, "plots_paper")
 
 # Constructions of the dense families, in panel order: worker section, output name, legend label and line style
 # in the combined figures. A future dense section (e.g. the TT-FAI or the truncated exact L_A⁻¹ of review A1/A10)
@@ -211,14 +233,14 @@ const PAIR_PANEL_KW = (;
 const COMBINED_W = PAIR_CANVAS_SCALE * COMBINED_PRINT_FRACTION * PAIR_TEXTWIDTH_PT
 const STANDARD_KW = if COMBINED_PRINT_SIZED
     (;
-    legend=:none,
-    size=round.(Int, (COMBINED_W, COMBINED_PRINT_ASPECT * COMBINED_W)),
-    framestyle=:box,
-    margin=PAIR_CANVAS_SCALE * PAIR_MARGIN,
-    guidefontsize=PAIR_GUIDE_FONT_SIZE,
-    tickfontsize=PAIR_TICK_FONT_SIZE,
-    legendfontsize=COMBINED_LEGEND_FONT_SIZE,
-)
+        legend=:none,
+        size=round.(Int, (COMBINED_W, COMBINED_PRINT_ASPECT * COMBINED_W)),
+        framestyle=:box,
+        margin=PAIR_CANVAS_SCALE * PAIR_MARGIN,
+        guidefontsize=PAIR_GUIDE_FONT_SIZE,
+        tickfontsize=PAIR_TICK_FONT_SIZE,
+        legendfontsize=COMBINED_LEGEND_FONT_SIZE,
+    )
 else
     (; legend=:none, size=SIZE_STANDARD, framestyle=:box)
 end
@@ -370,13 +392,15 @@ Integer bond-dimension ticks.
 function chi_ticks(χs)
     isempty(χs) && return :auto
     lo, hi = extrema(χs)
-    step = XTICK_STEP !== nothing ? XTICK_STEP : (if hi - lo < 8
-        1
-    elseif hi - lo < 16
-        2
-    else
-        5
-    end)
+    step = XTICK_STEP !== nothing ? XTICK_STEP : (
+        if hi - lo < 8
+            1
+        elseif hi - lo < 16
+            2
+        else
+            5
+        end
+    )
     ticks = collect(lo:step:hi)
     return (ticks, string.(ticks))
 end
@@ -863,11 +887,11 @@ open(joinpath(PLOTS_DIR, "figure_notes.txt"), "w") do io
                 s = e["first_step"]
                 outcome = if s["not_spd"]
                     @sprintf(
-                    "NOT SPD in sweep %d at position %d, min Re λ/max|λ| = %.2e",
-                    s["nsweeps_done"],
-                    s["not_spd_position"],
-                    s["not_spd_eigmin_rel"]
-                )
+                        "NOT SPD in sweep %d at position %d, min Re λ/max|λ| = %.2e",
+                        s["nsweeps_done"],
+                        s["not_spd_position"],
+                        s["not_spd_eigmin_rel"]
+                    )
                 else
                     @sprintf("passed, %d sweeps, rel. residual %.2e", s["nsweeps_done"], get(s, "rel_res", NaN))
                 end
