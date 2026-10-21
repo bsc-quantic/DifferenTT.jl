@@ -7,6 +7,8 @@ using ITensorMPS
 using JLD2
 using KrylovKit
 using LinearAlgebra
+using Logging: NullLogger, with_logger
+using PrecompileTools: @compile_workload, @setup_workload
 using Printf
 using Random
 using TensorCrossInterpolation
@@ -179,5 +181,7 @@ function __init__()
     _register_plots_error_hint()
     return nothing
 end
+
+include("precompile.jl")
 
 end
