@@ -14,7 +14,8 @@ the checkout through `[sources]`. We instantiate it once from the root of the re
 julia --project=experiments -e 'using Pkg; Pkg.instantiate()'
 ```
 
-Scripts are launched from the root of the repository, with `--project=experiments`. Plots is a dependency of the
+We launch the scripts with `--project=experiments`; they build every path from their own location, so the working directory
+does not matter. The job scripts (`submit.sh`, `.slurm`), in contrast, are submitted from the root of the repository. Plots is a dependency of the
 environment, so that the plotting extension of DifferenTT (`visualize_*`) loads. The environment contains neither
 `Revise`, `MKL` nor any GPU package: the two exploratory scripts of `validation/` that load the first two are listed in
 the README of that folder.
@@ -46,10 +47,41 @@ bash experiments/fai_benchmarks/tt_poisson/submit.sh nocond                     
 julia --project=experiments experiments/fai_benchmarks/tt_poisson/worker.jl 3 nocond   # one task, locally
 ```
 
-Smoke mode, which runs every script on tiny sizes in a temporary folder, does not exist yet: `TODO(5a-2)`.
+## Smoke mode
 
-The SLURM scripts set the job geometry and read the GC ballast (`GC_BALLAST_GB`, see `common/gc_ballast.jl`) from the
-environment. The account, quality of service and Julia module are still fixed in the scripts: `TODO(5a-2)`.
+A sweep that fails after hours is expensive, and a script that no longer runs after a change of the library is only found when it
+is submitted. `DIFFERENTT_SMOKE=1` therefore makes a worker, a collector or a plotter run on a tiny problem (a few tasks on a small
+grid) and write to a temporary folder (`DIFFERENTT_SMOKE_DIR`, or a new one if it is unset), so that it takes minutes and never
+touches the committed results. `smoke.jl` runs every non-archived script this way, one `julia --project=experiments` process at a
+time with a timeout of 5 minutes: for each benchmark the generator of its inputs (if any), the worker on the baseline and on one FAI
+task, the collector and the plotter. It prints one line per step and, at the end, a table with the result, the time and the last
+error line of every step.
+
+```bash
+julia --project=experiments experiments/smoke.jl                    # every benchmark
+julia --project=experiments experiments/smoke.jl tt_poisson         # the named benchmarks only
+DIFFERENTT_SMOKE=1 julia --project=experiments experiments/fai_benchmarks/tt_poisson/worker.jl   # one script
+```
+
+Smoke mode only checks that a script runs: its numbers say nothing about the problem. A script that still uses a name that the
+library has renamed or removed fails here, and the table shows which one. The GitHub workflow `ExperimentsSmoke.yml` runs
+`smoke.jl` every week and on demand, with one parallel job per benchmark; no other check depends on it.
+
+The SLURM scripts set the job geometry, and read the cluster settings and the GC ballast from the environment:
+
+| Variable | Default | Meaning |
+|---|---|---|
+| `SLURM_ACCOUNT` | `bsc21` | Account of the jobs |
+| `SLURM_QOS` | `ngp_bsccase` | Quality of service |
+| `JULIA_MODULE` | `julia/1.12.0` | Module that provides Julia |
+| `GC_BALLAST_GB` | `7` | GC ballast of the workers (see `common/gc_ballast.jl`); 0 disables it |
+
+```bash
+SLURM_ACCOUNT=<project> SLURM_QOS=<qos> bash experiments/fai_benchmarks/tt_poisson/submit.sh nocond
+```
+
+The static `#SBATCH` lines of the `.slurm` files of `validation/tunnel2d*` cannot expand variables: we override them on the
+command line (`sbatch --account=<project> --qos=<qos> experiments/validation/tunnel2d/tunnel2d.slurm`), and they read `JULIA_MODULE`.
 
 ## Data
 

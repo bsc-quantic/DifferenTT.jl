@@ -23,4 +23,4 @@ bash experiments/validation/liddriven_cavity/submit.sh nocond
 ```
 
 `CAVITY_LIDS=2` selects the doubly-driven cavity (the Ghia comparison exists only for the single lid). The tunnel scripts
-are submitted with `sbatch experiments/validation/tunnel2d/tunnel2d.slurm` (8 CPUs, 6 h). Smoke mode: `TODO(5a-2)`.
+are submitted with `sbatch experiments/validation/tunnel2d/tunnel2d.slurm` (8 CPUs, 6 h). The account, quality of service and Julia module are the environment variables `SLURM_ACCOUNT`, `SLURM_QOS` and `JULIA_MODULE` (see `experiments/README.md`; the `.slurm` files take `sbatch --account --qos` instead). Smoke mode is `julia --project=experiments experiments/smoke.jl liddriven_cavity`; the tunnel scripts have none yet, and `smoke.jl` reports them as failed until the update that removes `Revise` and `MKL` (`TODO(5a-4)`).

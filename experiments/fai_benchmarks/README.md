@@ -31,7 +31,9 @@ bash experiments/fai_benchmarks/chorin_pipeline/submit.sh nocond   # job array +
 
 The job array of each folder has 10 to 132 tasks of 20 CPUs and up to 36 h (the Chorin and cavity benchmarks request
 exclusive nodes); the collector takes 4 CPUs (1 for the `_globalcg` variants of the Chorin and cavity benchmarks) and 10 minutes. The workers raise Julia's
-GC thresholds with a memory ballast, controlled by `GC_BALLAST_GB` (`common/gc_ballast.jl`). Smoke mode: `TODO(5a-2)`.
+GC thresholds with a memory ballast, controlled by `GC_BALLAST_GB` (`common/gc_ballast.jl`). The account, quality of service and Julia module are the environment variables `SLURM_ACCOUNT`, `SLURM_QOS` and `JULIA_MODULE` (see `experiments/README.md`).
+
+Smoke mode, which runs a worker, its collector and its plotter on a tiny problem in a temporary folder, is `julia --project=experiments experiments/smoke.jl <benchmark>`, with the name of a folder of this directory (`tt_poisson`, `chorin_pipeline`, …).
 
 ## Outputs
 
