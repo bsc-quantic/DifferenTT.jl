@@ -228,7 +228,10 @@ function velocity_divergence_norms(grid, psi)
     u, v = DifferenTT.streamfunction_velocity(grid.cache, psi; cutoff=cutoff, maxdim=maxdim)
     ∂ₓu = apply(d_ops[1], u; cutoff=cutoff, maxdim=maxdim)
     ∂ᵧv = apply(d_ops[2], v; cutoff=cutoff, maxdim=maxdim)
-    div_norm = norm(+(∂ₓu, ∂ᵧv; alg="directsum"))
+    div = +(∂ₓu, ∂ᵧv; alg="directsum")
+    # The divergence cancels in exact arithmetic, so ⟨div, div⟩ can be a tiny negative rounding error, for which norm(div)
+    # throws a DomainError: clamp it at zero.
+    div_norm = sqrt(max(0.0, real(dot(div, div))))
     div_scale = sqrt(norm(∂ₓu)^2 + norm(∂ᵧv)^2)
     return div_norm, div_scale
 end
