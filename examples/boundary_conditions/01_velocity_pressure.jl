@@ -305,8 +305,9 @@ as_integers(left_block(8), 2, 8)
 
 # Note that the columns of ``C_L`` are not ghost nodes: the block is only meaningful applied to a vector that is
 # constant along the axis, which is how the library uses it. For ``q = 2``, only row 1 receives ``c_{-1} g``. The block
-# is `DifferenTT.corner_pick_matrix` of the four coefficients; in QTT, `DifferenTT.corner_pick_mpo` places it in the
-# corner of an MPO of bond dimension at most 2, which on ``2^4`` nodes contracts to the zero-padded block:
+# is `DifferenTT.corner_pick_matrix` of the four coefficients, i.e. `DifferenTT.upper_toeplitz_matrix` (its right
+# counterpart is `DifferenTT.lower_toeplitz_matrix`); in QTT, `DifferenTT.corner_pick_mpo` places it in the corner of an
+# MPO of bond dimension at most 2, which on ``2^4`` nodes contracts to the zero-padded block:
 
 left_coefficients(q) = [DifferenTT.derivative_coefficients(2; stencil_order=q)[k] for k in -4:-1]
 corner_qtt = contract_mpo(DifferenTT.corner_pick_mpo(left_coefficients(8), siteinds(2, 4), :upper))
@@ -1053,8 +1054,9 @@ U_projected, V_projected = as_grid(contract_mps(projected[1])), as_grid(contract
 #
 # ## 10. Summary
 #
-# Every closure of the velocity–pressure formulation is one ghost-node rule, and the table below lists where each rule
-# acts and which functions build it.
+# Every closure of the velocity–pressure formulation is one ghost-node rule. The boundary types are the subtypes of
+# [`BoundaryCond`](@ref), a [`BoundaryCond1d`](@ref) pairs the two sides of an axis, and [`BoundaryConditions`](@ref)
+# collects the axes of a field; the table below lists where each rule acts and which functions build it.
 #
 # | Boundary type | Ghost-node rule | Where it acts | Functions |
 # |:--|:--|:--|:--|
