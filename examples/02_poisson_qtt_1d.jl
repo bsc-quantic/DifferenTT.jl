@@ -247,9 +247,9 @@ maximum(abs.(contract_mps(x_n) - x_n_dense)), maximum(abs.(x_n_dense - u_neumann
 # its null space, so we solve the shifted problem ``-u'' + u = f`` instead, with the exact solution
 # ``u(x) = e^{\sin(2 \pi x)}``. The grid must not store the node at ``L = 1``, which is the image of the node at 0:
 # with the `periodic` flag, the ``n`` stored nodes are spaced by ``h = 1/n`` and the wrapped stencil has period 1.
-# Without it, the default grid keeps both end nodes and the period becomes ``1 + h``; the Chorin runs of the paper
-# (Sec. 5.2) used that grid. We compare the two below. The flag of each axis follows from the boundary conditions
-# through [`periodic_axes`](@ref), which is not exported, so we call it qualified.
+# Without it, the default grid keeps both end nodes and the period becomes ``1 + h``. We compare the two below. The
+# flag of each axis follows from the boundary conditions through [`periodic_axes`](@ref), which is not exported, so we
+# call it qualified.
 
 u_periodic(x) = exp(sin(2π * x))
 f_periodic(x) = (1 - 4π^2 * cos(2π * x)^2 + 4π^2 * sin(2π * x)) * u_periodic(x)

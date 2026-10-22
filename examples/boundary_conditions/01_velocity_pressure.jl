@@ -245,9 +245,8 @@ plain = Grid(arch64, L)
 (flagged=(flagged.dx[1], wrapped_error(flagged)), plain=(plain.dx[1], wrapped_error(plain)))
 
 # With the flag, the error is that of the eighth-order stencil, ``3 \cdot 10^{-12}``; without it, the stencil is
-# inconsistent near the seam, and the relative error is 14. The Chorin runs of the paper used the plain grid, i.e. the
-# period ``L + h``; the flag is opt-in, and a `Grid` built without it is unchanged in v0.1. In this tutorial every
-# periodic axis is built with the flag.
+# inconsistent near the seam, and the relative error is 14. The flag is opt-in, and a `Grid` built without it is
+# unchanged in v0.1. In this tutorial every periodic axis is built with the flag.
 #
 # ## 3. Dirichlet and open sides: truncation
 #
@@ -889,10 +888,10 @@ pdt_chorin, pdt_mean_free = A_singular \ b_chorin, A_singular \ b_mean_free
 # the offsets ``\pm 4``). At the inlet ``x = 0`` the velocity is Dirichlet, ``\mathbf{u} = (1, 0)``, and the pressure
 # Neumann; at the outlet ``x = 2`` the velocity is Neumann and the pressure Dirichlet with the reference value
 # ``g = 1``; ``y`` is periodic for all the fields, and we build it with the `periodic` flag (Sec. 2), so that
-# ``h_y = 1/16`` and the period is 1 (the paper's runs used the plain grid). The obstacle mask does not enter the
-# pressure operator, and we leave it out. Imposing ``\nabla \cdot \mathbf{u}_{n+1} = 0`` on the projected velocity gives
-# the Poisson equation for ``p\, dt``, Eq. (34) of the paper, which with the closures of the previous sections becomes
-# the system ``A\,(p\, dt) = \mathbf{b}`` with
+# ``h_y = 1/16`` and the period is 1. The obstacle mask does not enter the pressure operator, and we leave it out.
+# Imposing ``\nabla \cdot \mathbf{u}_{n+1} = 0`` on the projected velocity gives the Poisson equation for ``p\, dt``,
+# Eq. (34) of the paper, which with the closures of the previous sections becomes the system
+# ``A\,(p\, dt) = \mathbf{b}`` with
 #
 # ```math
 # A = -W\Delta, \qquad \mathbf{b} = W\left(-Z\, \nabla \cdot \mathbf{u}^* + dt\, C\mathbf{1}\right),

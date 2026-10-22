@@ -5,8 +5,9 @@
 # operator is the same at every time step, so a preconditioner can be built once and reused over the whole evolution.
 # This is the setting of Sec. 5.2 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor
 # train format* ("the paper"), where the factorized approximate inverse (FAI) of the previous tutorials amortizes its
-# build and speeds up the pressure solves of a QTT flow solver. The guiding idea of this tutorial is to reproduce that
-# pipeline in miniature, and to see which of its costs dominate on a small grid.
+# build and speeds up the pressure solves of the QTT flow solver of Peddinti et al., *Quantum-inspired framework for
+# computational fluid dynamics* (2024). The guiding idea of this tutorial is to reproduce that pipeline in miniature,
+# and to see which of its costs dominate on a small grid.
 #
 # We proceed as follows. We first set up the channel of Sec. 5.2, with a cylinder encoded by cross interpolation, and
 # choose the time step from the CFL condition. We then wrap the pressure solver so that it can carry a preconditioner
@@ -35,10 +36,8 @@ ITensors.disable_warn_order()
 #
 # The periodic axis is built with the `periodic` flag of [`Grid`](@ref), taken from the boundary conditions by the
 # non-exported [`periodic_axes`](@ref): the 64 nodes of ``y`` are spaced by ``h_y = 1/64`` and the wrapped stencils have
-# period 1. The runs of the paper used the plain grid, which keeps a node at ``y = 1``, the image of the node at
-# ``y = 0``, so that ``h_y = 1/63`` and the period is ``1 + h_y``. The two pressure operators therefore differ by a
-# relative ``1/n`` in ``h_y``, and the numbers of this tutorial are not a reproduction of those of the paper to the
-# digit, in addition to being computed on a much smaller grid.
+# period 1. The numbers of this tutorial are not a reproduction of those of the paper, since they are computed on a much
+# smaller grid.
 
 nodes = (6, 6)
 arch = QTTArchitecture(nodes; interleaved=false)

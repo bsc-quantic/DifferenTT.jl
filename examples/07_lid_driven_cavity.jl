@@ -12,7 +12,8 @@
 # where ``\omega = \partial_x v - \partial_y u`` is the vorticity. Every time step solves one Poisson equation, now for
 # ``\psi``, and advances ``\omega`` explicitly. The price of eliminating the pressure is paid at the walls: the no-slip
 # condition fixes two conditions on ``\psi`` (its value and its normal derivative) and none on ``\omega``, so the wall
-# vorticity has to be recovered from ``\psi`` near the wall.
+# vorticity has to be recovered from ``\psi`` near the wall. In the QTT format, this scheme was introduced by Kiffner &
+# Jaksch, *Tensor network reduced order models for wall-bounded flows* (2023), whose wall treatment we follow.
 #
 # The guiding idea of this tutorial is to test the whole scheme on the classical benchmark of the lid-driven cavity, a
 # unit square whose top wall slides at unit speed, against the steady solution of Ghia, Ghia & Shin (1982) at

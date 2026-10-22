@@ -1,9 +1,7 @@
 # # The Poisson equation in N dimensions
 #
 # A grid of ``n`` nodes per axis in ``N`` dimensions has ``n^N`` nodes, so a direct discretization of a PDE costs
-# memory and time that grow exponentially with the dimension: with ``n = 10``, five dimensions give ``10^5`` unknowns
-# and a matrix of ``10^{10}`` entries, and twenty dimensions give ``10^{20}`` unknowns. In this tutorial we solve the
-# Poisson equation
+# memory and time that grow exponentially with the dimension. In this tutorial we solve the Poisson equation
 #
 # ```math
 # -\Delta u = f \quad \text{in } [0, 1]^N, \qquad u = 0 \quad \text{on the boundary},
@@ -11,10 +9,11 @@
 #
 # in the TT format, with one site of dimension ``d = n = 10`` per variable (Eq. (4) of Torrente et al., *Factorized
 # approximate inverse preconditioners in the tensor train format*, "the paper"), first for ``N = 5`` and then for
-# ``N = 20``. The guiding idea is that both the operator and the solution have a low bond dimension, independently of
-# ``N``: the Laplacian is a sum of one-dimensional operators, which the TT format stores with bond dimension 2, and the
-# solution we choose has bond dimension 3. A solver that works on the cores of the tensor train, one or two sites at a
-# time, then never sees more than ``\mathcal{O}(N d \chi^2)`` numbers.
+# ``N = 20``. The guiding idea is that the operator has a low bond dimension and that the solution can also be
+# approximated with a low bond dimension, independently of ``N``: the Laplacian is a sum of one-dimensional operators,
+# which the TT format stores with bond dimension 2, and the solution we choose has bond dimension 3. A solver that works
+# on the cores of the tensor train, one or two sites at a time, then never sees more than ``\mathcal{O}(N d \chi^2)``
+# numbers.
 #
 # We first assemble the operator and the right-hand side, and check their bond dimensions. We then compute a dense
 # reference for ``N = 5``, which is still possible because the Laplacian can be diagonalized one axis at a time. With

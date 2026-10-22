@@ -87,7 +87,7 @@ grid1.dx, first(grid1.points[1]), last(grid1.points[1])
 # the ``n`` stored nodes are spaced by ``h = L/n``; only then do the wrapped stencils of a [`PeriodicBC`](@ref) have
 # period ``L``. We ask for it with the `periodic` flag, which [`periodic_axes`](@ref) derives from the boundary
 # conditions of a field. Note that without the flag a periodic axis keeps both end nodes, and the period of its
-# stencils becomes ``L + h``, which is the grid that the Chorin runs of the paper (Sec. 5.2) used.
+# stencils becomes ``L + h``.
 
 grid1p = Grid(arch1, 1.0; periodic=true)
 grid1p.dx, last(grid1p.points[1])
