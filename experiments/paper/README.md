@@ -70,16 +70,16 @@ The old data stay in the paper repository. Three files in this repository are th
 
 ## What the maintainer has to do before a run (TODO)
 
-1. **Regenerate the masks.** The committed `../fai_benchmarks/chorin_pipeline/masks.jld2` and `maskplots/` were sampled on
-   the plain grid and carry no grid metadata, so the Chorin worker and `linsolve_spd` stop at once with an `ArgumentError`
-   ("does not belong to the grid of this run"). That is intended: use the generator, check the printed `ranks_mask` and
-   `error_mask` (tolerance 1e-10, bond dimension at most 50), and commit the two files:
+1. **Masks.** The masks of `../fai_benchmarks/chorin_pipeline/masks.jld2` were regenerated on the periodic grid (commit
+   `6386bd9`) and carry the grid metadata, so the Chorin worker and `linsolve_spd` accept them. If you change the box or the
+   grid, regenerate them with the generator, check the printed `ranks_mask` and `error_mask` (tolerance 1e-10, bond dimension
+   at most 50), and commit the two files:
 
    ```bash
    julia --project=experiments experiments/fai_benchmarks/chorin_pipeline/generate_masks.jl
    ```
 
-   The generator for `chorin_pipeline_globalcg` is handled together with that benchmark. A missing mask file is not an
-   error: the Chorin worker then warns and runs without the obstacle, so check the log for "mask not found".
+   The masks of `chorin_pipeline_globalcg` are a separate file, not read by `paper/`. A missing mask file is not an error:
+   the Chorin worker then warns and runs without the obstacle, so check the log for "mask not found".
 2. TODO(session R): after the rerun on the release candidate, record here the commit that produced the new data and where
    they are kept (the data policy is in `experiments/README.md`), and regenerate Table 1 with the others.

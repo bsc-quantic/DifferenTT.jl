@@ -23,6 +23,13 @@ with new ones. The pressure system is solved with `ALS` and no preconditioner.
 In smoke mode (`DIFFERENTT_SMOKE=1`) the grid is 2⁷ × 2⁶ and the script writes to `DIFFERENTT_SMOKE_DIR` (a fresh temporary
 folder if it is unset).
 
+# Known limitations
+
+The Navier–Stokes solver has limitations that a result of this script may depend on (`NEWS.md`, "Known limitations"): the
+Dirichlet closure with `stencil_order = 8` is first-order accurate at the wall; the field stored by `chorin_step` is the
+provisional velocity `u*`, not the projected one; and the mean removal of the pressure right-hand side is inactive with a
+Dirichlet outlet, while the projection changes the Dirichlet wall rows.
+
 # How to run
 
 From the root of the repository:
