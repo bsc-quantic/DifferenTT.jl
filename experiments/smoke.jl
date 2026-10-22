@@ -57,6 +57,7 @@ end
 function benchmark(
     folder::String;
     masks::Bool=false,
+    stale_mask_check::Bool=false,
     nocond_tasks::Vector{Int}=[1, 2],
     has_nocond::Bool=false,
     cond_tasks::Vector{Int}=Int[],
@@ -72,6 +73,19 @@ function benchmark(
     for t in cond_tasks
         push!(steps, Step("$dir/worker.jl", [string(t)]))
     end
+    if stale_mask_check
+        # The worker must refuse a mask whose metadata do not match its grid (common/mask_grid.jl).
+        push!(steps, Step("common/stale_mask_smoke.jl", String[]))
+        push!(
+            steps,
+            Step(
+                "$dir/worker.jl",
+                ["1", (has_nocond ? ["nocond"] : String[])...];
+                env=["CHORIN_MASK_FILE" => "{dir}/masks_stale.jld2"],
+                expect_error="does not belong to the grid of this run",
+            ),
+        )
+    end
     push!(steps, Step("$dir/collect.jl", [collect_args; (has_nocond ? ["nocond"] : String[])]))
     isempty(cond_tasks) || push!(steps, Step("$dir/collect.jl", collect_args))
     push!(steps, Step("$dir/plot_results.jl", plot_args))
@@ -83,8 +97,8 @@ const JOBS = [
     benchmark("tt_poisson_global"),
     benchmark("tt_anisotropy"; has_nocond=true, nocond_tasks=[1, 2, 3], cond_tasks=[2]),
     benchmark("tt_anisotropy_global"; nocond_tasks=[1, 2, 3]),
-    benchmark("chorin_pipeline"; masks=true, has_nocond=true),
-    benchmark("chorin_pipeline_globalcg"; masks=true),
+    benchmark("chorin_pipeline"; masks=true, stale_mask_check=true, has_nocond=true),
+    benchmark("chorin_pipeline_globalcg"; masks=true, stale_mask_check=true),
     benchmark("liddriven_pipeline"; has_nocond=true),
     benchmark("liddriven_pipeline_globalcg"),
     Job(

@@ -37,6 +37,13 @@ to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary fol
 committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
 benchmark in turn.
 
+# Comparability with earlier data
+
+Data collected before the FAI and `ResidualALS` fixes are not comparable with new runs: the old FAI build solved the
+transposed FSAI problem, so the preconditioner was not the intended one, and the Frobenius floor of `ResidualALS` used
+`cutoff²` instead of `cutoff` (as `ALS` and `AMEn` do), which changed bond dimensions and solutions for `cutoff > 0` (see
+`NEWS.md`). Do not mix old and new data in one collect or plot.
+
 # How to run
 
 From the root of the repository:
