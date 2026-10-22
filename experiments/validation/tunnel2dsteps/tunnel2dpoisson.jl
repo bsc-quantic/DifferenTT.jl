@@ -5,8 +5,8 @@ The same flow as `validation/tunnel2d` (Re = 3000 in the channel [0, 2] × [0, 1
 0.05 imposed through a mask, eighth-order stencils, QTT format), but instead of calling `chorin_evolve!` the script performs
 the stages of one Chorin step by hand and draws a picture after each of them, so that we can inspect the advection, the
 diffusion, the divergence, the pressure Poisson solve and the correction one by one. Section 8 builds the four
-preconditioners of the library for the symmetrized Laplacian and checks their spectra with dense eigenvalue problems, which
-only works for a few sites (the default `nodes` is far too large for it: reduce it, or skip the section). The script is a
+preconditioners of the library for the symmetrized Laplacian and, in smoke mode only, checks their spectra with dense
+eigenvalue problems, which only works for a few sites (see the comment in the script). The script is a
 notebook in script form: we edit its constants rather than pass arguments.
 
 # Inputs and outputs
@@ -305,24 +305,30 @@ dmrg(
 
 vals_list = Dict()
 
-for i in (SMOKE ? (3:4) : (3:15))
-    # A and b are bound by linearsolve to the system built inside linsolve_preconditioner
-    observer = ResidualObserver()
-    loop_prec_updater_kwargs = LocalUpdaterArgs(;
-        ishermitian=true, isposdef=true, rtol=1e-3, krylovdim=1, maxiter=200, verbosity=1
-    )
-    loop_prec_sweep_kwargs = SweepingArgs(;
-        nsweeps=100, maxdim=i, cutoff=1e-11, nsite=2, outputlevel=0, (observer!)=observer
-    )
-    loop_prec_solver = ALS(; sweep_kwargs=loop_prec_sweep_kwargs, updater_kwargs=loop_prec_updater_kwargs)
+# Dense spectra of the linsolve preconditioner for increasing bond dimension. `contract_mpo` and `eigvals` need a dense
+# 2^nsites x 2^nsites matrix, which is only possible for a few sites, so this loop runs in smoke mode only (grid 2^6 x 2^5,
+# bond dimensions 3 and 4). At the default grid it would run out of memory: to use it, reduce `nodes` and replace `SMOKE`
+# below by `true`. `vals_list` is not used afterwards.
+if SMOKE
+    for i in 3:4
+        # A and b are bound by linearsolve to the system built inside linsolve_preconditioner
+        observer = ResidualObserver()
+        loop_prec_updater_kwargs = LocalUpdaterArgs(;
+            ishermitian=true, isposdef=true, rtol=1e-3, krylovdim=1, maxiter=200, verbosity=1
+        )
+        loop_prec_sweep_kwargs = SweepingArgs(;
+            nsweeps=100, maxdim=i, cutoff=1e-11, nsite=2, outputlevel=0, (observer!)=observer
+        )
+        loop_prec_solver = ALS(; sweep_kwargs=loop_prec_sweep_kwargs, updater_kwargs=loop_prec_updater_kwargs)
 
-    input = -1.0 * truncate(symmetrized_Δ_cache; maxdim=3)
-    # Here the 3 different available constructors are set up, and tests on their eigenvalues are 
-    linsolve_precond = linsolve_preconditioner(-1.0 * symmetrized_Δ_cache, loop_prec_solver; preconditioning=true)
+        input = -1.0 * truncate(symmetrized_Δ_cache; maxdim=3)
+        # Here the 3 different available constructors are set up, and tests on their eigenvalues are 
+        linsolve_precond = linsolve_preconditioner(-1.0 * symmetrized_Δ_cache, loop_prec_solver; preconditioning=true)
 
-    op = contract_mpo(linsolve_precond.operator)
-    vals = eigvals(op)
-    vals_list[i] = vals
+        op = contract_mpo(linsolve_precond.operator)
+        vals = eigvals(op)
+        vals_list[i] = vals
+    end
 end
 
 #---------------------------------------------------

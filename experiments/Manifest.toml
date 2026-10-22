@@ -292,7 +292,7 @@ uuid = "85a47980-9c8c-11e8-2b9f-f7ca1fa99fb4"
 version = "0.4.6"
 
 [[deps.DifferenTT]]
-deps = ["Adapt", "ITensorMPS", "ITensors", "JLD2", "KrylovKit", "LinearAlgebra", "Printf", "Random", "TensorCrossInterpolation", "TimerOutputs"]
+deps = ["Adapt", "ITensorMPS", "ITensors", "JLD2", "KrylovKit", "LinearAlgebra", "Logging", "PrecompileTools", "Preferences", "Printf", "Random", "TensorCrossInterpolation", "TimerOutputs"]
 path = ".."
 uuid = "986fbeea-f347-4a71-ab00-a89cbb29f88e"
 version = "0.1.0-DEV"
