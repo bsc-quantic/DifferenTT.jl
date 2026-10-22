@@ -9,3 +9,6 @@ end
 @safetestset "visualization" begin
     include("test_visualization.jl")
 end
+@safetestset "precompile" begin
+    include("test_precompile.jl")
+end

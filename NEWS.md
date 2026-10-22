@@ -30,6 +30,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `Grid` stores the flags in a new field `periodic`. `vorticity_grid` sets them from the faces, and `INSExperiment` and
   `INSVorticityExperiment` throw `ArgumentError` when a periodic grid axis has non-periodic boundary conditions. The
   default, and every existing grid, is unchanged.
+- A precompilation workload (PrecompileTools) of the common paths: QTT operators, the local and global solvers, the
+  FAI and linear-solve preconditioners, cross interpolation on a grid, and the Chorin and vorticity steps. The first
+  calls of a session are 3 to 5 times faster (the cold runs of tutorials 01-07 take 196 s instead of 582 s), and
+  precompiling the package takes about two minutes instead of a few seconds. `DifferenTT.set_precompile_workload(false)`
+  turns it off, e.g. while developing the package.
 
 ### Changed
 
