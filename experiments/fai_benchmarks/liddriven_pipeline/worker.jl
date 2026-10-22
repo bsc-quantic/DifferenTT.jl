@@ -475,7 +475,6 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
         fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
 
         # The FAI build draws a randomized sketch: seed it so every task of this size builds from
@@ -483,11 +482,17 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
         Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(
-                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=faibuild_tol
+            precond = fai_preconditioner(
+                grid.A;
+                μ=μ,
+                solver=fai_builder_solver,
+                D_cutoff=1e-11,
+                D_oversample=10,
+                D_maxdim=gdim,
+                totalmaxdim=gdim,
+                preconditioning=false,
+                residual_tol=faibuild_tol,
             )
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = FactorizedPreconditioner(Gl)
         end
         t_build = build_stats.time
 
@@ -594,15 +599,17 @@ function warmup()
         )
         # Pass residual_tol like the timed build does: it adds a ResidualObserver to the FAI solves,
         # a different code path that would otherwise be compiled inside the timed build.
-        unscaledG, D = DifferenTT.fai_dg(
-            dummy_grid.A,
-            1.0,
-            dummy_als_solver,
-            (; cutoff=1e-11, oversample=2, maxdim=2);
+        dummy_fai = fai_preconditioner(
+            dummy_grid.A;
+            μ=1.0,
+            solver=dummy_als_solver,
+            D_cutoff=1e-11,
+            D_oversample=2,
+            D_maxdim=2,
+            totalmaxdim=2,
             preconditioning=false,
             residual_tol=fai_tol_map[(8, 8)],
         )
-        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         # When running with condition numbers, compute time does not really count, so it is better to avoid
         # crashing at precompilation due to dummy preconditioners than to have more accurate timings due to precompilation

@@ -262,15 +262,22 @@ end
 
 Build the FAI factorized preconditioner. Used both by `warmup()` and by every timed FAI task,
 with the same keyword set as the real build (including `residual_tol`), so the
-`sweep_observer!` path inside `fai_dg` is compiled ahead of time.
+`sweep_observer!` path inside the FAI build is compiled ahead of time.
 """
 function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
     fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
     fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
     fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
-    D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
     return fai_preconditioner(
-        A, μ, fai_als_solver, D_kwargs_local; totalmaxdim=gdim, preconditioning=false, residual_tol=residual_tol_build
+        A;
+        μ=μ,
+        solver=fai_als_solver,
+        D_cutoff=1e-11,
+        D_oversample=10,
+        D_maxdim=gdim,
+        totalmaxdim=gdim,
+        preconditioning=false,
+        residual_tol=residual_tol_build,
     )
 end
 

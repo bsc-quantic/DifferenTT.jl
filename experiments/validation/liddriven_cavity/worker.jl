@@ -413,15 +413,20 @@ function run_task(task::TaskSpec)
 
         fai_amen_solver = AMEn(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, enrichment_maxdim=1)
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
         fai_builder_solver = fai_als_solver
 
         t_build = @elapsed begin
-            unscaledG, D = DifferenTT.fai_dg(
-                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=1e-2
+            precond = fai_preconditioner(
+                grid.A;
+                μ=μ,
+                solver=fai_builder_solver,
+                D_cutoff=1e-11,
+                D_oversample=10,
+                D_maxdim=gdim,
+                totalmaxdim=gdim,
+                preconditioning=false,
+                residual_tol=1e-2,
             )
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = FactorizedPreconditioner(Gl)
         end
 
         start_step = load_kickstart!(grid, base_folder)
@@ -502,8 +507,15 @@ function warmup()
     dummy_als_solver = ALS(;
         sweep_kwargs=SweepingArgs(; nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_updater_kwargs
     )
-    DifferenTT.fai_dg(
-        dummy_grid.A, 1.0, dummy_als_solver, (; cutoff=1e-11, oversample=2, maxdim=2); preconditioning=false
+    fai_preconditioner(
+        dummy_grid.A;
+        μ=1.0,
+        solver=dummy_als_solver,
+        D_cutoff=1e-11,
+        D_oversample=2,
+        D_maxdim=2,
+        totalmaxdim=2,
+        preconditioning=false,
     )
 
     # When running with condition numbers, compute time does not really count, so it is better to avoid

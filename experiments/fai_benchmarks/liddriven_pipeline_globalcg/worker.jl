@@ -429,18 +429,22 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
         fai_builder_solver = als_solver
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-
         # The FAI build draws a randomized sketch: seed it so every task of this size builds from
         # the same RNG state.
         Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(
-                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol
+            precond = fai_preconditioner(
+                grid.A;
+                μ=μ,
+                solver=fai_builder_solver,
+                D_cutoff=1e-11,
+                D_oversample=10,
+                D_maxdim=gdim,
+                totalmaxdim=gdim,
+                preconditioning=false,
+                residual_tol=fai_rtol,
             )
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = FactorizedPreconditioner(Gl)
         end
         t_build = build_stats.time
 
@@ -526,15 +530,17 @@ function warmup()
         dummy_als_solver = ALS(
             sweep_kwargs=SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_als_updater_kwargs
         )
-        unscaledG, D = DifferenTT.fai_dg(
-            dummy_grid.A,
-            1.0,
-            dummy_als_solver,
-            (; cutoff=1e-11, oversample=2, maxdim=2);
+        dummy_fai = fai_preconditioner(
+            dummy_grid.A;
+            μ=1.0,
+            solver=dummy_als_solver,
+            D_cutoff=1e-11,
+            D_oversample=2,
+            D_maxdim=2,
+            totalmaxdim=2,
             preconditioning=false,
             residual_tol=fai_tol_map[(8, 8)],
         )
-        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         liddriven_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)
         liddriven_step!(dummy_grid, dummy_updater_kwargs, 0, dummy_fai)

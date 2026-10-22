@@ -145,15 +145,21 @@ println("\n--- FAI Preconditioner ---")
 μ = 1e5
 gdim = 5
 println("Building FAI PC (μ = $μ, gdim = $gdim)...")
-D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
 fai_builder_solver = ResidualALS(;
     sweep_kwargs=SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12), residual_tol=1e-9
 )
 
 time_fai_build = @elapsed begin
-    unscaledG, D = DifferenTT.fai_dg(A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false)
-    Gl = apply(D, unscaledG; maxdim=gdim)
-    fai_pc = FactorizedPreconditioner(Gl)
+    fai_pc = fai_preconditioner(
+        A;
+        μ=μ,
+        solver=fai_builder_solver,
+        D_cutoff=1e-11,
+        D_oversample=10,
+        D_maxdim=gdim,
+        totalmaxdim=gdim,
+        preconditioning=false,
+    )
 end
 
 solver_fai = ResidualALS(; sweep_kwargs=sweep_kwargs, updater_kwargs=updater_kwargs, residual_tol=1e-4)
