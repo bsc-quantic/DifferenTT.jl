@@ -1,21 +1,70 @@
-# Smoke mode is not implemented for this exploratory script yet: it is added with the update of X8 (`Revise` and `MKL`, session 5a-4).
+"""
+    Flow past an obstacle in a channel (Chorin projection): exploratory script
+
+We evolve a uniform flow past a smoothed circle of radius 0.05 in the channel [0, 2] × [0, 1] with the Chorin projection
+scheme in the QTT format, the setup of Sec. 5.2 of the paper: Re = 3000, inflow velocity (1, 0) at x = 0, Neumann
+condition for the velocity and Dirichlet condition for the pressure at x = 2, periodic in y, an RK4 predictor and
+eighth-order stencils. The obstacle is a mask (a few alternatives are defined in the script) that we compress into an MPS
+by cross interpolation. The script is a notebook in script form: we edit the constants in it (`nodes`, the mask, the time
+interval, the solver settings) rather than pass arguments.
+
+# Inputs and outputs
+
+No input (`load_mask` and the commented-out kickstart read a stored mask or snapshot). We write the mask (`circle_mask.png`)
+and one picture per stored step of the velocity, the vorticity and the pressure (`vector_N.png`, `vorticity_N.png`,
+`press_N.png`) to `circle_data/` of this folder, and the experiment, the time stepper and the fields to
+`circle_data/circle_data.jld2` if `logger` is set (it is `nothing` by default, which logs nothing).
+
+The grid is `Grid(arch, (2.0, 1.0); periodic=(false, true))`, so the period in y is 1 and agrees with the periodic boundary
+conditions (the script checks it). Earlier versions of the script used a plain grid, whose period was 1 + h, and the
+`ResidualALS` cutoff and the FAI of the library have changed since: results from before this update are not comparable
+with new ones. The pressure system is solved with `ALS` and no preconditioner.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) the grid is 2⁷ × 2⁶ and the script writes to `DIFFERENTT_SMOKE_DIR` (a fresh temporary
+folder if it is unset).
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/validation/tunnel2d/tunnel2d.jl
+    julia --project=experiments experiments/validation/tunnel2d/tunnel2d.jl
+    sbatch experiments/validation/tunnel2d/tunnel2d.slurm
+
+# Resources
+
+The job script requests one task with 8 CPUs for up to 6 h (`--time=06:00:00`) and a Julia heap-size hint of 14 GB. We have
+not measured the run time or the memory here.
+
+# Paper
+
+Physical setup of Sec. 5.2 (the figures of the paper come from `paper/chorin_pipeline_stats`).
+"""
+
+ENV["GKSwstype"] = "100" # headless GR backend
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
-SMOKE && error("smoke mode is not implemented for this script yet (X8, session 5a-4)")
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 using ITensors
 using ITensorMPS
 using TensorCrossInterpolation
 using Adapt
 using LinearAlgebra
-using MKL
 using TimerOutputs
 using JLD2
-using Revise
+using Plots # loads the plotting extension of DifferenTT (visualize_*)
 using DifferenTT
+
+# MKL is optional: it speeds up BLAS on Intel CPUs, but the environment of `experiments/` does not list it. Add it to
+# your own environment to use it.
+if Base.find_package("MKL") !== nothing
+    @eval using MKL
+end
 
 BLAS.set_num_threads(8)
 
-destination_folder = joinpath(@__DIR__, "circle_data")
+destination_folder = mkpath(joinpath(OUT_ROOT, "circle_data"))
 destination_file = "circle_data.jld2"
 
 # logger = init_logger(destination_folder)
@@ -74,7 +123,6 @@ function symmetric_wing(x, y; bx=0.6, by=0.5, rad=0.25, k=0.2)
     return exp(-1000 * value)
 end
 
-using Plots
 x_vals = range(0, 2; length=1000)
 y_vals = range(0, 1; length=1000)
 
@@ -98,17 +146,18 @@ mask(x) = circle(x...)
 box_size = (2.0, 1.0)
 fig_size = (1200, 600)
 clims=(-20, 20)
-nodes = (10, 9)
+nodes = SMOKE ? (7, 6) : (10, 9)
 
 arch = QTTArchitecture(nodes)
-grid = Grid(arch, box_size)
+# The y axis is periodic (see the boundary conditions below): `periodic` makes the period of the grid L, not L + h.
+grid = Grid(arch, box_size; periodic=(false, true))
 sites = siteinds(arch)
 # sites = siteinds(kickstart_mps_vx)
 
 save_mask = true
 mask_name = "circle_mask"
 load_mask = false
-mask_path = joinpath(@__DIR__, mask_name * ".jld2")
+mask_path = joinpath(OUT_ROOT, mask_name * ".jld2")
 
 object_mask = nothing
 
@@ -121,7 +170,7 @@ if save_mask
     @show ranks_mask
     @show error_mask
     object_mask = replace_siteinds!(MPS(tci_mask), sites)
-    visualize_scalar(object_mask, grid, arch, joinpath(@__DIR__, mask_name * ".png"); npoints=200, size=fig_size)
+    visualize_scalar(object_mask, grid, arch, joinpath(OUT_ROOT, mask_name * ".png"); npoints=200, size=fig_size)
 
     # save(mask_path, mask_name, object_mask)
 end
@@ -131,7 +180,7 @@ if load_mask
     length(object_mask) != sum(nodes) && throw(ArgumentError("Given object_mask does not have the required length."))
     siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
 
-    visualize_scalar(object_mask, grid, arch, joinpath(@__DIR__, mask_name * ".png"); npoints=200, size=fig_size)
+    visualize_scalar(object_mask, grid, arch, joinpath(OUT_ROOT, mask_name * ".png"); npoints=200, size=fig_size)
 end
 
 isnothing(object_mask) && @warn "Mask was not initialized."
@@ -178,6 +227,12 @@ bcspy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
 bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
 bcsp = BoundaryConditions(bcspx, bcspy)
+
+# The flags of the grid must be those of the boundary conditions (INSExperiment throws for a periodic axis with
+# non-periodic conditions, but not for the reverse).
+grid.periodic == DifferenTT.periodic_axes(bcsvx) || throw(
+    ArgumentError("The periodic axes of the grid, $(grid.periodic), differ from those of the boundary conditions")
+)
 
 v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
 # v_field = VectorField((kickstart_mps_vx, kickstart_mps_vy), arch, (bcsvx, bcsvy))

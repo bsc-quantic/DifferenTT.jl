@@ -1,17 +1,63 @@
-# Smoke mode is not implemented for this exploratory script yet: it is added with the update of X8 (`Revise` and `MKL`, session 5a-4).
+"""
+    Flow past an obstacle in a channel, one Chorin stage at a time: exploratory script
+
+The same flow as `validation/tunnel2d` (Re = 3000 in the channel [0, 2] × [0, 1], periodic in y, a smoothed circle of radius
+0.05 imposed through a mask, eighth-order stencils, QTT format), but instead of calling `chorin_evolve!` the script performs
+the stages of one Chorin step by hand and draws a picture after each of them, so that we can inspect the advection, the
+diffusion, the divergence, the pressure Poisson solve and the correction one by one. Section 8 builds the four
+preconditioners of the library for the symmetrized Laplacian and checks their spectra with dense eigenvalue problems, which
+only works for a few sites (the default `nodes` is far too large for it: reduce it, or skip the section). The script is a
+notebook in script form: we edit its constants rather than pass arguments.
+
+# Inputs and outputs
+
+No input (`load_timevolved_mps` reads `chorin.jld2` of this folder, a snapshot of `tunnel2d`, which is not tracked). The
+output is a set of pictures, `test_*.png` (one per stage) and `*_buffer.png`, in this folder.
+
+The grid is `Grid(arch, (2.0, 1.0); periodic=(false, true))`, so the period in y is 1 and agrees with the periodic boundary
+conditions (the script checks it). Earlier versions of the script used a plain grid, whose period was 1 + h, and the
+`ResidualALS` cutoff and the FAI of the library have changed since: results from before this update are not comparable
+with new ones.
+
+In smoke mode (`DIFFERENTT_SMOKE=1`) the grid is 2⁶ × 2⁵, the loop over the preconditioner bond dimensions has two
+iterations, and the pictures go to `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset).
+
+# How to run
+
+From the root of the repository:
+
+    DIFFERENTT_SMOKE=1 julia --project=experiments experiments/validation/tunnel2dsteps/tunnel2dpoisson.jl
+    sbatch experiments/validation/tunnel2dsteps/tunnel2dpoisson.slurm
+
+# Resources
+
+The job script requests the resources listed in `tunnel2dpoisson.slurm`. We have not measured the run time or the memory here.
+
+# Paper
+
+None.
+"""
+
+ENV["GKSwstype"] = "100" # headless GR backend
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
-SMOKE && error("smoke mode is not implemented for this script yet (X8, session 5a-4)")
+# Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
+const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 using ITensors
 using ITensorMPS
 using TensorCrossInterpolation
 using Adapt
 using LinearAlgebra
-using MKL
 using TimerOutputs
 using JLD2
-using Revise
+using Plots # loads the plotting extension of DifferenTT (visualize_*)
 using DifferenTT
+
+# MKL is optional: it speeds up BLAS on Intel CPUs, but the environment of `experiments/` does not list it. Add it to
+# your own environment to use it.
+if Base.find_package("MKL") !== nothing
+    @eval using MKL
+end
 
 BLAS.set_num_threads(8)
 
@@ -21,7 +67,7 @@ BLAS.set_num_threads(8)
 
 ############################################################
 
-destination_folder = @__DIR__
+destination_folder = OUT_ROOT
 destination_file = "chorin.jld2"
 
 ############################################################
@@ -46,7 +92,7 @@ end
 box_size = (2.0, 1.0)
 fig_size = (1200, 600)
 clims = (-20, 20)
-nodes = (13, 12)
+nodes = SMOKE ? (6, 5) : (13, 12)
 sites = load_timevolved_mps ? siteinds(kickstart_mps_vx) : siteinds(2, sum(abs, nodes))
 
 ############################################################
@@ -56,7 +102,8 @@ sites = load_timevolved_mps ? siteinds(kickstart_mps_vx) : siteinds(2, sum(abs, 
 ############################################################
 
 arch = QTTArchitecture(nodes)
-grid = Grid(arch, box_size)
+# The y axis is periodic (see the boundary conditions below): `periodic` makes the period of the grid L, not L + h.
+grid = Grid(arch, box_size; periodic=(false, true))
 
 ############################################################
 
@@ -72,7 +119,7 @@ object_mask = nothing # Id the following code blocks in this section are not run
 save_mask = true
 mask_name = "circle_mask"
 load_mask = false
-mask_path = joinpath(@__DIR__, mask_name * ".jld2")
+mask_path = joinpath(OUT_ROOT, mask_name * ".jld2")
 
 object_mask = nothing
 
@@ -145,6 +192,12 @@ bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
 bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
 bcsp = BoundaryConditions(bcspx, bcspy)
 
+# The flags of the grid must be those of the boundary conditions (INSExperiment throws for a periodic axis with
+# non-periodic conditions, but not for the reverse).
+grid.periodic == DifferenTT.periodic_axes(bcsvx) || throw(
+    ArgumentError("The periodic axes of the grid, $(grid.periodic), differ from those of the boundary conditions")
+)
+
 v_field = if load_timevolved_mps
     VectorField((kickstart_mps_vx, kickstart_mps_vy), arch, (bcsvx, bcsvy))
 else
@@ -214,9 +267,17 @@ input = -1.0 * truncate(symmetrized_Δ_cache; maxdim=3)
 linsolve_precond = linsolve_preconditioner(-1.0 * symmetrized_Δ_cache, prec_solver)
 newtoniter_precond = newtoniter_preconditioner(-1.0 * symmetrized_Δ_cache, 10; maxdim=6)
 rank1_precond = rank1_preconditioner(-1.0 * symmetrized_Δ_cache)
-fai_precond = fai_preconditioner(-1.0 * symmetrized_Δ_cache, 1.0e7, g_solver, D_kwargs; totalmaxdim=5)
+fai_precond = fai_preconditioner(
+    -1.0 * symmetrized_Δ_cache;
+    μ=1.0e7,
+    solver=g_solver,
+    D_cutoff=D_kwargs.cutoff,
+    D_maxdim=D_kwargs.maxdim,
+    D_oversample=D_kwargs.oversample,
+    totalmaxdim=5,
+)
 randmpo = random_mpo(sites) + random_mpo(sites)
-spdrandmpo = apply(transpose(randmpo), randmpo; alg="naive")
+spdrandmpo = apply(DifferenTT.transpose_mpo(randmpo), randmpo; alg="naive")
 random_precond = Preconditioner(spdrandmpo)
 init = random_mps(sites)
 
@@ -225,15 +286,19 @@ dmrg(-1.0 * symmetrized_Δ_cache, init; nsweeps=5)
 dmrg(linsolve_precond.operator, init; nsweeps=5)
 dmrg(newtoniter_precond.operator, init; nsweeps=5)
 dmrg(rank1_precond.operator, init; nsweeps=5)
-dmrg(apply(transpose(fai_precond.operator), fai_precond.operator), init; nsweeps=5)
+dmrg(apply(DifferenTT.transpose_mpo(fai_precond.operator), fai_precond.operator), init; nsweeps=5)
 
 dmrg(apply(linsolve_precond.operator, -1.0 * symmetrized_Δ_cache), init; nsweeps=5)
 dmrg(apply(rank1_precond.operator, -1.0 * symmetrized_Δ_cache), init; nsweeps=5)
-dmrg(apply(transpose(fai_precond.operator), apply(fai_precond.operator, -1.0 * symmetrized_Δ_cache)), init; nsweeps=5)
+dmrg(
+    apply(DifferenTT.transpose_mpo(fai_precond.operator), apply(fai_precond.operator, -1.0 * symmetrized_Δ_cache)),
+    init;
+    nsweeps=5,
+)
 
 vals_list = Dict()
 
-for i in 3:15
+for i in (SMOKE ? (3:4) : (3:15))
     # A and b are bound by linearsolve to the system built inside linsolve_preconditioner
     observer = ResidualObserver()
     loop_prec_updater_kwargs = LocalUpdaterArgs(;
@@ -294,7 +359,7 @@ visualize_vector(
     -1.0 .* nondivfree_advection_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_nondivfree_advection.png");
+    joinpath(OUT_ROOT, "test_nondivfree_advection.png");
     arrow_scale=0.0,
     npoints=100,
     size=(1200, 600),
@@ -307,7 +372,7 @@ visualize_scalar(
     ∇u,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_∇u.png");
+    joinpath(OUT_ROOT, "test_∇u.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -344,7 +409,7 @@ visualize_scalar(
     ∇u,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_∇u_corrected.png");
+    joinpath(OUT_ROOT, "test_∇u_corrected.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -361,7 +426,7 @@ visualize_scalar(
     rhs,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_rhs.png");
+    joinpath(OUT_ROOT, "test_rhs.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -386,7 +451,7 @@ visualize_scalar(
     divfree_p,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_divfreep.png");
+    joinpath(OUT_ROOT, "test_divfreep.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -444,7 +509,7 @@ div_free_u_mpss = ntuple(
             (-1.0 * dt) * full_dp,
             experiment.grid,
             experiment.u_fields.arch,
-            joinpath(@__DIR__, "test_dp$(i).png");
+            joinpath(OUT_ROOT, "test_dp$(i).png");
             npoints=200,
             size=(1200, 600),
         )
@@ -457,7 +522,7 @@ visualize_vector(
     div_free_u_mpss,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_div_free_u_mpss.png");
+    joinpath(OUT_ROOT, "test_div_free_u_mpss.png");
     arrow_scale=0.0,
     npoints=300,
     size=(1200, 600),
@@ -505,7 +570,7 @@ visualize_vector(
     (1 / Re) .* ∇p_diffusion,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_∇p_diffusion.png");
+    joinpath(OUT_ROOT, "test_∇p_diffusion.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -523,7 +588,7 @@ visualize_vector(
     -1.0 .* divfree_advection_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_divfree_advection.png");
+    joinpath(OUT_ROOT, "test_divfree_advection.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
@@ -534,7 +599,7 @@ visualize_vector(
     (1 / Re) .* divfree_diffusion_terms,
     experiment.grid,
     experiment.u_fields.arch,
-    joinpath(@__DIR__, "test_divfree_diffusion.png");
+    joinpath(OUT_ROOT, "test_divfree_diffusion.png");
     arrow_scale=0.0,
     npoints=200,
     size=(1200, 600),
