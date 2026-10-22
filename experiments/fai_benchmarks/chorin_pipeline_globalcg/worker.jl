@@ -28,13 +28,24 @@ The task number is `ARGS[1]` (default 1). The worker writes `tasks/task_NNN.jld2
 this folder: per step, the solve time, the global iterations, the relative residual, the bond dimension of the pressure
 and the divergence norm before and after the pressure correction, and the build time of the preconditioner. Global CG
 records no local condition numbers. `CHORIN_GLOBALCG_RESULTS_DIR` overrides the results folder, and
-`CHORIN_GLOBALCG_N_STEPS_OVERRIDE` the number of steps. The cylinder mask is read from `masks.jld2` in this folder;
-without it, the worker warns and runs without obstacle.
+`CHORIN_GLOBALCG_N_STEPS_OVERRIDE` the number of steps. The cylinder mask is read from `masks.jld2` in this folder
+(`CHORIN_MASK_FILE` overrides the path); without the file, the worker warns and runs without obstacle. The grid is
+`Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the worker stops with an `ArgumentError`
+if the grid metadata stored next to the mask do not match it (`common/mask_grid.jl`). The committed `masks.jld2` of this
+folder predates the periodic grid and has no metadata: until the maintainer runs `generate_masks.jl` and commits the result,
+a full run stops on that check (smoke mode is not affected, it makes its own mask).
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
 to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
 committed results are never touched. `experiments/smoke.jl` runs the worker, the collector and the plotter of each
 benchmark in turn.
+
+# Comparability with earlier data
+
+Data collected before this change are not comparable with new runs: they used the plain grid (the period in y was `L + h`),
+the transposed FSAI of the old FAI build, the old `ResidualALS` cutoff (the Frobenius floor used `cutoff²`, now it uses
+`cutoff`, as `ALS` and `AMEn` do) and masks sampled on the plain grid (see `NEWS.md`). Do not mix them in one collect or
+plot.
 
 # How to run
 
@@ -76,6 +87,7 @@ include(joinpath(@__DIR__, "..", "..", "common", "gc_ballast.jl"))
 flush(stderr)
 
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mask_grid.jl"))
 # Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
 const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
@@ -84,8 +96,11 @@ base_folder = get(ENV, "CHORIN_GLOBALCG_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
 
-const MASK_FILE = joinpath(OUT_ROOT, "masks.jld2")
-# Note: we assume the user has the masks in MASK_FILE. If not, they must be copied over or generated.
+# The masks must have been generated on the periodic grid of this worker (generate_masks.jl); a mask without matching grid
+# metadata stops the worker (common/mask_grid.jl). Smoke mode reads the mask that the smoke generator wrote into
+# DIFFERENTT_SMOKE_DIR; CHORIN_MASK_FILE overrides either.
+const MASK_FILE = get(ENV, "CHORIN_MASK_FILE", joinpath(OUT_ROOT, "masks.jld2"))
+# Note: if MASK_FILE does not exist the worker warns and runs without an obstacle (all fluid).
 
 const BOX_SIZE = (2.0, 1.0)
 const RE_NUM = 3000
@@ -159,21 +174,10 @@ function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{No
     # warmup grid reuse the real grid's indices so cross-grid objects like `precond` stay valid.
     sites = isnothing(shared_sites) ? siteinds(2, sum(nodes)) : shared_sites
     arch = QTTArchitecture(nodes; interleaved=false)
-    grid = Grid(arch, BOX_SIZE)
 
-    if isfile(MASK_FILE)
-        mask_key = "mask_$(nodes[1])_$(nodes[2])"
-        object_mask = load(MASK_FILE, mask_key)
-        siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
-    else
-        object_mask = ones_mps(sites)
-        @warn "mask not found; using ones_mps (all fluid)"
-    end
-
+    # Boundary conditions first: the grid takes its periodic axes from them, so that the wrapped stencils have the period
+    # of the box in y (a plain `Grid` would give L + h; see NEWS.md).
     v0 = 1.0
-    mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
-    mps_vy = 0.0 * ones_mps(sites)
-
     bcsvxx = BoundaryCond1d(DirichletBC(v0), NeumannBC(0.0))
     bcsvxy = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 
@@ -186,6 +190,23 @@ function build_grid(nodes::NTuple{2,Int}, max_steps::Int; shared_sites::Union{No
     bcsvx = BoundaryConditions(bcsvxx, bcsvxy)
     bcsvy = BoundaryConditions(bcsvyx, bcsvyy)
     bcsp = BoundaryConditions(bcspx, bcspy)
+
+    periodic = DifferenTT.periodic_axes(bcsvx)
+    grid = Grid(arch, BOX_SIZE; periodic=periodic)
+
+    if isfile(MASK_FILE)
+        mask_key = "mask_$(nodes[1])_$(nodes[2])"
+        object_mask = load(MASK_FILE, mask_key)
+        # The mask is only valid on the grid it was sampled on: stop if the file says otherwise (or says nothing)
+        check_mask_grid(load_mask_grid(MASK_FILE, mask_key), nodes, BOX_SIZE, periodic; file=MASK_FILE, key=mask_key)
+        siteinds(object_mask) != sites && replace_siteinds!(object_mask, sites)
+    else
+        object_mask = ones_mps(sites)
+        @warn "mask not found; using ones_mps (all fluid)"
+    end
+
+    mps_vx = tt_mul(object_mask, v0 * ones_mps(sites))
+    mps_vy = 0.0 * ones_mps(sites)
 
     v_field = VectorField((mps_vx, mps_vy), arch, (bcsvx, bcsvy))
     p_field = ScalarField(zeros_mps(sites), arch, bcsp)
@@ -449,18 +470,22 @@ function run_task(task::TaskSpec; warmup_time::Float64=0.0)
 
         fai_builder_solver = als_solver
 
-        D_kwargs_local = (; cutoff=1e-11, oversample=10, maxdim=gdim)
-
         # The FAI build draws a randomized sketch: seed it so every task of this size builds from
         # the same RNG state.
         Random.seed!(task.nodes[1] + task.nodes[2])
         GC.gc(true)
         build_stats = @timed begin
-            unscaledG, D = DifferenTT.fai_dg(
-                grid.A, μ, fai_builder_solver, D_kwargs_local; preconditioning=false, residual_tol=fai_rtol
+            precond = fai_preconditioner(
+                grid.A;
+                μ=μ,
+                solver=fai_builder_solver,
+                D_cutoff=1e-11,
+                D_oversample=10,
+                D_maxdim=gdim,
+                totalmaxdim=gdim,
+                preconditioning=false,
+                residual_tol=fai_rtol,
             )
-            Gl = apply(D, unscaledG; maxdim=gdim)
-            precond = FactorizedPreconditioner(Gl)
         end
         t_build = build_stats.time
 
@@ -541,15 +566,17 @@ function warmup()
         dummy_als_solver = ALS(
             sweep_kwargs=SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_als_updater_kwargs
         )
-        unscaledG, D = DifferenTT.fai_dg(
-            dummy_grid.A,
-            1.0,
-            dummy_als_solver,
-            (; cutoff=1e-11, oversample=2, maxdim=2);
+        dummy_fai = fai_preconditioner(
+            dummy_grid.A;
+            μ=1.0,
+            solver=dummy_als_solver,
+            D_cutoff=1e-11,
+            D_oversample=2,
+            D_maxdim=2,
+            totalmaxdim=2,
             preconditioning=false,
             residual_tol=fai_tol_map[(8, 8)],
         )
-        dummy_fai = FactorizedPreconditioner(apply(D, unscaledG; maxdim=2))
 
         chorin_step!(dummy_grid, dummy_updater_kwargs, 0, nothing)
         chorin_step!(dummy_grid, dummy_updater_kwargs, 0, dummy_fai)

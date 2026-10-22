@@ -5,12 +5,17 @@ The Chorin benchmarks impose the obstacle through a mask that multiplies the vel
 be the same in every task so that the right-hand sides are reproducible. We therefore precompute it once. The obstacle
 is a cylinder of radius 0.1 centered at (0.5, 0.5) in the box [0, 2] × [0, 1], smoothed as ½[1 + tanh(700 ((x-0.5)² +
 (y-0.5)² - 0.1²))], and we compress it into an MPS by cross interpolation (tolerance 1e-10, bond dimension at most 50)
-for the grids 2⁸ × 2⁸, 2¹⁰ × 2¹⁰ and 2¹² × 2¹² (keys `mask_8_8`, `mask_10_10`, `mask_12_12`).
+for the grids 2⁸ × 2⁸, 2¹⁰ × 2¹⁰ and 2¹² × 2¹² (keys `mask_8_8`, `mask_10_10`, `mask_12_12`). The mask is sampled on the
+grid of the workers, whose y axis is periodic (`Grid(arch, (2.0, 1.0); periodic=(false, true))`, nodes at y = j/n), and
+the description of that grid is stored next to every mask (key `mask_8_8_grid`, a `NamedTuple` with `nodes`, `box_size` and
+`periodic`). The workers compare it with their own grid and stop with an `ArgumentError` if it differs (`common/mask_grid.jl`),
+so a mask that was sampled on another grid, such as the files committed before this change, is never used by mistake.
 
 # Inputs and outputs
 
 No input. Output: `masks.jld2` and a picture of each mask in `maskplots/`, both in this folder (the committed copies are
-overwritten). The script prints the bond dimensions and the error of every mask.
+overwritten; the committed files predate the periodic grid and carry no metadata, so the workers reject them until they are
+regenerated). The script prints the bond dimensions and the error of every mask.
 
 In smoke mode (`DIFFERENTT_SMOKE=1`) it generates only the 2⁸ × 2⁸ mask, into `DIFFERENTT_SMOKE_DIR` (a fresh temporary
 folder if it is unset), and the smoke worker reads it from there.
@@ -40,10 +45,14 @@ using Plots # loads the plotting extension of DifferenTT (visualize_scalar)
 using DifferenTT
 
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mask_grid.jl"))
 # Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
 const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 box_size = (2.0, 1.0)
+# The grid of the workers: the y axis is periodic (the same flags as periodic_axes of their boundary conditions), so its
+# nodes are at y = j/n. The workers refuse a mask whose metadata differs (common/mask_grid.jl).
+periodic = (false, true)
 system_sizes = SMOKE ? [(8, 8)] : [(8, 8), (10, 10), (12, 12)]
 mask_path = joinpath(OUT_ROOT, "masks.jld2")
 
@@ -65,7 +74,7 @@ jldopen(mask_path, "w") do file
 
         sites = siteinds(2, sum(nodes))
         arch = QTTArchitecture(nodes; interleaved=false)
-        grid = Grid(arch, box_size)
+        grid = Grid(arch, box_size; periodic=periodic)
 
         initialpivot = optfirstpivot(Float64, mask_func, grid, arch)
 
@@ -89,6 +98,7 @@ jldopen(mask_path, "w") do file
 
         key = "mask_$(nodes[1])_$(nodes[2])"
         file[key] = object_mask
+        file["$(key)_grid"] = mask_grid_metadata(nodes, box_size, periodic)
         @info "  Mask '$key' saved ($(length(object_mask)) sites)"
     end
 end

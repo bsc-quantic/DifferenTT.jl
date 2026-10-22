@@ -17,13 +17,16 @@ iterations and the bond dimensions. The FAI is built with μ = 10⁷ in every wo
 
 The problem sizes above are the ones set in each `worker.jl`; they are the starting point, not a recommendation. The
 Chorin benchmarks read the cylinder mask from `masks.jld2` in their own folder, which `generate_masks.jl` writes with
-Tensor Cross Interpolation (`maskplots/` holds the pictures of the masks). The masks and the collected data tracked here
+Tensor Cross Interpolation (`maskplots/` holds the pictures of the masks). The collected data tracked here
 were produced before the library fixes listed in `experiments/README.md`, so they are not comparable with new runs.
-`chorin_pipeline/generate_masks.jl` now samples the mask on the periodic grid of the workers and stores the description of
-that grid next to every mask (`common/mask_grid.jl`); the committed `masks.jld2` has none, so the workers that check it
-(`paper/chorin_pipeline_stats`, `paper/linsolve_spd`; the benchmarks of this folder follow in the update of their API)
-stop until the masks are regenerated. The statistics run of `paper/chorin_pipeline_stats` reads the masks of
-`chorin_pipeline` on purpose.
+Both `generate_masks.jl` sample the mask on the periodic grid of the workers, `Grid(arch, (2.0, 1.0); periodic=(false, true))`,
+and store the description of that grid next to every mask (`common/mask_grid.jl`). Every Chorin worker compares it with its
+own grid and stops with an `ArgumentError` if it differs or is missing, so a mask from the plain grid is never used by mistake.
+The `masks.jld2` of `chorin_pipeline` has been regenerated on the periodic grid; the one of `chorin_pipeline_globalcg` has not
+(`TODO` of the maintainer), and a full run of that benchmark stops on the check until it is. A missing mask file is not an
+error: the worker warns ("mask not found") and runs without the obstacle. The statistics run of
+`paper/chorin_pipeline_stats` reads the masks of `chorin_pipeline` on purpose; `CHORIN_MASK_FILE` overrides the path in all
+the Chorin workers.
 
 ## How to run
 

@@ -9,13 +9,13 @@ for the grids 2⁸ × 2⁸, 2¹⁰ × 2¹⁰ and 2¹² × 2¹² (keys `mask_8_8`
 grid of the workers, whose y axis is periodic (`Grid(arch, (2.0, 1.0); periodic=(false, true))`, nodes at y = j/n), and
 the description of that grid is stored next to every mask (key `mask_8_8_grid`, a `NamedTuple` with `nodes`, `box_size` and
 `periodic`). The workers compare it with their own grid and stop with an `ArgumentError` if it differs (`common/mask_grid.jl`),
-so a mask that was sampled on another grid, such as the files committed before this change, is never used by mistake.
+so a mask that was sampled on another grid, such as the files committed before the change of the grid, is never used by mistake.
 
 # Inputs and outputs
 
 No input. Output: `masks.jld2` and a picture of each mask in `maskplots/`, both in this folder (the committed copies are
-overwritten; the committed files predate the periodic grid and carry no metadata, so the workers reject them until they are
-regenerated). The script prints the bond dimensions and the error of every mask.
+overwritten; the committed files were regenerated on the periodic grid, and older files carry no metadata, so the workers
+reject them). The script prints the bond dimensions and the error of every mask.
 
 In smoke mode (`DIFFERENTT_SMOKE=1`) it generates only the 2⁸ × 2⁸ mask, into `DIFFERENTT_SMOKE_DIR` (a fresh temporary
 folder if it is unset), and the smoke worker reads it from there.
