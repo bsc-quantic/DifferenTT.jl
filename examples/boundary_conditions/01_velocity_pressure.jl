@@ -20,10 +20,10 @@
 # Each closure is printed on a tiny grid and checked against a dense matrix built by hand from the ghost-node rule; all
 # the checks run in this tutorial, and their results are printed.
 #
-# Several of the functions we call are internal (they are not exported, and some are not even `public`), such as
-# `onedim_differential_operator`, `neumann_correction_matrix` or `∇p_correction`. We call them qualified,
-# `DifferenTT.name`, and show them only to expose the construction; a user builds the operators of a field with the
-# exported functions named in each section.
+# Several of the functions we call are not exported: some are `public` (such as `onedim_differential_operator` or
+# `poisson_rhs`), and the others are internal (such as `neumann_correction_matrix` or `∇p_correction`). We call them
+# qualified, `DifferenTT.name`, and show the internal ones only to expose the construction; a user builds the operators
+# of a field with the exported functions named in each section.
 
 using DifferenTT
 using ITensors, ITensorMPS
@@ -246,7 +246,7 @@ plain = Grid(arch64, L)
 
 # With the flag, the error is that of the eighth-order stencil, ``3 \cdot 10^{-12}``; without it, the stencil is
 # inconsistent near the seam, and the relative error is 14. The Chorin runs of the paper used the plain grid, i.e. the
-# period ``L + h`` (a known convention of v0.1, kept so that those runs can be reproduced); in this tutorial every
+# period ``L + h``; the flag is opt-in, and a `Grid` built without it is unchanged in v0.1. In this tutorial every
 # periodic axis is built with the flag.
 #
 # ## 3. Dirichlet and open sides: truncation
@@ -272,10 +272,10 @@ open_bc = BoundaryCond1d(OpenBC(), OpenBC())
 # Since a zero ghost value is not a consistent extrapolation of a smooth field, the truncated rows are not consistent
 # approximations of the derivatives, and the two boundary types differ in what is done about it. On a `DirichletBC`
 # side, the lift of Sec. 4 restores the dropped coefficients with the boundary value on the right-hand side of the
-# implicit systems, and the projector of Sec. 5 removes the truncated rows from the explicit time steps and from the
-# divergence. On an `OpenBC` side nothing else acts: no lift is added, and its rows are evolved by the explicit steps
-# with the truncated stencils, so an `OpenBC` side imposes in practice zero ghost values on every operator.
-# `DifferenTT.onedim_boundary_nullifier`, the projector of Sec. 5, returns `nothing` for it.
+# pressure system, and the projector of Sec. 5 holds the truncated rows fixed in the explicit time steps and removes
+# them from the divergence. On an `OpenBC` side nothing else acts: no lift is added, and its rows are evolved by the
+# explicit steps with the truncated stencils, so an `OpenBC` side imposes in practice zero ghost values on every
+# operator. `DifferenTT.onedim_boundary_nullifier`, the projector of Sec. 5, returns `nothing` for it.
 
 isnothing(DifferenTT.onedim_boundary_nullifier(arch12, 1, open_bc; stencil_order=8))
 
@@ -435,11 +435,12 @@ end
 # Halving ``h`` doubles the residual of ``q = 8``, while ``q = 2`` stays at the round-off.
 #
 # Finally, the value of a `DirichletBC` enters only through this lift, which `scalar_dirichlet_correction_dim` builds
-# and only the pressure system of the Chorin projection uses ([`poisson_rhs`](@ref), Sec. 9). The explicit time steppers
-# do not impose it: as we show in Sec. 5, they hold the rows next to a Dirichlet side at the values of the initial
-# field. A velocity with a Dirichlet side is therefore fixed on its stored boundary node and the next ``q/2 - 1`` nodes,
-# whereas the pressure value sits on the first ghost node. We confirm that the value does not enter the operators: the
-# first and second derivatives of the field above are the same if all its faces hold the value 5.
+# and only the Chorin projection uses: in the right-hand side of the pressure system ([`poisson_rhs`](@ref)) and in the
+# pressure gradient of the projection (Sec. 9). The explicit time steppers do not impose it: as we show in Sec. 5, they
+# hold the rows next to a Dirichlet side at the values of the initial field. A velocity with a Dirichlet side is
+# therefore fixed on its stored boundary node and the next ``q/2 - 1`` nodes, whereas the pressure value sits on the
+# first ghost node. We confirm that the value does not enter the operators: the first and second derivatives of the
+# field above are the same if all its faces hold the value 5.
 
 shifted_faces = BoundaryConditions(
     BoundaryCond1d(DirichletBC(5.0), DirichletBC(5.0)), BoundaryCond1d(DirichletBC(5.0), DirichletBC(5.0))
@@ -515,8 +516,8 @@ div_removed = apply(divergence_dirichlet_correction(uniform; stencil_order=8), d
 )
 
 # The source of the pressure equation is therefore zero on the ``q/2`` columns next to a Dirichlet velocity face: there
-# the pressure satisfies the homogeneous equation, up to its own lifts and closures, instead of responding to a spurious
-# source of order ``1/h``. Without the projector, this source would drive a spurious pressure gradient at the inlet.
+# the pressure satisfies the homogeneous equation, up to its own lifts and closures, instead of responding to a source
+# of order ``1/h`` that is an artifact of the truncation and not a property of the flow.
 #
 # The selection by component is visible when only the tangential component has a Dirichlet side: a velocity whose ``u``
 # is Neumann and whose ``v`` is Dirichlet at ``x = 0`` holds the inlet rows of ``v`` in the time steps, but removes no
@@ -594,10 +595,10 @@ end
 
 # The mirror moves the coefficient of row 1 onto column 2, but nothing moves the coefficient of row 2 onto column 1, so
 # the operator is no longer symmetric: in the ``q = 2`` operator above, the entry ``(1, 2)`` is 2 and the entry
-# ``(2, 1)`` is 1. This is a problem for the pressure system, which is solved by CG and by ALS with the local CG of an
-# SPD operator. The first-derivative row of the boundary node, on the other hand, is exactly zero, as the condition
-# requires. We print the norm of ``A - A^\top`` of the mirrored second derivatives of 12 nodes, and the largest entry of
-# the first-derivative row of ``u_0``.
+# ``(2, 1)`` is 1. This is a problem for the pressure system, which is solved with CG, globally or in the local problems
+# of ALS, and therefore needs an SPD operator. The first-derivative row of the boundary node, on the other hand, is
+# exactly zero, as the condition requires. We print the norm of ``A - A^\top`` of the mirrored second derivatives of 12
+# nodes, and the largest entry of the first-derivative row of ``u_0``.
 
 (
     asymmetry=[
@@ -726,8 +727,8 @@ cosine = vec2mps(cos.(π .* grid16.points[1]), neumann_field.usites)
 # 16 nodes, as differences with the truncated band: (a) the wrapped entries of the periodic closure, (b) the mirrored
 # entries ``-M`` of two Neumann sides, (c) the Dirichlet lift blocks ``C_L`` and ``C_R``, which act on the right-hand
 # side, and (d) the asymmetry ``A - A^\top`` of the mirrored operator, which the weight ``W`` removes. Each nonzero
-# entry is printed in its cell, scaled by 5040, and the colors follow its sign and its logarithm. Only the ``q/2 = 4``
-# rows next to each side are touched.
+# entry is printed in its cell, scaled by 5040, and the colors follow its sign and its logarithm. Only the corners next
+# to each side are touched.
 
 function boundary_blocks()
     truncated = ghost_operator(2, 16, :truncate, :truncate; q=8)
@@ -770,3 +771,370 @@ function boundary_blocks()
     )
 end
 boundary_blocks()
+
+# ## 8. Singular systems: no Dirichlet pressure side
+#
+# When no side of the pressure is a `DirichletBC`, i.e. every side is Neumann, periodic or open, the pressure is only
+# defined up to a constant: the mirrored and wrapped stencils annihilate the constant vector,
+# ``W\Delta \mathbf{1} = 0``, and since ``W\Delta`` is symmetric, ``\mathbf{1}^\top W\Delta = 0`` as well. The system
+# ``-W\Delta \mathbf{x} = \mathbf{b}`` is then singular, and solvable only if ``\mathbf{1}^\top \mathbf{b} = 0``. The
+# library handles the two sides of this problem separately. [`regularization_check`](@ref) detects the singular case,
+# and [`ChorinCache`](@ref) then adds the rank-1 term ``c\, \mathbf{1}\mathbf{1}^\top`` with ``c = 2^{-N_s}`` for
+# ``N_s`` sites (the inverse number of nodes in QTT), so that
+#
+# ```math
+# A = -W\Delta + c\, \mathbf{1}\mathbf{1}^\top
+# ```
+#
+# is SPD. [`poisson_rhs`](@ref), in turn, subtracts a constant from the right-hand side to make it consistent.
+#
+# We build this case on the channel of Sec. 5, with the pressure Neumann at both ends of ``x`` and periodic in ``y``.
+# The velocity ``\mathbf{u}^*`` is the smooth field ``u^* = 1 + 0.3 \sin(\pi x/4) \left(1 + 0.5 \cos(2\pi y)\right)``,
+# ``v^* = 0.2 \sin(\pi x/4) \sin(2\pi y)``, given by its node values; it satisfies the inlet values and the outlet
+# Neumann conditions, and its net flux through the boundary, hence the sum of its divergence, is not zero. The
+# constructor of [`INSExperiment`](@ref) warns that this grid does not resolve the Kolmogorov scale of ``Re = 3000``,
+# which does not matter here, since we only assemble the pressure system.
+
+function channel_velocity(arch, sites, grid)
+    x, y = grid.points
+    U = [1 + 0.3 * sin(π * xi / 4) * (1 + 0.5 * cos(2π * yj)) for xi in x, yj in y]
+    V = [0.2 * sin(π * xi / 4) * sin(2π * yj) for xi in x, yj in y]
+    return U, V, (vec2mps(vec(permutedims(U)), sites), vec2mps(vec(permutedims(V)), sites))
+end
+U8, V8, u_star8 = channel_velocity(channel_arch, channel_sites, channel_grid)
+p_singular = ScalarField(channel_sites, channel_arch, BoundaryConditions(neumann_bc, periodic))
+singular = INSExperiment(
+    channel_grid,
+    VectorField(u_star8, channel_arch, (u_bcs, v_bcs)),
+    p_singular,
+    3000,
+    nothing;
+    stencil_order=8,
+    cutoff=1e-14,
+    maxdim=256,
+)
+singular_cache = ChorinCache(singular)
+DifferenTT.regularization_check(singular), singular_cache.regularize
+
+# We check densely that ``-W\Delta`` has the constant null space, that the cached operator is ``-W\Delta`` plus the
+# rank-1 term (both relative to the largest entry of ``W\Delta``), and that it is SPD: the smallest eigenvalue of
+# ``-W\Delta`` is zero up to round-off, and that of ``A`` is ``c\, n = 1``, the eigenvalue of the constant vector.
+
+WΔ_singular = contract_mpo(symmetrized_laplacian(p_singular, channel_grid; stencil_order=8))
+A_singular = contract_mpo(singular_cache.poisson_op)
+(
+    null_space=maximum(abs, WΔ_singular * ones(256)) / maximum(abs, WΔ_singular),
+    rank_one_term=maximum(abs, A_singular - (-WΔ_singular + 2.0^-8 * ones(256, 256))) / maximum(abs, WΔ_singular),
+    eigmin_unpinned=eigmin(Symmetric(-WΔ_singular)),
+    eigmin_pinned=eigmin(Symmetric(A_singular)),
+)
+
+# The pin has a useful consequence: multiplying ``A\mathbf{x} = \mathbf{b}`` by ``\mathbf{1}^\top`` gives
+# ``c\, n\, \mathbf{1}^\top \mathbf{x} = \mathbf{1}^\top \mathbf{b}``, where ``n`` is the number of nodes, and
+# substituting it back gives
+#
+# ```math
+# -W\Delta\, \mathbf{x} = \mathbf{b} - \frac{\mathbf{1}^\top \mathbf{b}}{n} \mathbf{1},
+# ```
+#
+# so the pinned system solves the singular one with the node mean removed from its right-hand side, for any ``c > 0``,
+# and the constant ``\mathbf{1}^\top \mathbf{x} = \mathbf{1}^\top \mathbf{b} / (c n)`` is the only trace of the
+# inconsistent part. The vorticity–streamfunction formulation removes this mean explicitly with [`remove_mean`](@ref),
+# ``\mathbf{b} - \bar{b}\, \mathbf{1}``. The Chorin projection removes a different constant, which is the first known
+# limitation (D8) of v0.1 (see [`INSExperiment`](@ref)): [`poisson_rhs`](@ref) subtracts
+# ``\sum_j b_j \prod_i h_i / \prod_i L_i = \sum_j b_j / \prod_i (n_i - 1)`` instead of ``\sum_j b_j / \prod_i n_i``,
+# since the box of the grid spans ``(n_i - 1) h_i`` per axis, so the right-hand side keeps the fraction
+# ``1 - \prod_i n_i / (n_i - 1)`` of its sum. We reproduce this term by term:
+# ``\mathbf{b}_0 = W(-Z \nabla \cdot \mathbf{u}^*)`` (no Dirichlet pressure side, hence no lift), then the documented
+# constant, and compare with `poisson_rhs`; we print the remaining fraction of the sum next to its prediction,
+# ``1 - 256/225``.
+
+dt = 0.01
+Z_channel = contract_mpo(divergence_dirichlet_correction(singular.u_fields; stencil_order=8))
+divergence8 = contract_mps(divergence(u_star8, singular_cache.u_diff_ops))
+W_singular = contract_mpo(neumann_weight_mpo(p_singular))
+b0 = W_singular * (-Z_channel * divergence8)
+b_chorin = contract_mps(DifferenTT.poisson_rhs(singular, singular_cache, u_star8, dt))
+b_mean_free = contract_mps(DifferenTT.remove_mean(vec2mps(b0, channel_sites)))
+(
+    poisson_rhs=maximum(abs, b_chorin - (b0 .- sum(b0) / 15^2)) / maximum(abs, b0),
+    remaining_fraction=sum(b_chorin) / sum(b0),
+    predicted=1 - 256 / 225,
+    remove_mean=sum(b_mean_free) / sum(abs, b0),
+)
+
+# By the identity above, this limitation changes only the mean of the computed ``p\,dt`` when the system is solved
+# exactly: the two right-hand sides differ by a constant, and the pinned system maps a constant right-hand side to a
+# constant solution. The gradient of a constant vanishes on every row with these closures (mirror and wrap), so the
+# projected velocity does not change. We verify this densely, by solving with both right-hand sides and printing the
+# spread of the difference of the solutions (zero for a constant) and its mean.
+
+pdt_chorin, pdt_mean_free = A_singular \ b_chorin, A_singular \ b_mean_free
+(
+    spread=maximum(pdt_chorin - pdt_mean_free) - minimum(pdt_chorin - pdt_mean_free),
+    shift=sum(pdt_chorin - pdt_mean_free) / 256,
+)
+
+# With an approximate TT solver, the constant becomes one more component of the solution to resolve, which the solver
+# does up to its tolerance. Note also that the pinned operator is a dense matrix, since ``\mathbf{1}\mathbf{1}^\top``
+# has no zero entry, but in the TT format its rank-1 term is an MPO of bond dimension 1, so the bond dimension of ``A``
+# grows by at most one.
+#
+# ## 9. Assembling the pressure system of the paper (Sec. 5.2)
+#
+# We now assemble, term by term, the pressure system of the channel flow past a cylinder of Sec. 5.2 of the paper, which
+# tutorial 06 solves. The domain is ``[0, 2] \times [0, 1]``, here on a non-interleaved QTT grid of ``2^4 \times 2^4``
+# nodes, the smallest one that the QTT operators allow (they need at least 4 sites per axis, since their stencils reach
+# the offsets ``\pm 4``). At the inlet ``x = 0`` the velocity is Dirichlet, ``\mathbf{u} = (1, 0)``, and the pressure
+# Neumann; at the outlet ``x = 2`` the velocity is Neumann and the pressure Dirichlet with the reference value
+# ``g = 1``; ``y`` is periodic for all the fields, and we build it with the `periodic` flag (Sec. 2), so that
+# ``h_y = 1/16`` and the period is 1 (the paper's runs used the plain grid). The obstacle mask does not enter the
+# pressure operator, and we leave it out. Imposing ``\nabla \cdot \mathbf{u}_{n+1} = 0`` on the projected velocity gives
+# the Poisson equation for ``p\, dt``, Eq. (34) of the paper, which with the closures of the previous sections becomes
+# the system ``A\,(p\, dt) = \mathbf{b}`` with
+#
+# ```math
+# A = -W\Delta, \qquad \mathbf{b} = W\left(-Z\, \nabla \cdot \mathbf{u}^* + dt\, C\mathbf{1}\right),
+# ```
+#
+# where ``W\Delta`` is the symmetrized Laplacian of the pressure (Secs. 6 and 7), ``Z`` the divergence projector of the
+# inlet rows (Sec. 5), and ``C\mathbf{1}`` the lift of the outlet value (Sec. 4), multiplied by ``dt`` because the ghost
+# values of ``p\, dt`` are ``g\, dt``. The pressure has a Dirichlet side, so no regularization is added (Sec. 8).
+
+paper_arch = QTTArchitecture((4, 4))
+paper_sites = siteinds(paper_arch)
+p_bcs = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), periodic)
+paper_grid = Grid(paper_arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(p_bcs))
+U9, V9, u_star9 = channel_velocity(paper_arch, paper_sites, paper_grid)
+p_field = ScalarField(paper_sites, paper_arch, p_bcs)
+experiment = INSExperiment(
+    paper_grid,
+    VectorField(u_star9, paper_arch, (u_bcs, v_bcs)),
+    p_field,
+    3000,
+    nothing;
+    stencil_order=8,
+    cutoff=1e-14,
+    maxdim=256,
+)
+cache = ChorinCache(experiment)
+paper_grid.dx, DifferenTT.regularization_check(experiment)
+
+# The operator is SPD: we print its asymmetry, its extreme eigenvalues and its condition number, and its bond
+# dimensions.
+
+A = contract_mpo(cache.poisson_op)
+eigenvalues = eigvals(Symmetric(A))
+(
+    asymmetry=norm(A - A') / norm(A),
+    eigmin=first(eigenvalues),
+    eigmax=last(eigenvalues),
+    κ=last(eigenvalues) / first(eigenvalues),
+    bonds=linkdims(cache.poisson_op),
+)
+
+# To see where each closure acts, we subtract from ``A`` its interior Kronecker part, the Kronecker sum of the truncated
+# bands with no closure at all, ``-(D_{xx} \otimes \mathbb{I} + \mathbb{I} \otimes D_{yy})``, built with
+# `ghost_operator`. Since ``x`` is the slower index, the matrix is made of ``16 \times 16`` blocks of size
+# ``16 \times 16``, one block row per node ``x_i``. We show the difference on the whole matrix, on its first three block
+# rows and columns, and on its first diagonal block, with colors that follow the sign and the logarithm of each entry.
+
+n_x, n_y = variable_dims(paper_arch)
+h_x, h_y = paper_grid.dx
+interior = -(
+    kron(ghost_operator(2, n_x, :truncate, :truncate; q=8) ./ h_x^2, I(n_y)) +
+    kron(I(n_x), ghost_operator(2, n_y, :truncate, :truncate; q=8) ./ h_y^2)
+)
+closures = A - interior
+function closure_heatmap(rows, ticks; title, axis="block x")
+    block = closures[rows, rows]
+    return heatmap(
+        rows,
+        rows,
+        sign.(block) .* log10.(1 .+ abs.(block));
+        yflip=true,
+        aspect_ratio=1,
+        color=cgrad(:RdBu; rev=true),
+        clims=(-3.5, 3.5),
+        xlims=(first(rows) - 0.5, last(rows) + 0.5),
+        ylims=(first(rows) - 0.5, last(rows) + 0.5),
+        xticks=ticks,
+        yticks=ticks,
+        xlabel="column ($(axis)ⱼ)",
+        ylabel="row ($(axis)ᵢ)",
+        title,
+        titlefontsize=10,
+        colorbar=false,
+        framestyle=:box,
+    )
+end
+plot(
+    closure_heatmap(1:256, (8.5:16:256, string.(0:15)); title="A − interior part, all 16 × 16 blocks"),
+    closure_heatmap(1:48, (8.5:16:48, string.(0:2)); title="zoom: blocks x₀ to x₂"),
+    closure_heatmap(1:16, (1:15:16, ["y₀", "y₁₅"]); title="zoom: block (x₀, x₀)", axis="node y");
+    layout=(1, 3),
+    size=(1500, 500),
+    margin=6Plots.mm,
+    left_margin=10Plots.mm,
+)
+
+# Three closures appear, and one does not. The diagonal blocks of every node ``x_i`` carry the corners of the wrapped
+# ``y`` stencil, on the four rows of ``y`` next to each side of the seam. The first four block rows carry the mirrored
+# ``x`` coefficients of the Neumann inlet, and the first block row is moreover halved by ``W`` (Sec. 7), which is why
+# its diagonal block also differs from the interior one. The Dirichlet outlet leaves no trace: its truncated rows are
+# the interior ones, and its value enters only the right-hand side.
+#
+# The right-hand side is built by [`poisson_rhs`](@ref). We assemble it again from its three terms and compare. The
+# divergence of [`divergence`](@ref) is itself checked against the ghost-extended stencils of the velocity: ``u`` is
+# truncated at the inlet (zero ghost values, Sec. 3) and mirrored at the outlet, and ``v`` is wrapped in ``y``.
+
+Z = contract_mpo(divergence_dirichlet_correction(experiment.u_fields; stencil_order=8))
+divergence9 = contract_mps(divergence(u_star9, cache.u_diff_ops))
+lift = contract_mps(
+    apply(scalar_dirichlet_correction(p_field, paper_grid, 2; stencil_order=8), ones_mps(paper_sites, 1))
+)
+W = contract_mpo(neumann_weight_mpo(p_field))
+b = contract_mps(DifferenTT.poisson_rhs(experiment, cache, u_star9, dt))
+as_grid(v) = permutedims(reshape(v, n_y, n_x))
+divergence_hand = ghost_stencil(U9, 1, 1, 8, h_x, 0.0, :mirror) + ghost_stencil(V9, 1, 2, 8, h_y, :wrap, :wrap)
+(
+    divergence=maximum(abs, as_grid(divergence9) - divergence_hand) / maximum(abs, divergence_hand),
+    poisson_rhs=maximum(abs, b - W * (-Z * divergence9 + dt * lift)) / maximum(abs, b),
+    lift_rows=findall(!iszero, round.(vec(maximum(abs, as_grid(lift); dims=2)); digits=12)),
+)
+
+# The lift is nonzero only on the last four nodes of ``x``, the rows that reach the ghost nodes of the outlet. The final
+# check is the one that defines the whole construction: the solution of ``A\,(p\, dt) = \mathbf{b}`` must satisfy the
+# full second-derivative stencils, with the ghost values given by the boundary rules, on every node,
+#
+# ```math
+# \Delta_\text{full}(p\, dt) = Z\, \nabla \cdot \mathbf{u}^*,
+# ```
+#
+# where ``\Delta_\text{full}`` mirrors ``p\, dt`` at the inlet, puts ``g\, dt`` on every ghost node of the outlet, and
+# wraps in ``y``. Note that the weight ``W`` has disappeared: it multiplies both sides of the equation.
+
+pdt = A \ b
+PDT = as_grid(pdt)
+laplacian_full = ghost_stencil(PDT, 2, 1, 8, h_x, :mirror, 1.0 * dt) + ghost_stencil(PDT, 2, 2, 8, h_y, :wrap, :wrap)
+maximum(abs, laplacian_full - as_grid(Z * divergence9)) / maximum(abs, divergence9)
+
+# The projection ``\mathbf{u} = \mathbf{u}^* - dt\, \nabla p`` uses the first derivatives of the pressure, with the same
+# closures and the lift of the first derivative at the outlet (`scalar_dirichlet_correction_dim` with ``m = 1``); the
+# internal `DifferenTT.∇p_correction` applies it. We compare it with the full first-derivative stencils of
+# ``p = (p\, dt)/dt``.
+
+P = PDT ./ dt
+projected = DifferenTT.∇p_correction(u_star9, experiment, cache, vec2mps(pdt ./ dt, paper_sites), dt)
+U_projected, V_projected = as_grid(contract_mps(projected[1])), as_grid(contract_mps(projected[2]))
+(
+    u=maximum(abs, U_projected - (U9 - dt * ghost_stencil(P, 1, 1, 8, h_x, :mirror, 1.0))) / maximum(abs, U9),
+    v=maximum(abs, V_projected - (V9 - dt * ghost_stencil(P, 1, 2, 8, h_y, :wrap, :wrap))) / maximum(abs, U9),
+)
+
+# Here the second known limitation of the Chorin projection of v0.1 (D8) acts. The projection is applied to every row,
+# including the ``q/2`` rows next to the inlet, which the time steppers hold at their initial values (Sec. 5). On the
+# inlet node itself the mirrored ``\partial_x p`` vanishes, so ``u`` keeps its Dirichlet value there, but ``v`` changes
+# by ``-dt\, \partial_y p``, and on the next three nodes, which the steppers also hold, both components change. We print
+# the largest change of each component on the first six nodes of ``x``.
+
+(
+    u_change=round.(vec(maximum(abs, U_projected - U9; dims=2))[1:6]; sigdigits=3),
+    v_change=round.(vec(maximum(abs, V_projected - V9; dims=2))[1:6]; sigdigits=3),
+)
+
+# In a run, the next predictor holds these rows at the changed values, so the inlet velocity changes from step to step
+# instead of staying at its Dirichlet values. The test suite records this limitation as `@test_broken`, and it is
+# planned to be fixed in a later version. Two further conventions of [`chorin_step`](@ref) are worth recalling here: the
+# step masks and projects the velocity it receives and then predicts, so the velocity it returns is the provisional
+# ``\mathbf{u}^*`` of the next step rather than the projected field; and the projected velocity is only approximately
+# divergence-free, since the pressure system uses the compact Laplacian instead of the composition of the discrete
+# divergence and gradient (Sec. 5.2 of the paper).
+#
+# ## 10. Summary
+#
+# Every closure of the velocity–pressure formulation is one ghost-node rule, and the table below lists where each rule
+# acts and which functions build it.
+#
+# | Boundary type | Ghost-node rule | Where it acts | Functions |
+# |:--|:--|:--|:--|
+# | `PeriodicBC` | image node, period ``nh`` | operator | `toeplitz_mpo`, `Grid(…; periodic)`, `periodic_axes` |
+# | `DirichletBC`, `OpenBC` | zero (truncation) | operator | `onedim_differential_operator`, `stencil_rows` |
+# | `DirichletBC` data | ``g`` on every ghost node | right-hand side (lift) | `scalar_dirichlet_correction(_dim)` |
+# | `DirichletBC`, explicit terms | rows held fixed | time-step right-hand side | `BoundaryNullScalar`, `BoundaryNull` |
+# | `DirichletBC`, divergence | rows removed | pressure right-hand side | `divergence_dirichlet_correction` |
+# | `NeumannBC(0)` | mirror, ``u_{-k} = u_k`` | operator | `neumann_correction_matrix` |
+# | `NeumannBC(0)`, linear systems | half cell | operator and right-hand side | `neumann_weight_mpo`, `symmetrize_rhs` |
+# | no Dirichlet pressure side | constant null space | operator (pin), right-hand side | `regularization_check` |
+#
+# Behind these entry points are the one-dimensional blocks that we printed: the Dirichlet corner blocks
+# (`onedim_left_dirichlet_correction`, `onedim_right_dirichlet_correction`, `corner_pick_matrix`, `corner_pick_mpo`) and
+# their two-dimensional profile version (`face_dirichlet_lift`, `face_profile_mps`), the projector
+# `onedim_boundary_nullifier`, the Neumann embeddings (`left_neumann_boundary_correction`,
+# `right_neumann_boundary_correction`) and symmetrization corrections (`onedim_neumann_symmetrization_correction` and
+# its left and right parts), and the assembled operators and right-hand sides of the Chorin projection
+# ([`symmetrized_laplacian`](@ref), [`kronecker_laplacian`](@ref), [`ChorinCache`](@ref), [`poisson_rhs`](@ref),
+# `∇p_correction`), with [`remove_mean`](@ref) for the vorticity–streamfunction formulation.
+#
+# The figure summarizes the pressure system of Sec. 9. Panel (a) classifies the nodes of the ``2^4 \times 2^4`` grid by
+# the closures that act on their rows, read from the assembled objects: the Neumann weight ``W < 1``, the divergence
+# projector ``Z = 0``, and a nonzero lift; the four rows of ``y`` next to each side of the seam are moreover wrapped.
+# Panel (b) shows the pressure ``p`` along ``x``, averaged over ``y``, together with its ghost values: mirrored at the
+# inlet, where the boundary lies on the stored node, and equal to ``g = 1`` on every ghost node of the outlet, so that
+# the Dirichlet value sits at ``x = 2 + h_x``, one spacing beyond the last stored node. The four equal outlet ghosts are
+# the constant fill of the ``q = 8`` closure (Sec. 4), not an extrapolation of the stored values.
+
+function summary_figure()
+    x, y = paper_grid.points
+    weight, kept, lifted = as_grid(diag(W)), as_grid(diag(Z)), as_grid(lift)
+    classes = [
+        ("W = ½, Z = 0 (inlet node)", (i, j) -> weight[i, j] < 0.75 && kept[i, j] < 0.5, :darkgreen),
+        ("Z = 0 (q/2 rows of the inlet)", (i, j) -> weight[i, j] > 0.75 && kept[i, j] < 0.5, :goldenrod),
+        ("lift ≠ 0 (q/2 rows of the outlet)", (i, j) -> abs(lifted[i, j]) > 1e-9, :firebrick),
+        ("interior in x", (i, j) -> kept[i, j] > 0.5 && abs(lifted[i, j]) <= 1e-9, :lightgray),
+    ]
+    panel_a = plot(;
+        xlabel="x",
+        ylabel="y",
+        title="(a) closures of the pressure rows (y periodic)",
+        legend=:outerright,
+        aspect_ratio=1,
+        xlims=(-0.2, 2.2),
+        titlefontsize=11,
+    )
+    for (label, member, color) in classes
+        nodes = [(x[i], y[j]) for i in 1:n_x, j in 1:n_y if member(i, j)]
+        scatter!(panel_a, first.(nodes), last.(nodes); label, color, markersize=6, markerstrokewidth=0)
+    end
+    p_mean = vec(sum(P; dims=2)) ./ n_y
+    panel_b = plot(;
+        xlabel="x",
+        ylabel="p (mean over y)",
+        title="(b) pressure and its ghost values",
+        legend=:topleft,
+        titlefontsize=11,
+    )
+    plot!(panel_b, x, p_mean; marker=:circle, color=:black, label="stored nodes")
+    scatter!(
+        panel_b,
+        -(1:4) .* h_x,
+        p_mean[2:5];
+        color=:darkgreen,
+        markershape=:square,
+        label="inlet ghosts: mirror p₋ₖ = pₖ",
+    )
+    scatter!(
+        panel_b, 2 .+ (1:4) .* h_x, fill(1.0, 4); color=:firebrick, markershape=:diamond, label="outlet ghosts: g = 1"
+    )
+    vline!(panel_b, [0.0]; color=:darkgreen, linestyle=:dash, label="Neumann boundary (x = 0)")
+    vline!(panel_b, [2 + h_x]; color=:firebrick, linestyle=:dash, label="Dirichlet value (x = 2 + h)")
+    return plot(
+        panel_a,
+        panel_b;
+        layout=Plots.grid(1, 2; widths=[0.55, 0.45]),
+        size=(1400, 460),
+        margin=6Plots.mm,
+        left_margin=9Plots.mm,
+    )
+end
+summary_figure()
