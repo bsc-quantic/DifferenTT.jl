@@ -14,8 +14,8 @@ so a mask that was sampled on another grid, such as the files committed before t
 # Inputs and outputs
 
 No input. Output: `masks.jld2` and a picture of each mask in `maskplots/`, both in this folder (the committed copies are
-overwritten; the committed files predate the periodic grid and carry no metadata, so the workers reject them until they are
-regenerated). The script prints the bond dimensions and the error of every mask.
+overwritten; the committed files are a copy of those of `chorin_pipeline`, regenerated on the periodic grid; older files carry
+no metadata, so the workers reject them). The script prints the bond dimensions and the error of every mask.
 
 In smoke mode (`DIFFERENTT_SMOKE=1`) it generates only the 2⁸ × 2⁸ mask, into `DIFFERENTT_SMOKE_DIR` (a fresh temporary
 folder if it is unset), and the smoke worker reads it from there.

@@ -92,8 +92,9 @@ period `L + h`; the Chorin and tunnel scripts now use `Grid(arch, L; periodic=pe
 folders that show results say so.
 
 The Chorin workers stop with an `ArgumentError` if their mask was sampled on another grid (`common/mask_grid.jl`). The masks
-of `fai_benchmarks/chorin_pipeline` are regenerated; to regenerate those of `fai_benchmarks/chorin_pipeline_globalcg` (a
-maintainer task, which also rewrites its `maskplots/`) run, from the root of the repository:
+of `fai_benchmarks/chorin_pipeline` are regenerated, and `fai_benchmarks/chorin_pipeline_globalcg` carries a copy of them (its
+generator is the same script, so the files are identical). To regenerate either set, which also rewrites its `maskplots/`, run,
+from the root of the repository (here for the second folder):
 
 ```bash
 julia --project=experiments experiments/fai_benchmarks/chorin_pipeline_globalcg/generate_masks.jl

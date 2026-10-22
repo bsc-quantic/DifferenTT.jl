@@ -32,8 +32,8 @@ records no local condition numbers. `CHORIN_GLOBALCG_RESULTS_DIR` overrides the 
 (`CHORIN_MASK_FILE` overrides the path); without the file, the worker warns and runs without obstacle. The grid is
 `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the worker stops with an `ArgumentError`
 if the grid metadata stored next to the mask do not match it (`common/mask_grid.jl`). The committed `masks.jld2` of this
-folder predates the periodic grid and has no metadata: until the maintainer runs `generate_masks.jl` and commits the result,
-a full run stops on that check (smoke mode is not affected, it makes its own mask).
+folder is a copy of that of `chorin_pipeline` (same generator), sampled on the periodic grid and carrying the metadata;
+smoke mode makes its own mask.
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to a few tasks on a tiny problem, through the `SMOKE` branches next
 to the constants, and writes under `DIFFERENTT_SMOKE_DIR` (a fresh temporary folder if it is unset), so that the
