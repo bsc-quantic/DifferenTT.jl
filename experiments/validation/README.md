@@ -10,9 +10,10 @@ speed of a preconditioner.
 | `tunnel2d` | Flow past an obstacle (a smoothed circle mask) in a channel with the Chorin projection scheme, in the QTT format | Physical setup of Sec. 5.2 of the paper |
 | `tunnel2dsteps` | The same flow, written as the individual stages of the Chorin step with a picture after each stage, to inspect advection, diffusion, divergence and pressure correction separately | – |
 
-`tunnel2d` and `tunnel2dsteps` are exploratory scripts that still need to be brought up to date: both load `Revise` and
-`MKL`, which the environment of `experiments/` does not provide, and they write their output next to the script. This
-update is pending (`TODO(5a-4)`), and `examples/` will carry a didactic version of `tunnel2d`.
+`tunnel2d` and `tunnel2dsteps` are exploratory scripts, written as notebooks in script form: we edit their constants
+instead of passing arguments. They run on the current API (the periodic grid flag, `fai_preconditioner`, `transpose_mpo`);
+`MKL` is optional and `Revise` is gone. Output goes next to the script (`circle_data/`, `*.png`; ignored by git), or to
+`DIFFERENTT_SMOKE_DIR` in smoke mode. `examples/` carries a didactic version of `tunnel2d`.
 
 ## How to run
 
@@ -23,4 +24,4 @@ bash experiments/validation/liddriven_cavity/submit.sh nocond
 ```
 
 `CAVITY_LIDS=2` selects the doubly-driven cavity (the Ghia comparison exists only for the single lid). The tunnel scripts
-are submitted with `sbatch experiments/validation/tunnel2d/tunnel2d.slurm` (8 CPUs, 6 h). The account, quality of service and Julia module are the environment variables `SLURM_ACCOUNT`, `SLURM_QOS` and `JULIA_MODULE` (see `experiments/README.md`; the `.slurm` files take `sbatch --account --qos` instead). Smoke mode is `julia --project=experiments experiments/smoke.jl liddriven_cavity`; the tunnel scripts have none yet, and `smoke.jl` reports them as failed until the update that removes `Revise` and `MKL` (`TODO(5a-4)`).
+are submitted with `sbatch experiments/validation/tunnel2d/tunnel2d.slurm` (8 CPUs, 6 h). The account, quality of service and Julia module are the environment variables `SLURM_ACCOUNT`, `SLURM_QOS` and `JULIA_MODULE` (see `experiments/README.md`; the `.slurm` files take `sbatch --account --qos` instead). Smoke mode is `julia --project=experiments experiments/smoke.jl liddriven_cavity`; `smoke.jl tunnel2d tunnel2dsteps` runs the two tunnel scripts on a tiny grid.

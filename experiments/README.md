@@ -17,8 +17,8 @@ julia --project=experiments -e 'using Pkg; Pkg.instantiate()'
 We launch the scripts with `--project=experiments`; they build every path from their own location, so the working directory
 does not matter. The job scripts (`submit.sh`, `.slurm`), in contrast, are submitted from the root of the repository. Plots is a dependency of the
 environment, so that the plotting extension of DifferenTT (`visualize_*`) loads. The environment contains neither
-`Revise`, `MKL` nor any GPU package: the two exploratory scripts of `validation/` that load the first two are listed in
-the README of that folder.
+`Revise`, `MKL` nor any GPU package. The two exploratory scripts of `validation/tunnel2d*` load `MKL` if it is installed in
+your own environment (a faster BLAS on Intel CPUs) and never load `Revise`.
 
 ## Layout
 
@@ -29,9 +29,6 @@ the README of that folder.
 | `fai_benchmarks/` | Benchmarks of the FAI, Sinc and unpreconditioned solvers on Poisson-type systems: anisotropic diffusion, N-dimensional Poisson, the pressure systems of the Chorin projection and of the lid-driven cavity. Each has a local (`ResidualALS`) and a global (`GlobalCG`) variant | Sec. 5 uses the statistics variants of these benchmarks, which are in `paper/` | Job array of 10–132 tasks, 20 CPUs and up to 36 h each; a collector job of 4 CPUs and 10 minutes | `results*/tasks/*.jld2`, `results*/collected_results.jld2`, `plots/` |
 | `validation/` | Checks of the Navier–Stokes solvers against references and exploratory flows past obstacles | Sec. 5.2 describes the physical setup of `tunnel2d` | `liddriven_cavity`: 16 CPUs, up to 36 h; `tunnel2d`: 8 CPUs, 6 h | `results*/`, `circle_data/` |
 | `archive/` | Early demonstrations, superseded by the tutorials in `examples/`. Unmaintained | – | – | – |
-
-`tt_poisson/poissonNd.jl` is the N-dimensional Poisson demonstration from which `examples/03` derives. It stays at this
-level until the update of its FAI call has been made, and then moves to `archive/`.
 
 ## How to run
 
@@ -85,7 +82,34 @@ command line (`sbatch --account=<project> --qos=<qos> experiments/validation/tun
 
 ## Data
 
-The `collected_results.jld2` files that are tracked in this repository were produced with the library before the fixes of
-the FAI orientation, the `ResidualALS` cutoff convention and the period of periodic grids (see `NEWS.md`). They are not
-comparable with new runs, and must not be mixed with them in one collection or plot. The data policy (what is committed and
-where large data goes) is `TODO(5a-4)`.
+### Data from before this update are not comparable
+
+The `collected_results.jld2` files that are tracked in this repository, and the Chorin masks, were produced with the library
+before the fixes of the FAI orientation (the FAI solved the transposed FSAI problem), the `ResidualALS` cutoff convention (its
+Frobenius floor used `cutoff²`, now `cutoff` as in `ALS` and `AMEn`) and the period of periodic grids (the plain `Grid` has the
+period `L + h`; the Chorin and tunnel scripts now use `Grid(arch, L; periodic=periodic_axes(bcs))`, whose period is `L`); see
+`NEWS.md`. They are not comparable with new runs and must not be mixed with them in one collection or plot. The READMEs of the
+folders that show results say so.
+
+The Chorin workers stop with an `ArgumentError` if their mask was sampled on another grid (`common/mask_grid.jl`). The masks
+of `fai_benchmarks/chorin_pipeline` are regenerated; to regenerate those of `fai_benchmarks/chorin_pipeline_globalcg` (a
+maintainer task, which also rewrites its `maskplots/`) run, from the root of the repository:
+
+```bash
+julia --project=experiments experiments/fai_benchmarks/chorin_pipeline_globalcg/generate_masks.jl
+```
+
+and check the printed `ranks_mask` and `error_mask` (tolerance 1e-10, bond dimension at most 50) before committing both files.
+
+### What we commit and what we do not
+
+| Committed | Not committed |
+|---|---|
+| `collected_results.jld2` of a benchmark (a few hundred kB; about 1 MB at most) | The task files `tasks/task_NNN.jld2` and the logs (`.gitignore`) |
+| The input masks `masks.jld2` (about 0.8 MB each) and the pictures `maskplots/*.png` | Any other `.jld2`, `.png`, `.svg` or `.pdf` that a script writes (`.gitignore`), such as `circle_data/` of `tunnel2d` and the `test_*.png` of `tunnel2dsteps` |
+| Small tables that a script prints to Markdown (`summary.md`, `ghia_comparison.txt`, `discrete_floor.md`) and `paper/anisotropy_floor/discrete_floor.jld2` (Table 1, D1 era) | SLURM output (`output.out`, `error.err`, `slurm-*.out`) and snapshots of long runs (`finaldata/`) |
+
+A file above about 1 MB does not go into the repository: it is kept outside it, on the cluster or in an archive, and the
+README of the benchmark that produced it records where and which commit made it. The data of the rerun of the paper
+experiments (session R) is the first case: `paper/README.md` carries a `TODO(session R)` for the commit and the location
+of that data, which is decided when the rerun has been done.
