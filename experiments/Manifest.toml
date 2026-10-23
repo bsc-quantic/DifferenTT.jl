@@ -2,7 +2,7 @@
 
 julia_version = "1.12.3"
 manifest_format = "2.0"
-project_hash = "7abe1a97d66e39458e7b9d8b8b9270406d6f5ff7"
+project_hash = "58224c6463eb07ad492dc83c4267d51259141104"
 
 [[deps.Accessors]]
 deps = ["CompositionsBase", "ConstructionBase", "Dates", "InverseFunctions", "MacroTools"]
@@ -295,7 +295,7 @@ version = "0.4.6"
 deps = ["Adapt", "ITensorMPS", "ITensors", "JLD2", "KrylovKit", "LinearAlgebra", "Logging", "PrecompileTools", "Preferences", "Printf", "Random", "TensorCrossInterpolation", "TimerOutputs"]
 path = ".."
 uuid = "986fbeea-f347-4a71-ab00-a89cbb29f88e"
-version = "0.1.0-DEV"
+version = "0.1.0"
 weakdeps = ["Plots"]
 
     [deps.DifferenTT.extensions]
