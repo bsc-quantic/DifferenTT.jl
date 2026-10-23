@@ -53,7 +53,13 @@ will be fixed in a later version:
     ``\\sum_j b_j\\, \\prod_i h_i / \\prod_i L_i = \\sum_j b_j / \\prod_i (n_i - 1)`` instead of the node mean
     ``\\sum_j b_j / \\prod_i n_i``, so the mean of the right-hand side becomes ``1 - \\prod_i n_i/(n_i - 1)`` times its
     original value instead of zero, and the regularized system is not exactly consistent. This is inactive whenever the
-    pressure has a Dirichlet side, as in the channel of Sec. 5.2 of the paper (Dirichlet outlet pressure).
+    pressure has a Dirichlet side, as in the channel of Sec. 5.2 of the paper (Dirichlet outlet pressure). For an exact
+    solve, the wrong constant does not reach the velocity, though. Since ``\\mathbf{1}^\\top W\\Delta = 0``, the
+    solution of ``A\\mathbf{x} = \\mathbf{b}`` with the rank-1 shift
+    ``A = -W\\Delta + c\\,\\mathbf{1}\\mathbf{1}^\\top`` of [`ChorinCache`](@ref), ``c > 0``, satisfies
+    ``-W\\Delta\\,\\mathbf{x} = \\mathbf{b} - (\\mathbf{1}^\\top\\mathbf{b}/n)\\,\\mathbf{1}``, where ``n`` is the
+    number of nodes: the shift itself removes the node mean, so the wrong constant only shifts ``p\\,dt`` by a constant,
+    and ``\\nabla p`` is unchanged. A truncated TT solve satisfies this only approximately.
   - **Wall rows.** The projection ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to
     every row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep
     fixed ([`BoundaryNull`](@ref)). The tangential pressure gradient therefore changes the boundary velocity a little at
