@@ -39,7 +39,18 @@ and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it
 numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_rep_RRR.jld2` (key `"result"`) under
 `results/` or `results_nocond/` of this folder, or under `TT_ANISOTROPY_STATS_RESULTS_DIR` if set. The other
 configuration variables (`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`) are
-described in `common/stats_harness.jl` and `submit.sh`.
+described in `common/stats_harness.jl` and `submit.sh`. FAI results also store the iterations of the local solves of the
+build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed over sweeps, and `precond_build_nsweeps`).
+
+# Penalty μ of the FAI build
+
+`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `fai_configs` and
+`fai_L0_configs`, as in the paper. With `gershgorin`, μ = ‖A‖_∞ of the operator the FAI is built on, bounded at run time
+from the stencil coefficients of its 1D factors: N (4 + ρ (N - 1)) / h² for the FAI on L, and 4N / h² for the FAI on L₀ (ρ = 0),
+times `FAI_MU_SCALE` (default 1.0). The μ of the task list is then only a placeholder. A rule-based run writes under
+`results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with the keys `fai_mu_gersh_gdim_χ`
+and `fai_L0_mu_gersh_gdim_χ` instead of `fai_mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in
+`"mu_rule"` and `"mu_scale"`; `collect.jl` and `plot_paper.jl` read the same variables to find the folder.
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to N = 5, F = 10 and 7 nodes per dimension, with the baseline,
 Sinc (M = 3), FAI and FAI on L₀ at χ_G = 4, through the `SMOKE` branches next to the constants, and writes under
@@ -53,6 +64,7 @@ From the root of the repository:
     DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
     julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
     bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
+    FAI_MU_RULE=gershgorin bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
 
 # Resources
 
@@ -76,6 +88,7 @@ using DifferenTT
 using Random
 
 include(joinpath(@__DIR__, "..", "..", "common", "anisotropy_problem.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 
 # ---- Runtime configuration ----
 # Match BLAS threads to the SLURM allocation (falls back to Julia's default if not under SLURM).
@@ -95,11 +108,11 @@ include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
 const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-const default_base_folder = if use_nocond
-    joinpath(OUT_ROOT, "results_nocond")
-else
-    joinpath(OUT_ROOT, "results")
-end
+# Penalty μ of the FAI build: "fixed" (the μ of fai_configs) or a rule evaluated per problem (common/mu_rules.jl)
+const MU_RULE, MU_SCALE = fai_mu_rule()
+const default_base_folder = joinpath(
+    OUT_ROOT, mu_results_folder(use_nocond ? "results_nocond" : "results", MU_RULE, MU_SCALE)
+)
 base_folder = get(ENV, "TT_ANISOTROPY_STATS_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -138,6 +151,7 @@ const pc_tol_map = Dict(5 => 1e-1, 10 => 1e-1, 15 => 1e-1, 20 => 1e-1)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
+# With FAI_MU_RULE other than "fixed", the mu of these configurations is a placeholder.
 const sinc_M_values = SMOKE ? [3] : [3, 4, 5, 7, 10]
 const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
 const fai_L0_configs = SMOKE ? [(1e7, 4)] : [(1e7, 10)]
@@ -149,7 +163,7 @@ struct TaskSpec
     N::Int
     F::Float64
     method::String
-    param1::Float64 # M for Sinc, mu for FAI
+    param1::Float64 # M for Sinc, mu for FAI (a placeholder under a μ rule)
     param2::Int # not used for Sinc, gdim for FAI
 end
 
@@ -214,16 +228,26 @@ function make_outer_solver(A::MPO, rhs::MPS; nsweeps::Int, maxdim::Int)
 end
 
 """
-    build_fai(A, μ, gdim; nsweeps, residual_tol_build)
+    build_fai(A, μ, gdim; nsweeps, residual_tol_build, numiter_store)
 
 Build the FAI factorized preconditioner. Used both by `warmup()` and by every timed FAI task,
-with the same keyword set as the real build (including `residual_tol`), so the
-`sweep_observer!` path inside the FAI build is compiled ahead of time.
+with the same keyword set as the real build (including `residual_tol` and `numiter_store`), so the
+`sweep_observer!` path inside the FAI build is compiled ahead of time. `numiter_store` records the
+iterations of the local solves of the build.
 """
-function build_fai(A::MPO, μ::Real, gdim::Int; nsweeps::Int, residual_tol_build::Float64)
+function build_fai(
+    A::MPO,
+    μ::Real,
+    gdim::Int;
+    nsweeps::Int,
+    residual_tol_build::Float64,
+    numiter_store::KrylovSweepStats=KrylovSweepStats(),
+)
     fai_sweep_kwargs = SweepingArgs(; nsweeps=nsweeps, maxdim=gdim, cutoff=1e-12)
 
-    fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000)
+    fai_updater_kwargs = LocalUpdaterArgs(;
+        ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000, numiter_store=numiter_store
+    )
 
     fai_als_solver = ALS(; sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs)
 
@@ -328,20 +352,33 @@ function run_single(task::TaskSpec, prob, global_rep::Int; warmup_time::Float64=
         extra["precond_target"] = "L0"
 
     elseif method == "fai" || method == "fai_L0"
-        μ = task.param1
         gdim = task.param2
-        # fai_L0 approximates the inverse of the separable L0 = -Δ but preconditions A.
+        # fai_L0 approximates the inverse of the separable L0 = -Δ (ρ = 0) but preconditions A.
         target = method == "fai" ? A : prob.A0
-        key = "$(method)_mu_$(μ)_gdim_$(gdim)"
-        @info "Running $(method) (μ=$μ, G_maxdim=$gdim) N=$N F=$F"
+        ρ_target = method == "fai" ? prob.ρ : 0.0
+        μ = resolve_fai_mu(
+            MU_RULE, MU_SCALE, task.param1, () -> anisotropy_mu_gershgorin(prob.grid, ρ_target; stencil_order=2)
+        )
+        key = "$(method)_$(mu_key(MU_RULE, MU_SCALE, μ))_gdim_$(gdim)"
+        @info "Running $(method) (μ=$μ, G_maxdim=$gdim) N=$N F=$F" mu_rule=MU_RULE mu_scale=MU_SCALE mu_over_1e7=μ / 1e7
 
+        build_store = KrylovSweepStats()
         GC.gc(true)
-        b = @timed build_fai(target, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N])
+        b = @timed build_fai(
+            target, μ, gdim; nsweeps=FAI_BUILD_NSWEEPS, residual_tol_build=pc_tol_map[N], numiter_store=build_store
+        )
         pc = b.value
         t_build = b.time
         build_compile = b.compile_time
         build_gc = b.gctime
+        build_iters = krylov_iters_summary(build_store)
+        @info "FAI build" total_iters=build_iters.total_iters nsweeps=build_iters.nsweeps
         extra["mu"] = μ
+        extra["mu_rule"] = MU_RULE
+        extra["mu_scale"] = MU_SCALE
+        extra["precond_build_total_iters"] = build_iters.total_iters
+        extra["precond_build_iters_per_site"] = build_iters.iters_per_site
+        extra["precond_build_nsweeps"] = build_iters.nsweeps
         extra["G_maxdim"] = gdim
         extra["precond_target"] = method == "fai" ? "L" : "L0"
 
@@ -492,7 +529,7 @@ function warmup(N::Int)
         dinit = random_mps(dsites)
 
         dsinc = sincquadrature_preconditioner(dprob.arch, dsites, dprob.A_list, 1)
-        dfai = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5])
+        dfai = build_fai(dA, 1e7, 2; nsweeps=2, residual_tol_build=pc_tol_map[5], numiter_store=KrylovSweepStats())
 
         solve_fns = (
             (s, x0) -> linearsolve(s, dA, drhs, x0),

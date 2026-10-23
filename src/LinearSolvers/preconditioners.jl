@@ -377,12 +377,14 @@ of its quality.
 
 The cost is dominated by the solve for ``\\tilde{G}_L``, an MPS with ``N`` sites of dimension ``d^2`` whose operator
 contains ``A`` and the projector ``\\mathbb{P}_L`` of bond dimension 2 (Eq. (14)) twice. In the paper's experiments we
-use ``\\mu = 10^7`` (the results do not change for ``\\mu`` between ``10^5`` and ``10^8``, and the exact solution does
-not depend on ``\\mu``, Appendix B.1), build ``\\tilde{G}_L`` with MALS ([`ResidualALS`](@ref)) at a local tolerance
-between ``10^{-5}`` and ``10^{-8}``, stop once the residual of Eq. (22) is below ``10^{-1}`` (`residual_tol = 0.1`),
-and keep ``\\chi_{G_L}`` between 4 and 10. The FAI pays off when it is reused, e.g. across the time steps of the
-Chorin projection, and when the local dimension is small (Sec. 5.2); with a large local dimension ``d^2`` the build
-becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (23) for ``D`` holds only if ``\\tilde{G}_L``
+use ``\\mu = 10^7`` (the exact solution does not depend on ``\\mu``, Appendix B.1), build ``\\tilde{G}_L`` with the
+two-site [`ALS`](@ref) at a local tolerance between ``10^{-5}`` and ``10^{-8}``, stop once the residual of Eq. (22) is
+below ``10^{-1}`` (`residual_tol = 0.1`), and keep ``\\chi_{G_L}`` between 4 and 10. Appendix B.1 reports no change of
+the results for ``\\mu`` between ``10^5`` and ``10^8``; that range lies above the whole spectrum of the anisotropy
+benchmark of Sec. 5.1 (``\\lambda_{\\max}(A) < 8 \\cdot 10^4``), so it does not cover a ``\\mu`` at the top of the
+spectrum there (see below). The FAI pays off when it is reused, e.g. across the time steps of the Chorin projection,
+and when the local dimension is small (Sec. 5.2); with a large local dimension ``d^2`` the build becomes expensive
+(Sec. 5.1). Note two limitations. The shortcut of Eq. (23) for ``D`` holds only if ``\\tilde{G}_L``
 solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error of its row, but
 on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy (Appendix B.6).
 
@@ -398,8 +400,9 @@ with a capped number of sweeps, can return a worse preconditioner (on a ``2^5 \\
 paper's ``\\mu = 10^7`` is close to the top of the spectrum only on its finest grids. A value at the top of the
 spectrum, ``\\mu \\approx \\lambda_{\\max}(A)``, is a reasonable choice: it keeps the condition number of the build at
 ``\\kappa(A)`` and weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. A rough
-estimate suffices, e.g. from the stencil (at most ``4/h^2`` per axis for the second-order Laplacian) or from a few
-Lanczos iterations.
+estimate suffices, e.g. the Gershgorin bound ``\\|A\\|_\\infty \\ge \\lambda_{\\max}(A)``, which for a Kronecker sum
+is at most the sum of the ``\\|\\cdot\\|_\\infty`` of its one-dimensional terms (``4/h^2`` per axis for the
+second-order Laplacian), or a few Lanczos iterations.
 
 # Arguments
 

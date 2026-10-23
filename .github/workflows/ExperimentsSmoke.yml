@@ -35,6 +35,7 @@ jobs:
           - anisotropy_floor
           - linsolve_spd
           - mask_grid_selftest
+          - mu_rules_check
           - tt_anisotropy_stats
           - chorin_pipeline_stats
     env:

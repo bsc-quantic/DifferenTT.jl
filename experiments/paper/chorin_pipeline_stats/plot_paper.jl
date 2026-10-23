@@ -25,7 +25,9 @@ numbers, so the κ profiles are not drawn.
 # Inputs and outputs
 
 Reads `results_nocond/collected_results.jld2` (`"df"`: one row per configuration and repeat) of this folder, written by
-`collect.jl nocond`, and writes PDF figures to `plots_paper/` (and subfolders per grid and χ_max) of this folder. In
+`collect.jl nocond`, and writes PDF figures to `plots_paper/` (and subfolders per grid and χ_max) of this folder. With
+`FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`, see `worker.jl`), it reads `results_nocond_mugersh/` and writes
+`plots_paper_mugersh/` instead; a rule-based run is one μ configuration per grid, labelled μ = ‖A‖_∞. In
 smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, and
 draws the single smoke grid; `experiments/smoke.jl` sets it.
 
@@ -89,15 +91,18 @@ SITE_MARKERS = true    # markers on per-site curves
 # Data selection
 # -------------------------------------------------------------------------
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 # Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
 const OUT_ROOT = output_root(@__DIR__)
-RESULTS_FILE = joinpath(OUT_ROOT, "results_nocond", "collected_results.jld2")
-PLOTS_DIR = joinpath(OUT_ROOT, "plots_paper")
+# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default reads the fixed-μ data
+const MU_RULE, MU_SCALE = fai_mu_rule()
+RESULTS_FILE = joinpath(OUT_ROOT, mu_results_folder("results_nocond", MU_RULE, MU_SCALE), "collected_results.jld2")
+PLOTS_DIR = joinpath(OUT_ROOT, mu_results_folder("plots_paper", MU_RULE, MU_SCALE))
 
 SELECTED_NODES = nothing   # e.g. [(8, 8)]; nothing = every grid in the data
 SELECTED_CHI = nothing   # e.g. [2, 4, 6, 8, 10]; nothing = every χ_max in the data
 COMBINED_CHI = nothing   # χ_max subset drawn in the combined_* overlays; nothing = all selected
-EXCLUDED_KEYS = String[]  # e.g. ["mu_1.0e7_gdim_9"]
+EXCLUDED_KEYS = String[]  # e.g. ["mu_1.0e7_gdim_9"], or ["mu_gersh_gdim_9"] under a μ rule
 EXCLUDED_REPEATS = Int[]     # repeat indices dropped from every configuration
 DISCARD_FIRST_IN_PROCESS = false  # drop the first repeat each worker process ran (may carry JIT cost)
 STEP_RANGE = nothing   # e.g. 1:100 to crop the per-step plots; nothing = every step
@@ -687,7 +692,8 @@ const ALL_CHIS = sort(unique(Int[g for g in skipmissing(df.G_maxdim) if keep_chi
 const CHI_COLOR = Dict(zip(ALL_CHIS, make_colors(length(ALL_CHIS))))
 
 """
-One entry per configuration of a grid: (key, mu, chi, sub) where sub holds its repeats.
+One entry per configuration of a grid: (key, mu, mu_tex, chi, sub) where sub holds its repeats and mu_tex labels μ
+(its value, or the rule of a rule-based run, whose μ is fixed per grid).
 """
 function config_entries(nodes)
     dn = df[df.nodes .== Ref(nodes), :]
@@ -695,7 +701,11 @@ function config_entries(nodes)
     for k in unique(dn.key)
         sub = sort(dn[dn.key .== k, :], :repeat)
         r = first(eachrow(sub))
-        push!(out, (key=String(k), mu=Float64(getval(r.mu, NaN)), chi=Int(getval(r.G_maxdim, 0)), sub=sub))
+        μ = Float64(getval(r.mu, NaN))
+        rule = hasproperty(r, :mu_rule) ? String(getval(r.mu_rule, "fixed")) : "fixed"
+        scale = hasproperty(r, :mu_scale) ? Float64(getval(r.mu_scale, 1.0)) : 1.0
+        mu_tex = rule == "fixed" ? fmt_mu(μ) : mu_rule_latex(rule, scale)
+        push!(out, (key=String(k), mu=μ, mu_tex=mu_tex, chi=Int(getval(r.G_maxdim, 0)), sub=sub))
     end
     return out
 end
@@ -725,9 +735,8 @@ function plot_system_size(nodes)
     unique_chis = sort(unique(chis))
     unique_mus = sort(unique(mus))
     multi_mu = length(unique_mus) > 1
-    setup_label(e) = multi_mu ? latexstring("FAI \$\\chi_{max}=$(e.chi), \\mu=$(fmt_mu(e.mu))\$") : chi_label(e.chi)
-    short_label(e) =
-        multi_mu ? latexstring("\$\\chi=$(e.chi), \\mu=$(fmt_mu(e.mu))\$") : latexstring("\$\\chi=$(e.chi)\$")
+    setup_label(e) = multi_mu ? latexstring("FAI \$\\chi_{max}=$(e.chi), \\mu=$(e.mu_tex)\$") : chi_label(e.chi)
+    short_label(e) = multi_mu ? latexstring("\$\\chi=$(e.chi), \\mu=$(e.mu_tex)\$") : latexstring("\$\\chi=$(e.chi)\$")
     all_pal = palette(ALL_SETUPS_PALETTE)
     setup_color(e, j) = multi_mu ? all_pal[mod1(j, length(all_pal))] : CHI_COLOR[e.chi]
 
@@ -809,7 +818,7 @@ function plot_system_size(nodes)
             end
             return Z
         end
-        xl = [latexstring("\$" * fmt_mu(μ) * "\$") for μ in unique_mus]
+        xl = [latexstring("\$" * fai[findfirst(==(μ), mus)].mu_tex * "\$") for μ in unique_mus]
         yl = string.(unique_chis)
         for (name, v) in (("heatmap_solve", sp_solve), ("heatmap_total", sp_total))
             hm = stat_heatmap(
@@ -981,8 +990,8 @@ function plot_system_size(nodes)
         if PLOT_PER_CHI
             out_dir = joinpath(PLOTS_DIR, sz, "chi_$g")
             mkpath(out_dir)
-            fai_lbl = multi_mu ? latexstring("FAI \$\\mu=$(fmt_mu(e.mu))\$") : "FAI"
-            fai_lbl_build = multi_mu ? latexstring("FAI \$\\mu=$(fmt_mu(e.mu))\$ (incl. build)") : "FAI (incl. build)"
+            fai_lbl = multi_mu ? latexstring("FAI \$\\mu=$(e.mu_tex)\$") : "FAI"
+            fai_lbl_build = multi_mu ? latexstring("FAI \$\\mu=$(e.mu_tex)\$ (incl. build)") : "FAI (incl. build)"
 
             # -- Krylov iterations per step
             p = plot(;
@@ -1125,7 +1134,7 @@ function plot_system_size(nodes)
                     lbl = if length(g_idx) == 1
                         "FAI"
                     else
-                        latexstring("FAI \$\\mu=$(fmt_mu(mus[i]))\$" * (is_best ? " (best)" : ""))
+                        latexstring("FAI \$\\mu=$(fai[i].mu_tex)\$" * (is_best ? " (best)" : ""))
                     end
                     stat_series!(
                         p,

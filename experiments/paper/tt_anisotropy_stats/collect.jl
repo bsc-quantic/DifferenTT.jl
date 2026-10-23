@@ -12,7 +12,8 @@ cannot read it: use `plot_paper.jl` of this folder.
 # Inputs and outputs
 
 Input: the task files in the `tasks/` folder of `results/` (or `results_nocond/` with `nocond`), in this folder, or in
-`TT_ANISOTROPY_STATS_RESULTS_DIR` if set. Output: `collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`,
+`TT_ANISOTROPY_STATS_RESULTS_DIR` if set. With `FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`), the folders of the
+rule-based runs, `results_mugersh/` and `results_nocond_mugersh/` (see `worker.jl`). Output: `collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`,
 `"df_dropped"`). Two environment variables change the statistics: `BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat
 that each worker process ran (with a single solve per repeat it can still carry residual JIT cost, which matters for
 solves of less than a second; the summary then reports the numbers before and after), and `BENCH_SAMEJOB_PAIRS_ONLY=1`
@@ -42,15 +43,15 @@ using Statistics
 
 include(joinpath(@__DIR__, "..", "..", "common", "stats_utils.jl"))
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 # Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
 const OUT_ROOT = output_root(@__DIR__)
 
 use_nocond = length(ARGS) > 0 && ARGS[1] == "nocond"
-default_base_folder = if use_nocond
-    joinpath(OUT_ROOT, "results_nocond")
-else
-    joinpath(OUT_ROOT, "results")
-end
+const MU_RULE, MU_SCALE = fai_mu_rule()
+default_base_folder = joinpath(
+    OUT_ROOT, mu_results_folder(use_nocond ? "results_nocond" : "results", MU_RULE, MU_SCALE)
+)
 base_folder = get(ENV, "TT_ANISOTROPY_STATS_RESULTS_DIR", default_base_folder)
 discard_first = get(ENV, "BENCH_DISCARD_FIRST_REPEAT", "0") in ("1", "true", "yes")
 samejob_only = get(ENV, "BENCH_SAMEJOB_PAIRS_ONLY", "0") in ("1", "true", "yes")
@@ -82,9 +83,11 @@ collect_dataset(
         :compile_time,
         :gc_time,
         :precond_maxlinkdim,
+        :precond_build_total_iters,
+        :precond_build_nsweeps,
         :repeat_wall_time,
     ],
-    vector_cols=[:iters_per_site, :conds_per_site, :pc_conds_per_site],
+    vector_cols=[:iters_per_site, :conds_per_site, :pc_conds_per_site, :precond_build_iters_per_site],
     discard_first,
     samejob_only,
 )

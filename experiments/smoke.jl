@@ -113,6 +113,7 @@ const JOBS = [
     Job("tunnel2dsteps", [Step("validation/tunnel2dsteps/tunnel2dpoisson.jl", String[])]),
     Job("anisotropy_floor", [Step("paper/anisotropy_floor/discrete_floor.jl", String[])]),
     Job("mask_grid_selftest", [Step("common/mask_grid_selftest.jl", String[])]),
+    Job("mu_rules_check", [Step("common/mu_rules_check.jl", String[])]),
     Job(
         "linsolve_spd",
         [
