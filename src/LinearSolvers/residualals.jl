@@ -179,7 +179,7 @@ end
 """
     _frobenius_rank(svals, frob_weight, mindim)
 
-Smallest rank (never below `mindim`) whose discarded weight `Σ_{k>r} σ_k² / Σ σ_k²` does not exceed
+Return the smallest rank (never below `mindim`) whose discarded weight `Σ_{k>r} σ_k² / Σ σ_k²` does not exceed
 `frob_weight`. `svals` must be sorted in decreasing order.
 """
 function _frobenius_rank(svals::AbstractVector, frob_weight::Real, mindim::Int)
@@ -202,7 +202,7 @@ end
     _residual_rank(reduced_operator, phi, rhs, U_full, S_full, V_full; resid_tol, resid_damp,
                    frob_weight = 0.0, mindim = 1, maxdim = typemax(Int))
 
-Smallest rank `r` such that truncating the SVD `phi = U_full * S_full * V_full` to its `r` largest
+Return the smallest rank `r` such that truncating the SVD `phi = U_full * S_full * V_full` to its `r` largest
 singular values keeps the relative local residual `‖A_loc φ_r - rhs‖ / ‖rhs‖` below
 `max(resid_tol, res_exact) * resid_damp`, where `res_exact` is the relative local residual of `phi`.
 The reduced operator must be positioned at the site(s) of `phi`, and `rhs` must be its local
@@ -276,7 +276,9 @@ function _residual_rank(
 end
 
 """
-Singular values stored in the diagonal ITensor `S` (as returned by `svd`), as a vector.
+    _singular_values(S::ITensor) -> Vector
+
+Return the singular values stored in the diagonal ITensor `S` (as returned by `svd`), as a vector.
 """
 function _singular_values(S::ITensor)
     s_inds = inds(S)
@@ -284,7 +286,10 @@ function _singular_values(S::ITensor)
 end
 
 """
-Relative truncation error `sqrt(Σ_{k>r} σ_k² / Σ σ_k²)` of keeping the `r` largest singular values.
+    _truncation_error(svals::AbstractVector, r::Int) -> Float64
+
+Return the relative truncation error ``\\sqrt{\\sum_{k>r} \\sigma_k^2 / \\sum_k \\sigma_k^2}`` of keeping the `r`
+largest singular values `svals` (0 if they are all zero).
 """
 function _truncation_error(svals::AbstractVector, r::Int)
     total_weight = sum(abs2, svals)
@@ -292,7 +297,10 @@ function _truncation_error(svals::AbstractVector, r::Int)
 end
 
 """
-Compute the projected RHS b_local from the reduced operator.
+    _local_rhs(reduced_operator) -> ITensor
+
+Return the local right-hand side ``\\mathbf{b}_{\\text{loc}}`` of the projected problem `reduced_operator`, plain or
+preconditioned.
 """
 function _local_rhs(reduced_operator)
     if reduced_operator isa ReducedLinearProblem
@@ -305,7 +313,10 @@ function _local_rhs(reduced_operator)
 end
 
 """
-Compute ‖A_local * phi - b_local‖.
+    _local_residual_norm(reduced_operator, phi::ITensor, rhs::ITensor) -> Float64
+
+Return ``\\|A_{\\text{loc}} \\phi - \\mathbf{b}_{\\text{loc}}\\|``, with the unpreconditioned local operator also for a
+preconditioned problem.
 """
 function _local_residual_norm(reduced_operator::ReducedLinearProblem, phi::ITensor, rhs::ITensor)
     Aphi = ITensors.contract(reduced_operator, phi)
@@ -313,9 +324,6 @@ function _local_residual_norm(reduced_operator::ReducedLinearProblem, phi::ITens
     return norm(Aphi_unprimed - rhs)
 end
 
-"""
-Compute ‖A_local * phi - b_local‖.
-"""
 function _local_residual_norm(
     reduced_operator::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor
 )
@@ -325,15 +333,15 @@ function _local_residual_norm(
 end
 
 """
-Compute the local residual tensor b_local - A_local * phi.
+    _local_residual(reduced_operator, phi::ITensor, rhs::ITensor) -> ITensor
+
+Return the local residual tensor ``\\mathbf{b}_{\\text{loc}} - A_{\\text{loc}} \\phi``, with the unpreconditioned local
+operator also for a preconditioned problem.
 """
 function _local_residual(reduced_operator::ReducedLinearProblem, phi::ITensor, rhs::ITensor)
     return rhs - noprime(ITensors.contract(reduced_operator, phi))
 end
 
-"""
-Compute the local residual tensor b_local - A_local * phi (with the unpreconditioned operator).
-"""
 function _local_residual(
     reduced_operator::Union{ReducedPrecondLinearProblem,ReducedFAIPrecondLinearProblem}, phi::ITensor, rhs::ITensor
 )
@@ -341,7 +349,10 @@ function _local_residual(
 end
 
 """
-Reconstruct a rank-r truncated version of U * S * V†.
+    _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::Int) -> ITensor
+
+Return the rank-`r` truncation ``\\phi_r = U S_r V^\\top`` of the SVD `U_full * S_full * V_full`, which keeps its `r`
+largest singular values.
 """
 function _truncated_phi(U_full::ITensor, S_full::ITensor, V_full::ITensor, r::Int)
     s_inds = inds(S_full)

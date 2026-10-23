@@ -44,8 +44,9 @@ end
 """
     _eig_condition(M) -> (κ, λ)
 
-Full dense spectrum `λ = eigvals(M)` (LAPACK) and κ_λ = max|λ| / min|λ| (`Inf` if singular).
-Equals the spectral κ for SPD / PCG operators; a lower bound on κ₂ for non-normal ones.
+Return the full dense spectrum `λ = eigvals(M)` (LAPACK) and ``\\kappa = \\max|\\lambda| / \\min|\\lambda|`` (`Inf` if
+`M` is singular). It equals the spectral condition number for SPD operators and for PCG, and is a lower bound on
+``\\kappa_2`` for non-normal ones.
 """
 function _eig_condition(M::AbstractMatrix)
     λ = eigvals(M)
@@ -227,10 +228,11 @@ _count_negative(λ) = count(<(-length(λ) * eps(Float64) * maximum(abs, λ)), λ
 """
     _local_spectrum(A, Pinv) -> NamedTuple
 
-Sign-aware spectra of the dense local operator `A` and, if given, of the local preconditioner `Pinv`. Only the
-symmetric parts S_A, S_P are diagonalized, since they set the sign of the quadratic forms. When S_A = LLᵀ is SPD,
-the spectrum of S_P S_A (the PCG operator if `Pinv` is symmetric) is that of the symmetric Lᵀ S_P L, which has the
-inertia of S_P.
+Return the sign-aware spectra of the dense local operator `A` and, if given, of the local preconditioner `Pinv`, as
+the fields of a record of [`KrylovSpectrumStats`](@ref). We diagonalize only the symmetric parts ``S_A`` and ``S_P``,
+since they set the sign of the quadratic forms. When ``S_A = L L^\\top`` is SPD, the spectrum of ``S_P S_A`` (the PCG
+operator if `Pinv` is symmetric) is that of the symmetric ``L^\\top S_P L``, which by Sylvester's law of inertia has
+the inertia of ``S_P``.
 """
 function _local_spectrum(A::AbstractMatrix, Pinv::Union{Nothing,AbstractMatrix})
     SA = Symmetric((A + transpose(A)) / 2)

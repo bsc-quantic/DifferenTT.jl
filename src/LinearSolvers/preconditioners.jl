@@ -487,7 +487,7 @@ end
 """
     _spectral_lower_bound(mat::AbstractMatrix) -> Float64
 
-Smallest eigenvalue of a symmetric `mat`, or the smallest real part of its eigenvalues otherwise.
+Return the smallest eigenvalue of a symmetric `mat`, or the smallest real part of its eigenvalues otherwise.
 """
 function _spectral_lower_bound(mat::AbstractMatrix)
     dense = Matrix(mat)
@@ -603,8 +603,8 @@ end
 """
     _dd_exact_inverse_laplacian(sites, arch::QTTArchitecture{1}, grid, bc, array_type=Array) -> MPO
 
-Exact QTT inverse, of bond dimension 5, of the second-order 1D Laplacian with Dirichlet conditions on both ends,
-scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
+Return the exact QTT inverse, of bond dimension 5, of the second-order 1D Laplacian with Dirichlet conditions on both
+ends, scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
 """
 function _dd_exact_inverse_laplacian(
     sites::Vector{<:Index},
@@ -695,8 +695,8 @@ end
 """
     _dn_exact_inverse_laplacian(sites, arch::QTTArchitecture{1}, grid, bc, array_type=Array) -> MPO
 
-Exact QTT inverse, of bond dimension 4, of the second-order 1D Laplacian with a Dirichlet condition on the left and a
-Neumann condition on the right, scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
+Return the exact QTT inverse, of bond dimension 4, of the second-order 1D Laplacian with a Dirichlet condition on the
+left and a Neumann condition on the right, scaled by ``-h^2``. Throws an `ArgumentError` for other boundary conditions.
 """
 function _dn_exact_inverse_laplacian(
     sites::Vector{<:Index},
