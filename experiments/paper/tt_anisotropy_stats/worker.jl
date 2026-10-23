@@ -46,7 +46,7 @@ build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed over 
 
 `FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `fai_configs` and
 `fai_L0_configs`, as in the paper. With `gershgorin`, μ = ‖A‖_∞ of the operator the FAI is built on, bounded at run time
-from the 1D factors of the problem: N (4 + ρ (N - 1)) / h² for the FAI on L, and 4N / h² for the FAI on L₀ (ρ = 0),
+from the stencil coefficients of its 1D factors: N (4 + ρ (N - 1)) / h² for the FAI on L, and 4N / h² for the FAI on L₀ (ρ = 0),
 times `FAI_MU_SCALE` (default 1.0). The μ of the task list is then only a placeholder. A rule-based run writes under
 `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with the keys `fai_mu_gersh_gdim_χ`
 and `fai_L0_mu_gersh_gdim_χ` instead of `fai_mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in
@@ -357,7 +357,7 @@ function run_single(task::TaskSpec, prob, global_rep::Int; warmup_time::Float64=
         target = method == "fai" ? A : prob.A0
         ρ_target = method == "fai" ? prob.ρ : 0.0
         μ = resolve_fai_mu(
-            MU_RULE, MU_SCALE, task.param1, () -> anisotropy_mu_gershgorin(prob.arch, prob.grid, prob.bcs, ρ_target)
+            MU_RULE, MU_SCALE, task.param1, () -> anisotropy_mu_gershgorin(prob.grid, ρ_target; stencil_order=2)
         )
         key = "$(method)_$(mu_key(MU_RULE, MU_SCALE, μ))_gdim_$(gdim)"
         @info "Running $(method) (μ=$μ, G_maxdim=$gdim) N=$N F=$F" mu_rule=MU_RULE mu_scale=MU_SCALE mu_over_1e7=μ / 1e7

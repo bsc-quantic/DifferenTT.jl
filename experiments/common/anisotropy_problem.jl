@@ -95,8 +95,7 @@ Build the benchmark problem for dimension `N` and floor `F`. Returns a NamedTupl
 
   - `A`: -∇⋅(K∇) as a rank-3 MPO (rank 2 for F = 1),
   - `A0`: -Δ, the separable operator sinc approximates (used by the FAI-on-L0 control),
-  - `rhs`, `sol` (see `build_rhs`), `A_list` (1D factors of A0 for sinc), `grid`, `arch`, `ρ`, and `bcs` (the
-    `BoundaryCond1d` of every axis, for the μ rule of `common/mu_rules.jl`).
+  - `rhs`, `sol` (see `build_rhs`), `A_list` (1D factors of A0 for sinc), `grid`, `arch`, `ρ`.
 """
 function build_problem(N::Int, F::Real; nodes_per_dim::Int, rhs_kind::Symbol, sol_maxdim::Int)
     ρ = rho_from_floor(F, N)
@@ -123,7 +122,7 @@ function build_problem(N::Int, F::Real; nodes_per_dim::Int, rhs_kind::Symbol, so
 
     A_list = [get_1d_A(i, grid, arch) for i in 1:N]
 
-    return (; A, A0, rhs, sol, A_list, grid, arch, ρ, bcs)
+    return (; A, A0, rhs, sol, A_list, grid, arch, ρ)
 end
 
 """

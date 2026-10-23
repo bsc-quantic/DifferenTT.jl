@@ -55,12 +55,13 @@ workers (`tt_anisotropy_stats/`, `chorin_pipeline_stats/`) therefore take two en
 
 | Variable | Values | Effect |
 |---|---|---|
-| `FAI_MU_RULE` | `fixed` (default) or `gershgorin` | `fixed`: the μ = 10⁷ of the worker, as in the paper. `gershgorin`: μ = ‖A‖_∞, the Gershgorin bound of λmax(A), computed per problem from the 1D factors of the operator the FAI is built on (`../common/mu_rules.jl`) |
+| `FAI_MU_RULE` | `fixed` (default) or `gershgorin` | `fixed`: the μ = 10⁷ of the worker, as in the paper. `gershgorin`: μ = ‖A‖_∞, the Gershgorin bound of λmax(A), computed per problem from the stencil coefficients of the operator the FAI is built on, Σ_k \|c_k\| per axis times h⁻² (or h⁻¹ for the mixed terms), which no boundary closure can exceed (`../common/mu_rules.jl`) |
 | `FAI_MU_SCALE` | a positive number, default 1.0 | multiplies the value of the rule (not allowed with `fixed`) |
 
 With the rule, μ = N (4 + ρ (N - 1)) / h² for the FAI on L of the anisotropy benchmark (4N / h² for the FAI on L₀; 7840 to
 7.8 × 10⁴ at the paper sizes) and 6.5016 (h_x⁻² + h_y⁻²) for the Chorin pressure operator (5.3 × 10⁵ on 2⁸ × 2⁸, 8.5 × 10⁶
-on 2¹⁰ × 2¹⁰). `../common/mu_rules_check.jl` checks λmax(A) ≤ μ ≤ 1.5 λmax(A) on small cases (`experiments/smoke.jl` runs
+on 2¹⁰ × 2¹⁰). `../common/mu_rules_check.jl` checks that Σ_k |c_k| bounds the 1D operators with every closure, and
+λmax(A) ≤ ‖A‖_∞ ≤ μ ≤ 1.5 λmax(A) on small assembled operators (`experiments/smoke.jl` runs
 it as `mu_rules_check`). A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/`
 (`_mugersh_x<scale>` with a scale), never into the fixed-μ folders; its keys name the rule (`fai_mu_gersh_gdim_χ`,
 `fai_L0_mu_gersh_gdim_χ`, `mu_gersh_gdim_χ`) and the result files store the numeric μ (`"mu"`), the rule (`"mu_rule"`) and

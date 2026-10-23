@@ -48,8 +48,8 @@ the build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed o
 # Penalty μ of the FAI build
 
 `FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `mu_values`, as in
-the paper. With `gershgorin`, μ = ‖A‖_∞ of the pressure operator, bounded at run time from its 1D factors (the stencils of
-order 8 with the Neumann, Dirichlet and periodic closures of the pressure): 6.5016 (h_x⁻² + h_y⁻²), about 5.3 × 10⁵ on
+the paper. With `gershgorin`, μ = ‖A‖_∞ of the pressure operator, bounded at run time from the coefficients of the
+order-8 stencil (the Neumann, Dirichlet and periodic closures never raise a row sum): 6.5016 (h_x⁻² + h_y⁻²), about 5.3 × 10⁵ on
 2⁸ × 2⁸ and 8.5 × 10⁶ on 2¹⁰ × 2¹⁰, times `FAI_MU_SCALE` (default 1.0). The μ of `mu_values` is then only a placeholder.
 A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with
 the keys `mu_gersh_gdim_χ` instead of `mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in `"mu_rule"`
@@ -557,10 +557,7 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
         gdim = task.gdim
         experiment = grid.experiment
         μ = resolve_fai_mu(
-            MU_RULE,
-            MU_SCALE,
-            task.mu,
-            () -> laplacian_mu_gershgorin(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER),
+            MU_RULE, MU_SCALE, task.mu, () -> laplacian_mu_gershgorin(experiment.grid; stencil_order=STENCIL_ORDER)
         )
         @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)" mu_rule=MU_RULE mu_scale=MU_SCALE mu_over_1e7=μ / 1e7
         flush(stderr)
