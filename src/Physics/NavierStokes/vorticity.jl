@@ -73,6 +73,13 @@ u = \\frac{4Uy(H - y)}{H^2}, \\qquad \\psi = U \\left( \\frac{2y^2}{H} - \\frac{
 \\omega = -\\frac{4U(H - 2y)}{H^2}.
 ```
 
+Note that this profile is a steady state of the continuous equations but not exactly of the discrete ones. The scheme
+computes the velocity of the stored nodes as the central difference of ``\\psi``, which for the cubic ``\\psi`` above
+differs from the parabola by the constant ``-4Uh_y^2/(3H^2)``. A `normal_velocity` taken from the parabola therefore
+leaves a spurious source of order ``h`` on the first stored column. For an exact discrete steady state, we take
+`normal_velocity` as the central difference of the `psi` profile, ``(\\psi_{j+1} - \\psi_{j-1})/(2h_y)``, with the wall
+values of ``\\psi`` at the two ends; the boundary-condition tutorial compares the two choices.
+
 See also the boundary-condition tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """
 struct InflowFace <: VorticityFace
@@ -750,22 +757,27 @@ end
     poisson_streamfunction(experiment::INSVorticityExperiment{N}, cache::VorticityCache, omega::MPS,
                            solver::AbstractLinearSolver) where N -> Tuple{MPS,Float64}
 
-Solve the stream function Poisson equation `-Δψ = ω` with the face values of ψ, i.e. the system `A ψ = b` with
-`b =` [`poisson_rhs`](@ref)`(experiment, cache, omega)`, using the previous stream function (if any, and nonzero) as
-initial guess. If `b` is identically zero (fluid at rest with `ψ = 0` on every face), returns `ψ = 0` without
-calling the solver.
+Solve the stream-function Poisson equation ``-\\Delta\\psi = \\omega`` with the face values of ``\\psi``, i.e. the
+system ``A\\boldsymbol{\\psi} = \\mathbf{b}`` of [`VorticityCache`](@ref) with ``\\mathbf{b}`` =
+[`poisson_rhs`](@ref)`(experiment, cache, omega)`, starting from the previous stream function if there is one and it is
+nonzero. If ``\\mathbf{b}`` is identically zero (fluid at rest with ``\\psi = 0`` on every face), we return
+``\\boldsymbol{\\psi} = 0`` without calling the solver.
 
 # Arguments
 
-  - `experiment::INSVorticityExperiment{N}`: The experimental setup.
-  - `cache::VorticityCache`: Precomputed operators.
-  - `omega::MPS`: Vorticity.
-  - `solver::AbstractLinearSolver`: Linear solver for the Poisson system. The operator is symmetric positive definite,
-    so CG-based solvers apply. A `ResidualObserver` without `A`/`b` in its `SweepingArgs` is bound to this system.
+  - `experiment::INSVorticityExperiment{N}`: the experiment.
+  - `cache::VorticityCache`: the operators built once per run.
+  - `omega::MPS`: the vorticity ``\\boldsymbol{\\omega}``.
+  - `solver::AbstractLinearSolver`: solver of the Poisson system. The operator is SPD, so CG-based solvers apply. A
+    [`ResidualObserver`](@ref) without `A` and `b` in the `SweepingArgs` of `solver` is bound to this system.
 
 # Returns
 
-  - The stream function `ψ` and the l2 norm of the residual `||A ψ - b||`.
+  - `(psi, residual)`: the stream function ``\\boldsymbol{\\psi}`` and the residual norm
+    ``\\|A\\boldsymbol{\\psi} - \\mathbf{b}\\|_2``. The norm is evaluated from the expansion
+    ``\\|A\\boldsymbol{\\psi}\\|^2 - 2\\langle \\mathbf{b}, A\\boldsymbol{\\psi} \\rangle + \\|\\mathbf{b}\\|^2``,
+    clamped at zero, so it loses its accuracy below about ``\\sqrt{\\epsilon}\\,\\|\\mathbf{b}\\|`` and can then be
+    returned as 0.
 
 See also [`VorticityCache`](@ref), [`streamfunction_velocity`](@ref).
 """
@@ -941,7 +953,7 @@ end
     vorticity_step(experiment::INSVorticityExperiment{N}, cache::VorticityCache, omega::MPS,
                    solver::AbstractLinearSolver, stepper::AbstractExplicitStepper, t::Real) where N -> Tuple
 
-Advance the vorticity `omega` by one time step `stepper.time_evol_kwargs.dt` with the vorticity-streamfunction
+Advance the vorticity `omega` by one time step `stepper.time_evol_kwargs.dt` with the vorticity–streamfunction
 scheme: one stream function Poisson solve, then the explicit vorticity transport with the resulting velocity and
 wall vorticity frozen over the stages of `stepper`. Does not modify `experiment`; storing the results is left to
 the caller.
