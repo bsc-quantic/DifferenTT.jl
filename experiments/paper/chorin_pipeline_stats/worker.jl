@@ -42,7 +42,18 @@ numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_r
 `results/` or `results_nocond/` of this folder, or under `CHORIN_STATS_RESULTS_DIR` if set; repeat 1 also stores the final
 fluid state. The mask file is `CHORIN_MASK_FILE` if set, else the committed one. The other configuration variables
 (`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`, `CHORIN_STATS_N_STEPS_OVERRIDE`)
-are described in `common/stats_harness.jl` and `submit.sh`.
+are described in `common/stats_harness.jl` and `submit.sh`. FAI results also store the iterations of the local solves of
+the build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed over sweeps, and `precond_build_nsweeps`).
+
+# Penalty μ of the FAI build
+
+`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `mu_values`, as in
+the paper. With `gershgorin`, μ = ‖A‖_∞ of the pressure operator, bounded at run time from its 1D factors (the stencils of
+order 8 with the Neumann, Dirichlet and periodic closures of the pressure): 6.5016 (h_x⁻² + h_y⁻²), about 5.3 × 10⁵ on
+2⁸ × 2⁸ and 8.5 × 10⁶ on 2¹⁰ × 2¹⁰, times `FAI_MU_SCALE` (default 1.0). The μ of `mu_values` is then only a placeholder.
+A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with
+the keys `mu_gersh_gdim_χ` instead of `mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in `"mu_rule"`
+and `"mu_scale"`; `collect.jl` and `plot_paper.jl` read the same variables to find the folder.
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the run to the 2⁸ × 2⁸ grid, 2 steps, the baseline and FAI at χ_G = 2, without
 local condition numbers, through the `SMOKE` branches next to the constants. It reads the mask that the smoke generator
@@ -57,6 +68,7 @@ From the root of the repository, after regenerating the masks (see `paper/README
     DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
     julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
     bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
+    FAI_MU_RULE=gershgorin bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
 
 # Resources
 
@@ -94,17 +106,18 @@ flush(stderr)
 
 include(joinpath(@__DIR__, "..", "..", "common", "stats_harness.jl"))
 include(joinpath(@__DIR__, "..", "..", "common", "mask_grid.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
 # Smoke mode writes under DIFFERENTT_SMOKE_DIR (a fresh temporary folder if unset) instead of this folder.
 const OUT_ROOT = output_root(@__DIR__; fresh=true)
 
 const use_nocond = length(ARGS) > 1 && ARGS[2] == "nocond"
-const default_base_folder = if use_nocond
-    joinpath(OUT_ROOT, "results_nocond")
-else
-    joinpath(OUT_ROOT, "results")
-end
+# Penalty μ of the FAI build: "fixed" (the μ of mu_values) or a rule evaluated per grid (common/mu_rules.jl)
+const MU_RULE, MU_SCALE = fai_mu_rule()
+const default_base_folder = joinpath(
+    OUT_ROOT, mu_results_folder(use_nocond ? "results_nocond" : "results", MU_RULE, MU_SCALE)
+)
 base_folder = get(ENV, "CHORIN_STATS_RESULTS_DIR", default_base_folder)
 const TASKS_DIR = joinpath(base_folder, "tasks")
 mkpath(TASKS_DIR)
@@ -151,6 +164,7 @@ function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
 end
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
+# With FAI_MU_RULE other than "fixed", these values are placeholders (one task per value).
 const mu_values = [1e7]
 
 const g_maxdims = SMOKE ? (2:2) : (2:10)
@@ -540,14 +554,23 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
 
         return result_dict
     else
-        μ = task.mu
         gdim = task.gdim
-        @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)"
+        experiment = grid.experiment
+        μ = resolve_fai_mu(
+            MU_RULE,
+            MU_SCALE,
+            task.mu,
+            () -> laplacian_mu_gershgorin(experiment.p_field, experiment.grid; stencil_order=STENCIL_ORDER),
+        )
+        @info "Running (μ=$μ, G_maxdim=$gdim) for $(task.nodes)" mu_rule=MU_RULE mu_scale=MU_SCALE mu_over_1e7=μ / 1e7
         flush(stderr)
 
         fai_sweep_kwargs = SweepingArgs(; nsweeps=30, maxdim=gdim, cutoff=1e-12)
 
-        fai_updater_kwargs = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000)
+        build_store = KrylovSweepStats()
+        fai_updater_kwargs = LocalUpdaterArgs(;
+            ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000, numiter_store=build_store
+        )
 
         fai_resals_solver = ResidualALS(;
             sweep_kwargs=fai_sweep_kwargs, updater_kwargs=fai_updater_kwargs, residual_tol=1e-9
@@ -577,6 +600,10 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
             )
         end
         t_build = build_stats.time
+        build_iters_per_site = DifferenTT.positions_sum(build_store)
+        build_nsweeps = isempty(build_store.numiters) ? 0 : maximum(length, build_store.numiters)
+        @info "FAI build" time=t_build total_iters=sum(build_iters_per_site; init=0.0) nsweeps=build_nsweeps
+        flush(stderr)
 
         solve_times = Float64[]
         compile_times = Float64[]
@@ -625,12 +652,17 @@ function run_single(task::TaskSpec, global_rep::Int; warmup_time::Float64=0.0)
         end
 
         result_dict = Dict{String,Any}(
-            "key" => "mu_$(μ)_gdim_$(gdim)",
+            "key" => "$(mu_key(MU_RULE, MU_SCALE, μ))_gdim_$(gdim)",
             "nodes" => task.nodes,
             "compute_cond" => compute_cond,
             "mu" => μ,
+            "mu_rule" => MU_RULE,
+            "mu_scale" => MU_SCALE,
             "G_maxdim" => gdim,
             "precond_build_time" => t_build,
+            "precond_build_total_iters" => sum(build_iters_per_site; init=0.0),
+            "precond_build_iters_per_site" => build_iters_per_site,
+            "precond_build_nsweeps" => build_nsweeps,
             "precond_build_compile_time" => build_stats.compile_time,
             "precond_build_gc_time" => build_stats.gctime,
             "total_solve_time" => sum(solve_times),
@@ -684,7 +716,10 @@ function warmup()
     flush(stderr)
     t = @elapsed begin
         dummy_grid = build_grid((8, 8), 1)
-        dummy_updater_kwargs = LocalUpdaterArgs(ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1)
+        # numiter_store as in the timed build, so that its argument types are compiled here
+        dummy_updater_kwargs = LocalUpdaterArgs(
+            ishermitian=true, isposdef=true, rtol=1e-2, maxiter=2, krylovdim=1, numiter_store=KrylovSweepStats()
+        )
         dummy_als_solver = ALS(
             sweep_kwargs=SweepingArgs(nsweeps=2, maxdim=10, cutoff=1e-8), updater_kwargs=dummy_updater_kwargs
         )
