@@ -1,5 +1,6 @@
 */Manifest.toml
 /Manifest*.toml
+!experiments/Manifest.toml
 .vscode
 
 # Maintainer notes, logs and coverage output
@@ -21,16 +22,11 @@ experiments/**/*.jld2
 
 !collected_results.jld2
 !masks.jld2
+# Data of Table 1 of the paper (D1 era), see experiments/paper/README.md
+!experiments/paper/anisotropy_floor/discrete_floor.jld2
 
 experiments/**/logs/
 experiments/**/tasks/
 !experiments/**/maskplots/*.png
 
 **/finaldata/
-
-# Throwaway statistics-run harnesses (code AND results)
-experiments/preconditioner_benchmarks/*_stats/
-experiments/preconditioner_benchmarks/stats_harness.jl
-experiments/preconditioner_benchmarks/stats_plot_utils.jl
-experiments/preconditioner_benchmarks/stats_utils.jl
-experiments/preconditioner_benchmarks/anisotropy_stats_plot_utils.jl
