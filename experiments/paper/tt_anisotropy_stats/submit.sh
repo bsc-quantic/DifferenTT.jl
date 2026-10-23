@@ -9,6 +9,7 @@
 # Every submission queues a collector; the one that runs last sees every finished unit.
 #
 # Usage: bash experiments/paper/tt_anisotropy_stats/submit.sh [nocond]
+#        FAI_MU_RULE=gershgorin bash experiments/paper/tt_anisotropy_stats/submit.sh nocond   (μ = ‖A‖_∞)
 #
 # Pass "nocond" for the timing runs (no condition-number estimation overhead): plot_paper.jl
 # reads its timings and iterations from results_nocond.
@@ -100,6 +101,28 @@ if [ "$1" == "nocond" ]; then
     RESULTS_DIR="${SCRIPT_DIR}/results_nocond"
 fi
 
+# Penalty μ of the FAI build (experiments/common/mu_rules.jl): fixed (default, the μ = 1e7 of the worker) or gershgorin
+# (μ = ‖A‖_∞ of each problem, times FAI_MU_SCALE). A rule-based run writes under <results dir>_mugersh[_x<scale>] and
+# passes that folder to the worker and the collector through TT_ANISOTROPY_STATS_RESULTS_DIR, so it never mixes with
+# fixed-μ data.
+FAI_MU_RULE="${FAI_MU_RULE:-fixed}"
+FAI_MU_SCALE="${FAI_MU_SCALE:-1.0}"
+MU_EXPORTS=""
+if [ "${FAI_MU_RULE}" == "gershgorin" ]; then
+    MU_TAG="gersh"
+    if ! awk -v s="${FAI_MU_SCALE}" 'BEGIN { exit !(s + 0 == 1) }'; then
+        MU_TAG="${MU_TAG}_x$(awk -v s="${FAI_MU_SCALE}" 'BEGIN { printf "%g", s }')"   # %g, as mu_rule_tag
+    fi
+    RESULTS_DIR="${RESULTS_DIR}_mu${MU_TAG}"
+    MU_EXPORTS="export FAI_MU_RULE=${FAI_MU_RULE} FAI_MU_SCALE=${FAI_MU_SCALE} TT_ANISOTROPY_STATS_RESULTS_DIR=${RESULTS_DIR}"
+elif [ "${FAI_MU_RULE}" != "fixed" ]; then
+    echo "ERROR: FAI_MU_RULE must be 'fixed' or 'gershgorin', got '${FAI_MU_RULE}'" >&2
+    exit 1
+elif ! awk -v s="${FAI_MU_SCALE}" 'BEGIN { exit !(s + 0 == 1) }'; then
+    echo "ERROR: FAI_MU_SCALE only applies to a rule, not to FAI_MU_RULE=fixed" >&2
+    exit 1
+fi
+
 TASKS_DIR="${RESULTS_DIR}/tasks"
 LOGS_DIR="${RESULTS_DIR}/logs"
 mkdir -p "${TASKS_DIR}"
@@ -175,6 +198,9 @@ echo "Array index \${SLURM_ARRAY_TASK_ID} / ${NARRAY} (${BENCH_LAYOUT} layout) �
 echo "GC ballast ${GC_BALLAST_GB} GB, task memory \${TASK_MEM_MB} MB, heap hint \${HEAP_HINT_MB} MB, rhs ${TT_ANISOTROPY_RHS}"
 echo "Repeats: LAYOUT=${BENCH_LAYOUT} N_REPEATS=${BENCH_N_REPEATS} REPEAT_OFFSET=${BENCH_REPEAT_OFFSET} BASE_SEED=${BENCH_BASE_SEED} TIME_BUDGET_S=${BENCH_TIME_BUDGET_S}"
 
+${MU_EXPORTS}
+echo "FAI μ rule: ${FAI_MU_RULE} (scale ${FAI_MU_SCALE}), results in ${RESULTS_DIR}"
+
 julia --project=experiments -t 1 --heap-size-hint=\${HEAP_HINT_MB}M ${SCRIPT_DIR}/worker.jl \${SLURM_ARRAY_TASK_ID} ${NOCOND_ARG}
 ARRAY_EOF
 )
@@ -198,6 +224,7 @@ module load ${JULIA_MODULE} 2>/dev/null || true
 
 echo "Collecting results from array job..."
 
+${MU_EXPORTS}
 julia --project=experiments ${SCRIPT_DIR}/collect.jl ${NOCOND_ARG}
 COLLECT_EOF
 )

@@ -405,7 +405,7 @@ function build_stats_frame(
     for g in groupby(df, [size_col, :key])
         sz, key = g[1, size_col], g.key[1]
         row = Dict{Symbol,Any}(size_col => sz, :key => key)
-        for c in (:method, :mu, :G_maxdim, :M)
+        for c in (:method, :mu, :mu_rule, :mu_scale, :G_maxdim, :M)
             hasproperty(g, c) && !ismissing(g[1, c]) && (row[c] = g[1, c])
         end
         row[:n_repeats] = length(unique(g.repeat))

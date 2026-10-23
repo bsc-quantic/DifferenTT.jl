@@ -23,6 +23,9 @@ The families other than the pairs are switched off by default (`PLOT_*` flags be
 
 Reads `results_nocond/collected_results.jld2` (`"df"`: one row per N, F, configuration and repeat) of this folder, written
 by `collect.jl nocond`, and writes PDF figures to `plots_paper/` (and `N_<N>/F_<F>/` for the per-case ones) of this folder.
+With `FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`, see `worker.jl`), it reads `results_nocond_mugersh/` and writes
+`plots_paper_mugersh/` instead. The μ of a rule-based run differs between cases but is one configuration, labelled
+μ = ‖A‖_∞; fixed-μ data are drawn as before.
 In smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote,
 and draws the single smoke case; `experiments/smoke.jl` sets it.
 
@@ -89,10 +92,13 @@ XLABEL_F = L"Floor $F$ (bound on $\kappa(L_0^{-1} L)$)"
 # Data selection
 # -------------------------------------------------------------------------
 include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
+include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 # Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
 const OUT_ROOT = output_root(@__DIR__)
-RESULTS_FILE = joinpath(OUT_ROOT, "results_nocond", "collected_results.jld2")
-PLOTS_DIR = joinpath(OUT_ROOT, "plots_paper")
+# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default reads the fixed-μ data
+const MU_RULE, MU_SCALE = fai_mu_rule()
+RESULTS_FILE = joinpath(OUT_ROOT, mu_results_folder("results_nocond", MU_RULE, MU_SCALE), "collected_results.jld2")
+PLOTS_DIR = joinpath(OUT_ROOT, mu_results_folder("plots_paper", MU_RULE, MU_SCALE))
 
 SELECTED_N = nothing   # e.g. [20]; nothing = every dimension in the data
 SELECTED_F = nothing   # e.g. [1, 4, 10, 100]; nothing = every floor
@@ -610,17 +616,26 @@ function keep_row(r)
 end
 df = df[[keep_row(r) for r in eachrow(df)], :]
 
-# Series catalogue: one entry per configuration key, shared by every case
+# Series catalogue: one entry per configuration key, shared by every case. Under a μ rule the numeric μ changes with the
+# case, so a key is identified by its rule (`mu_id`, `mu_tex`) and `mu` is NaN.
 const INFO = Dict{String,NamedTuple}()
 for r in eachrow(unique(df, :key))
+    rule = hasproperty(df, :mu_rule) ? String(getval(r.mu_rule, "fixed")) : "fixed"
+    scale = hasproperty(df, :mu_scale) ? Float64(getval(r.mu_scale, 1.0)) : 1.0
+    μ = rule == "fixed" ? Float64(getval(r.mu, NaN)) : NaN
     INFO[r.key] = (
-        method=String(r.method), chi=Int(getval(r.G_maxdim, 0)), mu=Float64(getval(r.mu, NaN)), M=Int(getval(r.M, 0))
+        method=String(r.method),
+        chi=Int(getval(r.G_maxdim, 0)),
+        mu=μ,
+        mu_id=rule == "fixed" ? string(μ) : "rule:" * mu_rule_tag(rule, scale),
+        mu_tex=rule == "fixed" ? fmt_mu(μ) : mu_rule_latex(rule, scale),
+        M=Int(getval(r.M, 0)),
     )
 end
 const SINC_KEYS = sort([k for (k, v) in INFO if v.method == "sinc"]; by=k -> INFO[k].M)
-const FAI_KEYS = sort([k for (k, v) in INFO if v.method == "fai"]; by=k -> (INFO[k].chi, INFO[k].mu))
-const L0_KEYS = sort([k for (k, v) in INFO if v.method == "fai_L0"]; by=k -> (INFO[k].chi, INFO[k].mu))
-const MULTI_MU = length(unique([INFO[k].mu for k in vcat(FAI_KEYS, L0_KEYS)])) > 1
+const FAI_KEYS = sort([k for (k, v) in INFO if v.method == "fai"]; by=k -> (INFO[k].chi, INFO[k].mu, INFO[k].mu_id))
+const L0_KEYS = sort([k for (k, v) in INFO if v.method == "fai_L0"]; by=k -> (INFO[k].chi, INFO[k].mu, INFO[k].mu_id))
+const MULTI_MU = length(unique([INFO[k].mu_id for k in vcat(FAI_KEYS, L0_KEYS)])) > 1
 
 const SERIES_COLOR = Dict{String,Any}("baseline" => COLOR_BASELINE)
 for (keys_, scheme, zr) in (
@@ -660,12 +675,12 @@ function series_label(k)
     v.method == "sinc" && return latexstring("$LABEL_SINC \$M=$(v.M)\$")
     name = v.method == "fai_L0" ? LABEL_FAI_L0 : LABEL_FAI
     return if MULTI_MU
-        latexstring("$name \$\\chi_{max}=$(v.chi), \\mu=$(fmt_mu(v.mu))\$")
+        latexstring("$name \$\\chi_{max}=$(v.chi), \\mu=$(v.mu_tex)\$")
     else
         latexstring("$name \$\\chi_{max}=$(v.chi)\$")
     end
 end
-INFO["baseline"] = (method="baseline", chi=0, mu=NaN, M=0)
+INFO["baseline"] = (method="baseline", chi=0, mu=NaN, mu_id="", mu_tex="", M=0)
 
 # Per-case statistics: STATS[(N, F)][key] -> NamedTuple of (c, lo, hi) tuples and speedup samples
 const SP_KW = (; center=SPEEDUP_CENTER, spread=SPEEDUP_SPREAD)
@@ -1045,16 +1060,17 @@ function plot_case(N, F)
                 end
                 hline!(p, [c]; label=sinc_label(k), color=sinc_color(k), lw=LINE_WIDTH, ls=:dashdot)
             end
-            fai_mus = sort(unique([INFO[k].mu for k in fai_present]))
-            for (j, μ) in enumerate(fai_mus)
-                ks = sort([k for k in fai_present if INFO[k].mu == μ]; by=k -> INFO[k].chi)
+            fai_mus = sort(unique([(INFO[k].mu, INFO[k].mu_id) for k in fai_present]))   # by numeric μ, rules last
+            for (j, (_, μ)) in enumerate(fai_mus)
+                ks = sort([k for k in fai_present if INFO[k].mu_id == μ]; by=k -> INFO[k].chi)
+                μ_tex = INFO[first(ks)].mu_tex
                 col = length(fai_mus) == 1 ? COLOR_FAI_CURVE : palette(:tab10)[mod1(j, 10)]
                 stat_series!(
                     p,
                     [INFO[k].chi for k in ks],
                     unz([getfield(S[k], field) for k in ks])...;
                     logy,
-                    label=length(fai_mus) == 1 ? LABEL_FAI : latexstring("$LABEL_FAI \$\\mu=$(fmt_mu(μ))\$"),
+                    label=length(fai_mus) == 1 ? LABEL_FAI : latexstring("$LABEL_FAI \$\\mu=$(μ_tex)\$"),
                     color=col,
                     lw=LINE_WIDTH,
                     marker=:circle,
