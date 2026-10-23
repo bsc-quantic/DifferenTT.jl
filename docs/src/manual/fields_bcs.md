@@ -61,8 +61,9 @@ A periodic axis needs a different spacing: the node at ``L`` is the image of the
 by ``h = L/n`` and the wrapped stencils have period ``L``. The grid records this in its field `periodic`, which we set with
 the keyword of the constructor, `Grid(arch, box_size; periodic = periodic_axes(bcs))`. **Without the flag, a
 periodic axis keeps its node at ``L`` and the period of the stencils is ``L + h``**, a discretization error of order
-``h`` in the geometry. The default is unchanged from earlier versions, and the flag is opt-in. [`INSExperiment`](@ref) throws an `ArgumentError` if a grid axis is periodic and the boundary
-conditions are not (the reverse is accepted).
+``h`` in the geometry. The default is unchanged from earlier versions, and the flag is opt-in.
+[`INSExperiment`](@ref) throws an `ArgumentError` if a grid axis is periodic and the boundary conditions are not (the
+reverse is accepted).
 
 When the boundaries of the vorticity–streamfunction formulation are ghost nodes that are not stored, the spacing is
 ``h_i = L_i/(n_i - 1 + g_i)`` with ``g_i`` ghost sides on axis ``i``. [`interior_grid`](@ref) builds the grid of the
