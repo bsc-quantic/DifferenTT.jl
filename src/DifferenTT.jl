@@ -1,3 +1,13 @@
+"""
+    DifferenTT
+
+Solve partial differential equations in the tensor train (TT) format. We store fields as MPS and finite-difference
+operators as tensor train operators (MPO), either on a TT grid, with one site per spatial dimension, or on a quantized
+TT (QTT) grid, with one site of dimension 2 per bit of each coordinate. The linear systems that result are solved by
+alternating solvers (ALS, ResidualALS, AMEn, ExpandedALS) or by global TT-CG and TT-GMRES, optionally preconditioned,
+for instance by the factorized approximate inverse (FAI) of [`fai_preconditioner`](@ref). The exported names and the
+names declared `public` form the API.
+"""
 module DifferenTT
 
 # Public APIs of the dependencies

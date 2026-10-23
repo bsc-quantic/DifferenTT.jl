@@ -51,7 +51,7 @@ makedocs(;
         # The search index covers the tutorials too (680 KiB at 4b)
         search_size_threshold_warn=1024 * 2^10,
     ),
-    checkdocs=:exports,  # WP6: :public
+    checkdocs=:public,
     doctest=true,
     pages=[
         "Home" => "index.md",
