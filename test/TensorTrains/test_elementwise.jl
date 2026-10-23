@@ -196,7 +196,10 @@ using .TestUtils
         @test norm(contract_mps(E) - exp.(v)) <= 1e-8 * norm(exp.(v))
 
         # Known issue (pre-existing, reported in WP2): with positive_domain = false the cross solves with the pivot
-        # columns by LU (use_pinv = false) and throws a SingularException for roughly half of the sketches.
+        # columns by LU (use_pinv = false) and throws a SingularException for roughly half of the sketches (KI-06). The
+        # sketches come from StableRNG and are the same everywhere, but whether the LU meets an exactly zero pivot depends
+        # on the floating-point library: in the CI of 2026-10-23, Julia 1.12 failed and Julia 1.13 (linux x86_64 and macOS
+        # aarch64) succeeded for all ten seeds.
         succeeds(seed) =
             try
                 elementwise_function(exp, Q, false; cutoff=1e-12, rng=StableRNG(seed))
@@ -205,7 +208,11 @@ using .TestUtils
                 e isa LinearAlgebra.SingularException || rethrow()
                 false
             end
-        @test_broken all(succeeds, 1:10)
+        if VERSION < v"1.13"
+            @test_broken all(succeeds, 1:10)
+        else
+            @test all(succeeds, 1:10)
+        end
 
         # Regression test: nsite > 2 failed in the finalizer (`only(sites[v])` on an Index), here and in _rsi_tt_mul
         for nsite in (3, 4)
