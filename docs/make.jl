@@ -40,7 +40,7 @@ push!(tutorials, "Boundary conditions" => bc_pages)
 makedocs(;
     modules=[DifferenTT],
     sitename="DifferenTT.jl",
-    authors="Pau Torrente, Stefano Carignano, Artur Garcia",
+    authors="Pau Torrente, Stefano Carignano, Artur Garcia, Daniel Pérez García",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
         edit_link="master",
@@ -51,7 +51,7 @@ makedocs(;
         # The search index covers the tutorials too (680 KiB at 4b)
         search_size_threshold_warn=1024 * 2^10,
     ),
-    checkdocs=:exports,  # WP6: :public
+    checkdocs=:public,
     doctest=true,
     pages=[
         "Home" => "index.md",

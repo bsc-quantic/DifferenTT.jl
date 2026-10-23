@@ -543,7 +543,7 @@ visualize_vector(
 
 #---------------------------------------------------
 
-# 11. Evaluate ∇p behaviour with the diffusin term, which is linear   
+# 11. Evaluate ∇p behavior with the diffusion term, which is linear   
 
 #---------------------------------------------------
 ∇p = ntuple(

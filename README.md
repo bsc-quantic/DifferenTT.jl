@@ -31,7 +31,7 @@ pkg> add https://github.com/bsc-quantic/DifferenTT.jl
 ```
 
 The first installation precompiles the common paths of the library, which takes about two minutes once and makes the
-first calls of every later session several times faster; `DifferenTT.set_precompile_workload(false)` turns this off,
+first calls of every later session 3 to 5 times faster; `DifferenTT.set_precompile_workload(false)` turns this off,
 e.g. while developing the package.
 
 The plotting functions `visualize_scalar`, `visualize_vector` and `visualize_vorticity` are defined in a package

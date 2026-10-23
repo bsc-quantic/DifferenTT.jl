@@ -53,7 +53,7 @@ ImplicitEuler(; time_evol_kwargs::TimeEvolArgs, kwargs...) = ImplicitEuler(time_
 """
     CrankNicolson{K} <: AbstractImplicitStepper
 
-Crank-Nicolson (semi-implicit) time integration scheme.
+Crank–Nicolson (semi-implicit) time integration scheme.
 
 # Fields
 
@@ -78,7 +78,7 @@ CrankNicolson(; time_evol_kwargs::TimeEvolArgs, kwargs...) = CrankNicolson(time_
 """
     timestep(stepper::AbstractImplicitStepper, u, sys::AbstractImplicitSystem, t=0.0)
 
-Advances the state `u` by one time step `stepper.time_evol_kwargs.dt` using the specified implicit `stepper`.
+Advance the state `u` by one time step `stepper.time_evol_kwargs.dt` using the specified implicit `stepper`.
 """
 function timestep(stepper::ImplicitEuler, u::Tuple, sys::AbstractImplicitSystem, t::Real=0.0)
     dt = stepper.time_evol_kwargs.dt

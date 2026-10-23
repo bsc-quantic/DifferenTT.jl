@@ -15,10 +15,10 @@
 # Khoromskij, 2012), and the closures only modify a few rows, so the whole operator stays cheap. Where the ghost nodes
 # sit relative to the stored nodes then decides which grid represents the continuous problem.
 #
-# We proceed as follows. We first look at the stencil and at its Dirichlet closure on a tiny grid, which shows where
-# the boundary value sits. We then assemble and solve a Dirichlet problem with [`ResidualALS`](@ref), and check the
-# solution against a dense solve of the same system. Finally, we add a Neumann side, which needs a symmetrization, and a
-# periodic axis, and compare the convergence of all of them on grids of ``2^4`` to ``2^{10}`` nodes.
+# We proceed as follows. We first look at the stencil and at its Dirichlet closure on a grid of 8 nodes, which shows
+# where the boundary value sits. We then assemble and solve a Dirichlet problem with [`ResidualALS`](@ref), and check
+# the solution against a dense solve of the same system. Finally, we add a Neumann side, which needs a symmetrization,
+# and a periodic axis, and compare the convergence of all of them on grids of ``2^4`` to ``2^{10}`` nodes.
 
 using DifferenTT
 using ITensors, ITensorMPS
@@ -248,14 +248,13 @@ maximum(abs.(contract_mps(x_n) - x_n_dense)), maximum(abs.(x_n_dense - u_neumann
 # ``u(x) = e^{\sin(2 \pi x)}``. The grid must not store the node at ``L = 1``, which is the image of the node at 0:
 # with the `periodic` flag, the ``n`` stored nodes are spaced by ``h = 1/n`` and the wrapped stencil has period 1.
 # Without it, the default grid keeps both end nodes and the period becomes ``1 + h``. We compare the two below. The
-# flag of each axis follows from the boundary conditions through [`periodic_axes`](@ref DifferenTT.periodic_axes),
-# which is not exported, so we call it qualified.
+# flag of each axis follows from the boundary conditions through [`periodic_axes`](@ref).
 
 u_periodic(x) = exp(sin(2π * x))
 f_periodic(x) = (1 - 4π^2 * cos(2π * x)^2 + 4π^2 * sin(2π * x)) * u_periodic(x)
 
 periodic = BoundaryConditions(BoundaryCond1d(PeriodicBC(), PeriodicBC()))
-DifferenTT.periodic_axes(periodic)
+periodic_axes(periodic)
 
 # ## Convergence under grid refinement
 #
@@ -278,7 +277,7 @@ function poisson_error(problem, nbits, order)
         u, f = u_neumann, f_neumann
     else
         conditions = periodic
-        flags = problem == :periodic ? DifferenTT.periodic_axes(conditions)[1] : false
+        flags = problem == :periodic ? periodic_axes(conditions)[1] : false
         grid, shift = Grid(arch, 1.0; periodic=flags), 0.0
         u, f = u_periodic, f_periodic
     end
@@ -320,7 +319,7 @@ end
 
 # The solver errors stay far below the discretization errors, so the table measures the discretizations. The error of
 # the Dirichlet problem with ``q = 2`` decreases by a factor of 16 every two bits, i.e. as ``h^2``, and so does the
-# error of the Neumann-Dirichlet problem, whose mirrored closure and half-cell weight keep second order. The periodic
+# error of the Neumann–Dirichlet problem, whose mirrored closure and half-cell weight keep second order. The periodic
 # problem with ``q = 8`` converges much faster, as its stencil is of order 8 everywhere, until it reaches the
 # accuracy of the solve.
 #

@@ -25,11 +25,11 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code.
 - Plotting moved to the package extension `DifferenTTPlotsExt`: `visualize_scalar`, `visualize_vector` and
   `visualize_vorticity` need `using Plots`, and print a hint otherwise.
-- `Grid(arch, box_size; periodic)`, `interior_grid(...; periodic)` and `periodic_axes(bcs)`: a periodic axis gets
-  the spacing `L/n`, so that its wrapped stencils have period `L` (without the flag the period is `L + h`), and
-  `Grid` stores the flags in a new field `periodic`. `vorticity_grid` sets them from the faces, and `INSExperiment` and
-  `INSVorticityExperiment` throw `ArgumentError` when a periodic grid axis has non-periodic boundary conditions. The
-  default, and every existing grid, is unchanged.
+- `Grid(arch, box_size; periodic)`, `interior_grid(...; periodic)` and the exported `periodic_axes(bcs)`: a periodic
+  axis gets the spacing `L/n`, so that its wrapped stencils have period `L` (without the flag the period is `L + h`),
+  and `Grid` stores the flags in a new field `periodic`. `vorticity_grid` sets them from the faces, and `INSExperiment`
+  and `INSVorticityExperiment` throw `ArgumentError` when a periodic grid axis has non-periodic boundary conditions.
+  The default, and every existing grid, is unchanged.
 - A precompilation workload (PrecompileTools) of the common paths: QTT operators, the local and global solvers, the
   FAI and linear-solve preconditioners, cross interpolation on a grid, and the Chorin and vorticity steps. The first
   calls of a session are 3 to 5 times faster (the cold runs of tutorials 01-07 take 196 s instead of 582 s), and
@@ -38,6 +38,8 @@ The first public release. Version 0.0.1 is the state of the library that produce
 
 ### Changed
 
+- `sample` adds its methods to `ITensorMPS.sample` instead of defining a function of its own, so that
+  `using DifferenTT, ITensorMPS` no longer makes a bare `sample` ambiguous. `DifferenTT.sample` still works.
 - Since the paper data were produced: `spd_tol` in `LocalUpdaterArgs` without `ishermitian && isposdef` throws
   `ArgumentError`; a non-SPD local CG block no longer warns (only `spd_tol`, which throws `NotSPDError`, and
   `spectrum_store` detect it); `preconditioner_sites` outside `1:length(b)` throws `ArgumentError`.
@@ -205,7 +207,7 @@ The first public release. Version 0.0.1 is the state of the library that produce
   first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
   projection. A second-order closure by odd reflection is planned for v0.2.
 - `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`;
-  `Grid(arch, box_size; periodic = DifferenTT.periodic_axes(bcs))` gives them the period `L`.
+  `Grid(arch, box_size; periodic = periodic_axes(bcs))` gives them the period `L`.
 - `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity it returns, and that
   `chorin_evolve!` stores, is the provisional field `u*` of the next step rather than the projected one. The order
   predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version.

@@ -15,8 +15,8 @@ The array conversions rely on Adapt.jl.
 
 What has been checked and what has not:
 
-  - The backend is propagated by reading the code of the constructors, the operators, the element-wise products and the
-    solvers, which keep the cores of the results on the backend of their inputs.
+  - We checked by reading the code, not by running it, that the constructors, the operators, the element-wise products
+    and the solvers keep the cores of their results on the backend of their inputs.
   - No test runs on a GPU in the continuous integration, and the test suite has no CPU stand-in for a GPU array type yet.
     We therefore do not claim that every function runs on a GPU, or that it is faster than on a CPU.
   - Some small matrices, such as the one-dimensional operators, are assembled on the host and moved to the backend

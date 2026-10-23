@@ -19,7 +19,7 @@ Unit of work: ONE repeat of ONE task, written to its own `task_<id>_rep_<r>.jld2
     wall-clock limit (Chorin (10,10) over many steps). Array index -> (task, repeat) via
     `decode_unit`, repeat-major, so the first jobs cover every method at the lowest repeat. Every
     unit runs on its own node: the speedups pair runs on different nodes, so the node effect is NOT
-    cancelled but enters their spread (it does not bias them, since no method is tied to a node),
+    canceled but enters their spread (it does not bias them, since no method is tied to a node),
     and it cannot be separated from method noise. Everything runs in parallel: one submission.
 
 The rule that makes the statistics meaningful: the problem is fixed, the solver's random inputs

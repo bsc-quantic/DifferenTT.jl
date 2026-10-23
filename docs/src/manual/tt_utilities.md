@@ -15,9 +15,10 @@ The signatures are in the [API reference](@ref api_tensortrains).
 [`identity_mpo`](@ref), [`zeros_mpo`](@ref), [`ones_mpo`](@ref), [`zeros_mps`](@ref) and [`ones_mps`](@ref) build the
 elementary tensor trains for an architecture or a list of site indices. [`vec2mps`](@ref) and [`mat2mpo`](@ref) compress
 a dense vector or matrix by successive SVDs, and [`contract_mps`](@ref) and [`contract_mpo`](@ref) go the other way.
-All of these are meant for small systems and for tests, since the dense array has ``d^N`` entries. The Hadamard-type
-helpers [`diagmpo`](@ref) and [`diagmps`](@ref) convert between a vector and the diagonal operator that has it on its
-diagonal, which is what the FAI construction uses ([Preconditioners](@ref)).
+All of these are meant for small systems and for tests, since the dense array has ``d^N`` entries. Finally,
+[`diagmpo`](@ref) keeps the diagonal part of an operator, and [`diagmps`](@ref) returns its diagonal as an MPS, which is
+how the FAI construction extracts ``\mathrm{diag}(\tilde{G}_L)`` ([Preconditioners](@ref)); both keep the bond
+dimension of the operator.
 
 ## Functions by cross interpolation
 
@@ -34,18 +35,20 @@ b = replace_siteinds!(MPS(tci), sites)
 
 The algorithm starts from `initialpivots`, by default the node at the origin, so a function that vanishes there needs
 another pivot, for instance from `optfirstpivot`. The one-site variant `crossinterpolate1` has the same interface; it is kept to
-compare the two methods, and in our tests it was much less accurate than the two-site one. Once a function is in the TT
-format, [`DifferenTT.sample`](@ref) evaluates it at a point, [`samples`](@ref) at a regular set of points, and
+compare the two methods, but in our tests its relative errors were 20 to 75 %, even for rank-1 functions, while the error
+it reported was at round-off level. Once a function is in the TT
+format, [`sample`](@ref) evaluates it at a point, [`samples`](@ref) at a regular set of points, and
 [`integrate`](@ref) computes the integral over the box.
 
 ## Element-wise products
 
 The Hadamard product of two tensor trains of bond dimensions ``\chi_1`` and ``\chi_2`` has bond dimension ``\chi_1
 \chi_2`` if computed exactly, although the result usually needs far less. [`tt_mul`](@ref) computes it for two MPS by
-randomized sketch-and-interpolate (RSI) (Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974), which is the default, and
+recursive sketched interpolation (RSI) (Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974), which is the default, and
 falls back to the exact product if the sketch fails; [`tt_mul_fallbacks`](@ref) counts the fallbacks. This default is
-accurate only if the rank of the product fits in the sketch, and the direct product was faster in some of our tests with
-factors of low bond dimension, so both algorithms are kept (`_direct_tt_mul` is the exact one). The products that involve
+accurate only if the rank of the product fits in the sketch, and it is not always faster: on ``2^{18}`` to ``2^{20}``
+points, with smooth factors of bond dimension 5 to 10, the direct product was 5 to 12 times faster in our tests. Both
+algorithms are therefore kept (`_direct_tt_mul` is the exact one). The products that involve
 an MPO are exact followed by a truncation.
 
 ## Element-wise functions

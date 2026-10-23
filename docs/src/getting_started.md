@@ -13,8 +13,8 @@ step in detail.
 !!! note "Precompilation"
     The first `using DifferenTT` after installing or updating the package precompiles it, and runs on small problems
     the common paths of the library (QTT operators, solvers, preconditioners and Navier–Stokes steps), so that their
-    first calls in every later session are several times faster. This takes about two minutes once. Since it is
-    repeated after every change to the source, we recommend to turn it off while developing the package, with
+    first calls in every later session are 3 to 5 times faster. This takes about two minutes once. Since it is
+    repeated after every change to the source, we recommend turning it off while developing the package, with
     `DifferenTT.set_precompile_workload(false)` and a restart of Julia; see [`set_precompile_workload`](@ref).
 
 ```@example gs
@@ -97,12 +97,11 @@ before it; [Preconditioners](@ref) explains how to build the FAI preconditioner 
 
 ## Reading the solution
 
-An MPS is evaluated at a point of the box with [`DifferenTT.sample`](@ref), and the dense vector of a small system is
-recovered by [`contract_mps`](@ref), with site 1 as the most significant index. The name `sample` also exists in
-ITensorMPS, which is why we qualify it:
+An MPS is evaluated at a point of the box with [`sample`](@ref), and the dense vector of a small system is recovered by
+[`contract_mps`](@ref), with site 1 as the most significant index:
 
 ```@example gs
-DifferenTT.sample(x, (0.5, 0.5), grid, arch)
+sample(x, (0.5, 0.5), grid, arch)
 ```
 
 ```@example gs
@@ -117,7 +116,7 @@ with that in mind.
 
 When we edit the source of DifferenTT, the package is precompiled again at the next `using DifferenTT`, and the
 precompilation workload of the note above makes each of these rebuilds take about two minutes instead of a few seconds.
-In order to keep the edit–test cycle short, we recommend to turn the workload off on a development machine, for every
+In order to keep the edit–test cycle short, we recommend turning the workload off on a development machine, for every
 environment at once:
 
 ```julia

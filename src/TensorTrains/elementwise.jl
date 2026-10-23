@@ -1,7 +1,7 @@
 """
     PivotSpace{P<:Pair}
 
-Space of an index whose values are labelled by pivots, as built by the cross interpolation of
+Space of an index whose values are labeled by pivots, as built by the cross interpolation of
 [`interpolative`](@ref): entry `r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping
 the pivots in an owned type lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
 
@@ -85,7 +85,7 @@ Return the inverse of the square, unit lower triangular matrix `L` by forward su
 ``\\mathcal{O}(n^3)`` operations. Only the strictly lower triangular entries of `L` are read: its diagonal is taken to
 be 1. Throws a `DimensionMismatch` if `L` is not square.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -109,7 +109,7 @@ end
 Return the inverse of the square, unit upper triangular matrix `U`, as the transpose of [`backsolveL`](@ref) of its
 transpose.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -141,7 +141,7 @@ absolute threshold on the entries, not a relative one, and that `inf_error` does
 
   - `ArgumentError`: if `maxdim` or `mindim` is not positive.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -215,7 +215,7 @@ Return the interpolative decomposition ``M \\approx C Z`` computed from the [`pr
 where ``U_{11}`` is the leading square block of the unit upper factor, so that `Z[:, piv_cols]` is the identity. The
 error is that of [`prrldu`](@ref). Prescribed columns are not supported: `cols` must be `nothing`.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -247,7 +247,7 @@ square root of that measure, returned as `error`, falls below `cutoff` or `maxdi
 least-squares solution of ``C Z = M``, by `C \\ M`, or by the pseudo-inverse if `use_pinv = true` is passed in `kws`,
 and its pivot columns are then set to the identity exactly. With prescribed `cols`, `error` is `Inf`.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -298,7 +298,7 @@ set by `cutoff`, `maxdim` and `mindim`. An interpolative decomposition keeps act
   - `cols=nothing`: columns to use for ``C``; then the rank parameters are ignored.
   - `cutoff`, `maxdim`, `mindim`: rank selection; see the method of each algorithm.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -324,7 +324,7 @@ runs on the CPU, and `C` and `Z` are moved back to the array backend of `T`.
 
   - `ArgumentError`: if the pivots of `pivot_index` do not match the columns they select.
 
-This routine came with the implementation of the randomized sketch-and-interpolate (RSI) algorithm of Meng, Khoo, Li &
+This routine came with the implementation of the recursive sketched interpolation (RSI) algorithm of Meng, Khoo, Li &
 Stoudenmire (arXiv:2602.17974) that its authors shared with us by private communication, and that they agreed to have
 published.
 """
@@ -533,7 +533,9 @@ Reset the counter reported by [`tt_mul_fallbacks`](@ref) to zero.
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
 """
-Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it.
+    _rand_uniform!(rng::AbstractRNG, T::ITensor) -> ITensor
+
+Fill the dense ITensor `T` in place with independent uniform draws in ``[0, 1)`` from `rng`, and return it.
 """
 function _rand_uniform!(rng::AbstractRNG, T::ITensor)
     # Mutate the underlying NDTensors.Tensor directly with Base's rand!
@@ -612,7 +614,7 @@ end
     _rsi_tt_mul(mps1::MPS, mps2::MPS; nsite=2, oversample=25, target_rank::Int=0, pivot_rtol::Real=1e-10,
                 outputlevel=0, rng::AbstractRNG=Random.default_rng(), kws...) -> MPS
 
-Return the element-wise (Hadamard) product of two MPS by randomized sketch-and-interpolate (RSI): at every bond, from
+Return the element-wise (Hadamard) product of two MPS by recursive sketched interpolation (RSI): at every bond, from
 left to right, we sketch the suffixes of both factors ([`suffix_sketches`](@ref)), multiply the two sketched blocks
 of `nsite` sites element-wise, and take the interpolative decomposition ([`interpolative`](@ref)) of the result,
 whose pivots give the next core of the product; both factors are then re-expressed on the same pivots before moving
@@ -645,7 +647,7 @@ low-rank products of smooth fields it agrees with the direct product to the accu
 
 Other keywords are ignored.
 
-The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+The recursive sketched interpolation (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
 that they agreed to have published.
 """
@@ -759,8 +761,8 @@ relative Frobenius `cutoff` and to `maxdim`.
 
 Element-wise products appear wherever a nonlinear or variable-coefficient term is evaluated in the TT format, such as
 the advection term of the Navier–Stokes equations. Their exact bond dimension is the product ``\\chi_1 \\chi_2`` of
-those of the factors, although the result usually needs far less. For two MPS we therefore use the randomized
-sketch-and-interpolate (RSI) cross of [`_rsi_tt_mul`](@ref), whose raw rank is bounded by its sketch size, and
+those of the factors, although the result usually needs far less. For two MPS we therefore use the recursive
+sketched interpolation (RSI) cross of [`_rsi_tt_mul`](@ref), whose raw rank is bounded by its sketch size, and
 compress its non-orthogonal output once by SVD. Both steps matter: truncating inside the cross is far from optimal at
 a given rank, and the raw output carries two to four times the rank that the product needs, which every later `apply`,
 `sum` and time-stepper stage would pay for. If either factor has a zero tensor ([`iszero_tt`](@ref)), the zero MPS is
@@ -788,7 +790,7 @@ delta tensors that identify the indices of both, which gives the entrywise produ
 
   - `ArgumentError` (products with an MPO): if the site indices or the array backends differ.
 
-The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+The recursive sketched interpolation (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
 that they agreed to have published.
 """
@@ -902,7 +904,7 @@ end
                          kws...) -> MPS
 
 Return an MPS approximation of the element-wise map `func.(x)` of the vector ``\\mathbf{x}`` represented by `mps`,
-built by randomized sketch-and-interpolate (RSI), as in Sec. 3.2 of Torrente et al., *Factorized approximate inverse
+built by recursive sketched interpolation (RSI), as in Sec. 3.2 of Torrente et al., *Factorized approximate inverse
 preconditioners in the tensor train format*.
 
 A nonlinear function cannot be applied to a tensor train core by core, and forming the dense vector costs
@@ -953,7 +955,7 @@ using StableRNGs
 D = elementwise_function(x -> inv(sqrt(x)), diag_mps, true; cutoff=1e-12, rng=StableRNG(1))
 ```
 
-The randomized sketch-and-interpolate (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
+The recursive sketched interpolation (RSI) algorithm is that of Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974.
 Our implementation started from a rough implementation that its authors shared with us by private communication, and
 that they agreed to have published.
 """

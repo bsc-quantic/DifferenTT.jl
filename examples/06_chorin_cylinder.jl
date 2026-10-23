@@ -34,10 +34,10 @@ ITensors.disable_warn_order()
 # homogeneous Neumann conditions and the pressure a Dirichlet condition with a constant value; all the fields are
 # periodic in ``y``.
 #
-# The periodic axis is built with the `periodic` flag of [`Grid`](@ref), taken from the boundary conditions by the
-# non-exported [`periodic_axes`](@ref DifferenTT.periodic_axes): the 64 nodes of ``y`` are spaced by ``h_y = 1/64`` and
-# the wrapped stencils have period 1. The numbers of this tutorial are not a reproduction of those of the paper, since
-# they are computed on a much smaller grid.
+# The periodic axis is built with the `periodic` flag of [`Grid`](@ref), taken from the boundary conditions by
+# [`periodic_axes`](@ref): the 64 nodes of ``y`` are spaced by ``h_y = 1/64`` and the wrapped stencils have period 1.
+# The numbers of this tutorial are not a reproduction of those of the paper, since they are computed on a much smaller
+# grid.
 
 nodes = (6, 6)
 arch = QTTArchitecture(nodes; interleaved=false)
@@ -46,7 +46,7 @@ periodic = BoundaryCond1d(PeriodicBC(), PeriodicBC())
 u_bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0)), periodic)
 v_bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), periodic)
 p_bcs = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), periodic)
-grid = Grid(arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(p_bcs))
+grid = Grid(arch, (2.0, 1.0); periodic=periodic_axes(p_bcs))
 grid.dx
 
 # ## The cylinder

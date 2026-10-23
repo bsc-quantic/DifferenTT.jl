@@ -79,6 +79,12 @@ its functions share, and links to the [API reference](@ref api_tensortrains) for
 of the accompanying paper is described in [Preconditioners](@ref), and the scripts that produced the paper's figures
 are in [Reproducing the paper](@ref).
 
+The module docstring, which `?DifferenTT` prints in the REPL, summarizes the same:
+
+```@docs
+DifferenTT
+```
+
 ## Citing
 
 If you use DifferenTT in your work, please cite the paper that introduces the FAI preconditioner, P. Torrente et al.,

@@ -64,10 +64,10 @@ SIAM J. Matrix Anal. Appl. 33 (2012) 742–758. TT-Toolbox carries the following
 > OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 > SOFTWARE.
 
-## Randomized sketch-and-interpolate (RSI)
+## Recursive sketched interpolation (RSI)
 
 The element-wise products and maps of [`src/TensorTrains/elementwise.jl`](src/TensorTrains/elementwise.jl)
-(`tt_mul`, `_rsi_tt_mul`, `elementwise_function`) implement the randomized sketch-and-interpolate algorithm of
+(`tt_mul`, `_rsi_tt_mul`, `elementwise_function`) implement the recursive sketched interpolation algorithm of
 Meng, Khoo, Li & Stoudenmire, arXiv:2602.17974. Our implementation started from a rough
 implementation that its authors shared with us by private communication, and that they agreed to have published.
 The pivoted rank-revealing LDU decomposition (`prrldu`) and the interpolative decompositions (`interpolative`) in the

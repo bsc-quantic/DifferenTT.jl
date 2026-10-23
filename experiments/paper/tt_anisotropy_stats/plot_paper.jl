@@ -3,7 +3,7 @@
 
 We draw here the figures of Sec. 5.1 of the paper from the table of repeats that `collect.jl` wrote. A case is a pair
 (dimension N, floor F); every configuration is compared with the baseline of the same case. We recompute every
-statistic from the per-repeat rows, so the centre and the band that we draw are chosen in the parameter block below, and
+statistic from the per-repeat rows, so the center and the band that we draw are chosen in the parameter block below, and
 the speedups are paired by repeat index with the baseline.
 
 # Figures
@@ -116,7 +116,7 @@ ANNOTATE_BEST_M = true
 SINC_BEST_BY = :plotted
 SINC_HLINE_BANDS = true   # spread band around the Sinc reference lines of the speedup-vs-χ plots
 # Where the best-M labels of the vs-F curves go:
-#   :top   -> one row of labels in a strip above the curves, centred on each F (never covers the data)
+#   :top   -> one row of labels in a strip above the curves, centered on each F (never covers the data)
 #   :point -> next to each Sinc marker, drawn above every curve
 BEST_M_LABEL_POS = :top
 BEST_M_STRIP_FRACTION = 0.12            # height of the :top strip, as a fraction of the extended y range
@@ -125,7 +125,7 @@ COLOR_BEST_M_LABEL = :darkorange3    # a shade darker than the Sinc curve, so th
 
 # -------------------------------------------------------------------------
 # Statistics
-#   centre: :mean, :median, :gm (geometric mean)
+#   center: :mean, :median, :gm (geometric mean)
 #   spread: :sd, :sem, :ci95, :iqr, :minmax, :gsd (×/÷ geometric sd), :none
 # -------------------------------------------------------------------------
 TIME_CENTER = :median;
@@ -140,13 +140,13 @@ SPREAD_STYLE = :ribbon    # curves vs F / χ_max: :ribbon, :errorbar, :none
 PROFILE_STYLE = :ribbon    # per-site curves: :ribbon or :none
 SHOW_BANDS_ALL_N = false    # bands in the *_all_N figures
 BAND_ALPHA = 0.18
-LOG_BAND_FLOOR = 0.5        # on log axes a band that would cross zero is cut at this fraction of the centre
+LOG_BAND_FLOOR = 0.5        # on log axes a band that would cross zero is cut at this fraction of the center
 
 ANNOTATE_HEATMAPS = true
 ANNOTATE_HEATMAP_SPREAD = false   # add the spread under the value in each heatmap cell
 HEATMAP_DIGITS = 2
 HEATMAP_LOG_COLOR = true    # color by log10(speedup) (values still printed as speedups)
-HEATMAP_DIVERGING = true    # color scale centred on a speedup of 1
+HEATMAP_DIVERGING = true    # color scale centered on a speedup of 1
 HEATMAP_CMAP = :RdBu
 
 PARETO_ERRORBARS = true       # TIME spread on both axes
@@ -349,12 +349,12 @@ const SPREAD_NAMES = Dict(
     :gsd => "×/÷ 1 geometric standard deviation",
     :none => "no band",
 )
-describe_stat(center, spread) = "centre = $(CENTER_NAMES[center]), band = $(SPREAD_NAMES[spread])"
+describe_stat(center, spread) = "center = $(CENTER_NAMES[center]), band = $(SPREAD_NAMES[spread])"
 
 const NAN3 = (NaN, NaN, NaN)
 
 """
-(centre, lower, upper) of the finite samples in `x`; NaNs when nothing is left.
+(center, lower, upper) of the finite samples in `x`; NaNs when nothing is left.
 """
 function center_band(x; center=:mean, spread=:sd)
     v = Float64[Float64(y) for y in x if !ismissing(y) && isfinite(y)]
@@ -368,7 +368,7 @@ function center_band(x; center=:mean, spread=:sd)
     elseif center === :gm
         exp(mean(log.(v)))
     else
-        error("Unknown centre statistic: $center")
+        error("Unknown center statistic: $center")
     end
     sd = n > 1 ? std(v) : 0.0
     lo, hi = if spread === :sd
@@ -473,7 +473,7 @@ function spread_text(c, lo, hi, spread)
 end
 
 """
-Heatmap of the centres Z (rows = y labels, bottom to top), cells annotated with value (and spread).
+Heatmap of the centers Z (rows = y labels, bottom to top), cells annotated with value (and spread).
 """
 function stat_heatmap(xlabels, ylabels, Z, Zlo, Zhi; xlabel, ylabel, spread, colorbar_title="")
     nx, ny = length(xlabels), length(ylabels)
@@ -520,7 +520,7 @@ function stat_heatmap(xlabels, ylabels, Z, Zlo, Zhi; xlabel, ylabel, spread, col
 end
 
 """
-Every repeat as a jittered point, plus the centre ± spread marker next to it.
+Every repeat as a jittered point, plus the center ± spread marker next to it.
 """
 function dist_plot(labels, samples, colors; ylabel, center, spread, yscale=:identity, breakeven=false)
     n = length(samples)
@@ -710,7 +710,7 @@ Field that ranks the Sinc setups of a figure showing `field` (see SINC_BEST_BY).
 sinc_rank(field) = SINC_BEST_BY === :plotted ? field : SINC_BEST_BY
 
 """
-Best Sinc key in S by the centre of `field`: largest for speedups, smallest for times / iterations.
+Best Sinc key in S by the center of `field`: largest for speedups, smallest for times / iterations.
 """
 function best_sinc(S, field)
     ks = [k for k in SINC_KEYS if haskey(S, k) && isfinite(getfield(S[k], field)[1])]
@@ -775,7 +775,7 @@ function add_vs_F!(
     for k in vcat(FAI_KEYS, L0_KEYS)
         curve!([stat_of(N, F, k, field) for F in Fs], series_label(k), SERIES_COLOR[k], series_ls(k), series_marker(k))
     end
-    # labelled last, so the text sits above every curve
+    # labeled last, so the text sits above every curve
     annotate_m && picks !== nothing && label_best_m!(p, Fs, picks, vals; logy, ann_size, y_include)
     return p
 end
@@ -1323,7 +1323,7 @@ open(joinpath(PLOTS_DIR, "stats_used.txt"), "w") do io
     println(
         io,
         "Sinc mode: $SINC_MODE; best M per F chosen by: ",
-        SINC_BEST_BY === :plotted ? "the centre of the quantity each figure plots" : "the $(SINC_BEST_BY) centre",
+        SINC_BEST_BY === :plotted ? "the center of the quantity each figure plots" : "the $(SINC_BEST_BY) center",
     )
     println(
         io,

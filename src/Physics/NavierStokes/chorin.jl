@@ -164,7 +164,8 @@ end
 Solve the pressure system ``A\\,(p\\,dt) = \\mathbf{b}`` of [`ChorinCache`](@ref) and [`poisson_rhs`](@ref) with
 `solver`, starting from ``dt`` times the last stored pressure, if any (a `ResidualObserver` without `A` and `b` in the
 `SweepingArgs` of `solver` is bound to this system). Returns the pressure ``p`` and the residual norm
-``\\lVert A\\,(p\\,dt) - \\mathbf{b} \\rVert_2``, evaluated with inner products.
+``\\lVert A\\,(p\\,dt) - \\mathbf{b} \\rVert_2``, evaluated with inner products from the expansion of its square and
+clamped at zero, so that it loses its accuracy below about ``\\sqrt{\\epsilon}\\,\\|\\mathbf{b}\\|``.
 """
 function poisson_pressure(
     experiment::INSExperiment{N},
@@ -469,7 +470,10 @@ will be fixed in a later version:
     ``\\sum_j b_j\\, \\prod_i h_i / \\prod_i L_i = \\sum_j b_j / \\prod_i (n_i - 1)`` instead of the node mean
     ``\\sum_j b_j / \\prod_i n_i``, so the mean of the right-hand side becomes ``1 - \\prod_i n_i/(n_i - 1)`` times its
     original value instead of zero, and the regularized system is not exactly consistent. This is inactive whenever the
-    pressure has a Dirichlet side, as in the channel of Sec. 5.2 of the paper (Dirichlet outlet pressure).
+    pressure has a Dirichlet side, as in the channel of Sec. 5.2 of the paper (Dirichlet outlet pressure). For an exact
+    solve, the wrong constant only shifts ``p\\,dt`` by a constant and leaves ``\\nabla p`` unchanged, since the rank-1
+    shift of [`ChorinCache`](@ref) removes the node mean itself (see [`INSExperiment`](@ref)); a truncated TT solve
+    satisfies this only approximately.
   - **Wall rows.** The projection ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to
     every row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep
     fixed ([`BoundaryNull`](@ref)). The tangential pressure gradient therefore changes the boundary velocity a little at

@@ -19,9 +19,9 @@ Turn the precompilation workload of DifferenTT on (`true`, the default) or off (
 When the package is precompiled, i.e. after it is installed or updated and after every change to its source, we run
 its common paths on small problems: the QTT operators, the local and global solvers, the FAI preconditioner, cross
 interpolation and the Navier–Stokes steps. The native code compiled for them is stored with the package, so that the
-first calls of every later session load it instead of compiling it, which makes them several times faster. The price
-is about two minutes of precompilation instead of a few seconds. When the source changes often, e.g. while developing
-the package, we recommend to turn the workload off.
+first calls of every later session load it instead of compiling it, which makes them 3 to 5 times faster (the cold
+runs of tutorials 01 to 07 take 196 s instead of 582 s). The price is about two minutes of precompilation instead of a
+few seconds. When the source changes often, e.g. while developing the package, we recommend turning the workload off.
 
 The setting is the preference `precompile_workload` of DifferenTT, stored in the `LocalPreferences.toml` of the active
 environment, or, with `default_environment = true`, of the default environment `@v#.#`, which every environment whose

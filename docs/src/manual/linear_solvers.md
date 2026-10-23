@@ -43,7 +43,7 @@ Each solver stores three pieces of configuration: [`SweepingArgs`](@ref) (sweeps
 
 [`GlobalCG`](@ref) and [`GlobalGMRES`](@ref) run a Krylov method on the whole tensor train, with the iterates truncated
 after every operation. They need no sweeps, but the truncation perturbs the Krylov recurrences, so convergence is
-guaranteed only when the iterates are compressible. CG needs an SPD operator, and GMRES does not. They are configured by
+not guaranteed when the truncation is severe, i.e. when the Krylov vectors are not compressible. CG needs an SPD operator, and GMRES does not. They are configured by
 [`GlobalUpdaterArgs`](@ref), and the underlying algorithms are [`TTCG`](@ref) and [`TTGMRES`](@ref).
 
 ## Preconditioning and diagnostics

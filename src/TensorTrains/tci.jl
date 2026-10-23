@@ -343,7 +343,8 @@ Return the entry of `mps` at the grid node closest to `point`. We select that en
 ([`point_sequence`](@ref)) and contract the chain, which costs ``\\mathcal{O}(N d \\chi^2)`` instead of the
 ``\\mathcal{O}(d^N)`` of a dense contraction. The value is not interpolated between nodes, and the cores are copied to
 the CPU one at a time. The second method first looks the point up in `sample_cache` and stores the value it computes
-there.
+there. Both are methods of `ITensorMPS.sample`, which draws a sample from an MPS seen as a probability distribution;
+since the two names are the same function, `using DifferenTT, ITensorMPS` leaves `sample` unambiguous.
 
 # Throws
 
