@@ -55,7 +55,7 @@ using KrylovKit:
     zerovector
 
 # Functions to which DifferenTT adds methods for its own types without qualifying the name
-import ITensorMPS: apply
+import ITensorMPS: apply, sample
 
 # Include Architecture
 include("TensorTrains/architecture.jl")

@@ -35,7 +35,7 @@ b = replace_siteinds!(MPS(tci), sites)
 The algorithm starts from `initialpivots`, by default the node at the origin, so a function that vanishes there needs
 another pivot, for instance from `optfirstpivot`. The one-site variant `crossinterpolate1` has the same interface; it is kept to
 compare the two methods, and in our tests it was much less accurate than the two-site one. Once a function is in the TT
-format, [`DifferenTT.sample`](@ref) evaluates it at a point, [`samples`](@ref) at a regular set of points, and
+format, [`sample`](@ref) evaluates it at a point, [`samples`](@ref) at a regular set of points, and
 [`integrate`](@ref) computes the integral over the box.
 
 ## Element-wise products

@@ -16,7 +16,6 @@
 # functions and layouts.
 
 using DifferenTT
-using DifferenTT: sample  # ITensorMPS also exports a `sample`; we mean DifferenTT's
 using ITensors, ITensorMPS
 using TensorCrossInterpolation: crossinterpolate2, optfirstpivot
 using LinearAlgebra

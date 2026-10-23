@@ -121,6 +121,10 @@ end
 
         cache[(0.0, 0.0)] = 0.0
         @test cache[(0.0, 0.0)] == 0.0
+
+        # DifferenTT's methods extend ITensorMPS.sample, so the bare name is unambiguous with both packages loaded
+        @test DifferenTT.sample === ITensorMPS.sample
+        @test sample(mps, point, grid, arch) == val
     end
 
     @testset "integrate" begin

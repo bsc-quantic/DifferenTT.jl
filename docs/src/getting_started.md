@@ -97,12 +97,11 @@ before it; [Preconditioners](@ref) explains how to build the FAI preconditioner 
 
 ## Reading the solution
 
-An MPS is evaluated at a point of the box with [`DifferenTT.sample`](@ref), and the dense vector of a small system is
-recovered by [`contract_mps`](@ref), with site 1 as the most significant index. The name `sample` also exists in
-ITensorMPS, which is why we qualify it:
+An MPS is evaluated at a point of the box with [`sample`](@ref), and the dense vector of a small system is recovered by
+[`contract_mps`](@ref), with site 1 as the most significant index:
 
 ```@example gs
-DifferenTT.sample(x, (0.5, 0.5), grid, arch)
+sample(x, (0.5, 0.5), grid, arch)
 ```
 
 ```@example gs

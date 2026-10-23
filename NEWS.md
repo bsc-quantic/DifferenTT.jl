@@ -38,6 +38,8 @@ The first public release. Version 0.0.1 is the state of the library that produce
 
 ### Changed
 
+- `sample` adds its methods to `ITensorMPS.sample` instead of defining a function of its own, so that
+  `using DifferenTT, ITensorMPS` no longer makes a bare `sample` ambiguous. `DifferenTT.sample` still works.
 - Since the paper data were produced: `spd_tol` in `LocalUpdaterArgs` without `ishermitian && isposdef` throws
   `ArgumentError`; a non-SPD local CG block no longer warns (only `spd_tol`, which throws `NotSPDError`, and
   `spectrum_store` detect it); `preconditioner_sites` outside `1:length(b)` throws `ArgumentError`.
