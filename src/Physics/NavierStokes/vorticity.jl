@@ -877,6 +877,7 @@ function (rhs::VorticityTransportRHS)(omega::Tuple, t::Real, stage::Int)
     d_ops = rhs.cache.omega_diff_ops.d_ops
 
     # 1. Advection (conservative form)
+    # TODO(release): RSI products with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
     @timeit_debug timeit_to "advection" begin
         uω = tt_mul(rhs.u, ω; cutoff=cutoff, maxdim=maxdim)
         vω = tt_mul(rhs.v, ω; cutoff=cutoff, maxdim=maxdim)
