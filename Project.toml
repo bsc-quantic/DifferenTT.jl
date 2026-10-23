@@ -1,6 +1,6 @@
 name = "DifferenTT"
 uuid = "986fbeea-f347-4a71-ab00-a89cbb29f88e"
-version = "0.1.0-DEV"
+version = "0.1.0"
 authors = ["Pau Torrente", "Stefano Carignano", "Artur Garcia", "Daniel Pérez García"]
 
 [deps]
