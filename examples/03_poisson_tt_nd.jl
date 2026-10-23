@@ -32,7 +32,7 @@ rng = StableRNG(5);
 
 # ## The model problem
 #
-# We take the exact solution of `experiments/tt_poisson/poissonNd.jl`,
+# We take the exact solution of `experiments/archive/tt_poisson/poissonNd.jl`,
 #
 # ```math
 # u(\mathbf{x}) = v(\mathbf{x})\, g(\mathbf{x})^2, \qquad v = \prod_{i=1}^{N} \sin(\pi x_i), \qquad

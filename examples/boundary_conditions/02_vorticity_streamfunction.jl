@@ -20,8 +20,8 @@
 # the faces into the boundary conditions of the fields (Sec. 3). We then treat, one by one, the stream-function Poisson
 # system (Sec. 4), the velocity (Sec. 5), the wall vorticity (Sec. 6), the advection (Sec. 7) and the diffusion (Sec.
 # 8), and we validate the scheme on a Poiseuille channel and on the lid-driven cavity (Sec. 9). Each closure is printed
-# on a tiny grid and checked against a dense reference built by hand from the ghost-node rule; all the checks run in
-# this tutorial, and their results are printed.
+# on a grid of 8 to 16 nodes per axis and checked against a dense reference built by hand from the ghost-node rule; all
+# the checks run in this tutorial, and their results are printed.
 #
 # Several of the functions we call are not exported: some are `public` (such as `wall_vorticity_coefficients` or
 # `wall_vorticity_source`), and the others are internal (such as `ghost_omega` or `wall_vorticity_operator`). We call
@@ -1012,9 +1012,9 @@ exact_parabola = [poiseuille_check(nbits; discrete=false) for nbits in 4:6]
 ]
 
 # The second-order convergence of the scheme therefore holds for the velocity, but a face whose normal velocity is not
-# the discrete velocity of its own ``\psi`` leaves an ``\mathcal{O}(h)`` source on the column next to it. Note that the
-# docstring of [`InflowFace`](@ref) gives the exact parabola: it is a consistent inflow, but not an exact discrete fixed
-# point.
+# the discrete velocity of its own ``\psi`` leaves an ``\mathcal{O}(h)`` source on the column next to it. The docstring
+# of [`InflowFace`](@ref) gives the exact parabola as its example, and says so: it is a consistent inflow, but not an
+# exact discrete fixed point.
 #
 # **Lid-driven cavity.** In the cavity of Sec. 5, four no-slip walls with ``\psi = 0``, the lid moves in ``+x`` at
 # ``U = 1``, and the fluid starts at rest. At ``t = 0`` the vorticity is zero everywhere, and the whole motion comes
@@ -1093,7 +1093,7 @@ end
 # formulas differ by 3 % at the center of the lid and by 25 to 35 % on the nodes next to its corners, where the lid
 # meets the stationary walls and the vorticity of the continuous problem is singular. After 10 steps, ``t = 0.7``, the
 # flow is still far from steady; the tutorial on the [Lid-driven cavity](@ref) continues this run to ``t = 14`` and
-# compares the centreline velocities with Ghia, Ghia & Shin (1982).
+# compares the centerline velocities with Ghia, Ghia & Shin (1982).
 #
 # ## 10. Summary
 #

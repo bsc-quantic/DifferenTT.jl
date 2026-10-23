@@ -17,8 +17,8 @@
 # boundary rows of the divergence (Sec. 5), the Neumann mirror (Sec. 6) and the weight that makes it symmetric (Sec. 7).
 # We then turn to singular systems (Sec. 8), and finally assemble the pressure system of the channel of Sec. 5.2 of
 # Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*, term by term (Sec. 9).
-# Each closure is printed on a tiny grid and checked against a dense matrix built by hand from the ghost-node rule; all
-# the checks run in this tutorial, and their results are printed.
+# Each closure is printed on a grid of 8 to 16 nodes per axis and checked against a dense matrix built by hand from the
+# ghost-node rule; all the checks run in this tutorial, and their results are printed.
 #
 # Several of the functions we call are not exported: some are `public` (such as `onedim_differential_operator` or
 # `poisson_rhs`), and the others are internal (such as `neumann_correction_matrix` or `∇p_correction`). We call them

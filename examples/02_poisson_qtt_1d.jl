@@ -15,10 +15,10 @@
 # Khoromskij, 2012), and the closures only modify a few rows, so the whole operator stays cheap. Where the ghost nodes
 # sit relative to the stored nodes then decides which grid represents the continuous problem.
 #
-# We proceed as follows. We first look at the stencil and at its Dirichlet closure on a tiny grid, which shows where
-# the boundary value sits. We then assemble and solve a Dirichlet problem with [`ResidualALS`](@ref), and check the
-# solution against a dense solve of the same system. Finally, we add a Neumann side, which needs a symmetrization, and a
-# periodic axis, and compare the convergence of all of them on grids of ``2^4`` to ``2^{10}`` nodes.
+# We proceed as follows. We first look at the stencil and at its Dirichlet closure on a grid of 8 nodes, which shows
+# where the boundary value sits. We then assemble and solve a Dirichlet problem with [`ResidualALS`](@ref), and check
+# the solution against a dense solve of the same system. Finally, we add a Neumann side, which needs a symmetrization,
+# and a periodic axis, and compare the convergence of all of them on grids of ``2^4`` to ``2^{10}`` nodes.
 
 using DifferenTT
 using ITensors, ITensorMPS
@@ -319,7 +319,7 @@ end
 
 # The solver errors stay far below the discretization errors, so the table measures the discretizations. The error of
 # the Dirichlet problem with ``q = 2`` decreases by a factor of 16 every two bits, i.e. as ``h^2``, and so does the
-# error of the Neumann-Dirichlet problem, whose mirrored closure and half-cell weight keep second order. The periodic
+# error of the Neumann–Dirichlet problem, whose mirrored closure and half-cell weight keep second order. The periodic
 # problem with ``q = 8`` converges much faster, as its stencil is of order 8 everywhere, until it reaches the
 # accuracy of the solve.
 #

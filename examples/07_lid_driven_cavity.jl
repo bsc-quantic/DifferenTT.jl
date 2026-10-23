@@ -18,7 +18,7 @@
 # The guiding idea of this tutorial is to test the whole scheme on the classical benchmark of the lid-driven cavity, a
 # unit square whose top wall slides at unit speed, against the steady solution of Ghia, Ghia & Shin (1982) at
 # ``Re = 100``. We set up the faces and the grid, choose the time step from the CFL condition, run the evolution until
-# the flow is steady, and compare the velocity along the two centrelines with the tabulated values. The boundary
+# the flow is steady, and compare the velocity along the two centerlines with the tabulated values. The boundary
 # treatment itself, the ghost nodes and the wall vorticity formulas, is derived step by step in the boundary-condition
 # tutorial on the vorticity–streamfunction formulation.
 
@@ -117,7 +117,7 @@ elapsed = @elapsed vorticity_evolve!(experiment, solver, stepper, 50)
     maxlinkdim(last(experiment.psi_field))
 )
 
-# ## Centreline velocities
+# ## Centerline velocities
 #
 # The velocity follows from the stream function by central differences ([`streamfunction_velocity`](@ref), which needs
 # the operators of a [`VorticityCache`](@ref)). With four walls at ``\psi = 0``, the discrete velocity is exactly
@@ -125,7 +125,7 @@ elapsed = @elapsed vorticity_evolve!(experiment, solver, stepper, 50)
 # [`contract_mps`](@ref), whose site 1 is the most significant index, so that the reshaped array has ``y`` along its
 # rows and ``x`` along its columns.
 #
-# The centrelines ``x = 0.5`` and ``y = 0.5`` lie halfway between the nodes ``n/2`` and ``n/2 + 1``, so we average those
+# The centerlines ``x = 0.5`` and ``y = 0.5`` lie halfway between the nodes ``n/2`` and ``n/2 + 1``, so we average those
 # two columns or rows, and complete the profiles with the wall values: ``u = 1`` on the lid and zero elsewhere. We then
 # interpolate them linearly at the points of Tables I and II of Ghia, Ghia & Shin (1982), whose ``Re = 100`` columns we
 # copy below, and measure the root-mean-square difference over the interior points.
@@ -217,23 +217,23 @@ rms(a, b) = sqrt(sum(abs2, a - b) / length(a))
 cache = VorticityCache(experiment)
 n = 2^nodes[1]
 coordinates = [0.0; h .* (1:n); 1.0]
-function centrelines(ψ)
+function centerlines(ψ)
     u, v = streamfunction_velocity(cache, ψ)
     U, V = reshape(contract_mps(u), n, n), reshape(contract_mps(v), n, n)
-    u_centre = [0.0; (U[:, n÷2] + U[:, n÷2+1]) / 2; 1.0]
-    v_centre = [0.0; (V[n÷2, :] + V[n÷2+1, :]) / 2; 0.0]
-    return u_centre, v_centre
+    u_center = [0.0; (U[:, n÷2] + U[:, n÷2+1]) / 2; 1.0]
+    v_center = [0.0; (V[n÷2, :] + V[n÷2+1, :]) / 2; 0.0]
+    return u_center, v_center
 end
 
 interior = 2:(length(ghia_y)-1)
 for k in eachindex(experiment.psi_field.u)
-    u_centre, v_centre = centrelines(experiment.psi_field[k])
+    u_center, v_center = centerlines(experiment.psi_field[k])
     @printf(
         "step %3d (t = %5.2f): rms(u - Ghia) = %.4f, rms(v - Ghia) = %.4f\n",
         50k,
         (50k - 1) * dt,
-        rms(interpolate.(Ref(coordinates), Ref(u_centre), ghia_y[interior]), ghia_u[interior]),
-        rms(interpolate.(Ref(coordinates), Ref(v_centre), ghia_x[interior]), ghia_v[interior])
+        rms(interpolate.(Ref(coordinates), Ref(u_center), ghia_y[interior]), ghia_u[interior]),
+        rms(interpolate.(Ref(coordinates), Ref(v_center), ghia_x[interior]), ghia_v[interior])
     )
 end
 
@@ -245,22 +245,23 @@ end
 # the lid, but the profiles already reproduce the shape and the extrema of the reference solution.
 #
 # The same scheme also reproduces the harder case of the original benchmark, given enough resolution. The experiment
-# `experiments/inse/liddriven_cavity` runs it at ``Re = 1000`` on ``2^7 \times 2^7`` interior nodes for 8000 steps; with
-# the code of the `paper-ttfai-data` tag, its centrelines differed from the ``Re = 1000`` columns of Ghia et al. by an
-# rms of ``5.4 \cdot 10^{-3}``, and its primary vortex had ``\psi_{\min} = -0.1173`` against their ``-0.1179``.
+# `experiments/validation/liddriven_cavity` runs it at ``Re = 1000`` on ``2^7 \times 2^7`` interior nodes for 8000
+# steps; with the code of the `paper-ttfai-data` tag, its centerlines differed from the ``Re = 1000`` columns of Ghia et
+# al. by an rms of ``5.4 \cdot 10^{-3}``, and its primary vortex had ``\psi_{\min} = -0.1173`` against their
+# ``-0.1179``.
 
 # ## Summary
 #
-# The figure shows the horizontal velocity along the vertical centreline (a) and the vertical velocity along the
-# horizontal centreline (b) of the last stored state, against the values of Ghia, Ghia & Shin (1982), and (c) the stream
+# The figure shows the horizontal velocity along the vertical centerline (a) and the vertical velocity along the
+# horizontal centerline (b) of the last stored state, against the values of Ghia, Ghia & Shin (1982), and (c) the stream
 # function, whose minimum marks the primary vortex, completed with its wall value ``\psi = 0``.
 
-u_centre, v_centre = centrelines(last(experiment.psi_field))
-panel_a = plot(; xlabel="u(0.5, y)", ylabel="y", title="(a) vertical centreline", legend=:bottomright)
-plot!(panel_a, u_centre, coordinates; label="DifferenTT, 16²", marker=:circle, markersize=3, color=:royalblue)
+u_center, v_center = centerlines(last(experiment.psi_field))
+panel_a = plot(; xlabel="u(0.5, y)", ylabel="y", title="(a) vertical centerline", legend=:bottomright)
+plot!(panel_a, u_center, coordinates; label="DifferenTT, 16²", marker=:circle, markersize=3, color=:royalblue)
 scatter!(panel_a, ghia_u, ghia_y; label="Ghia et al. (1982)", marker=:diamond, color=:black)
-panel_b = plot(; xlabel="x", ylabel="v(x, 0.5)", title="(b) horizontal centreline", legend=:bottomleft)
-plot!(panel_b, coordinates, v_centre; label="DifferenTT, 16²", marker=:circle, markersize=3, color=:royalblue)
+panel_b = plot(; xlabel="x", ylabel="v(x, 0.5)", title="(b) horizontal centerline", legend=:bottomleft)
+plot!(panel_b, coordinates, v_center; label="DifferenTT, 16²", marker=:circle, markersize=3, color=:royalblue)
 scatter!(panel_b, ghia_x, ghia_v; label="Ghia et al. (1982)", marker=:diamond, color=:black)
 Ψ = zeros(n + 2, n + 2)
 Ψ[2:(end-1), 2:(end-1)] = reshape(contract_mps(last(experiment.psi_field)), n, n)
