@@ -9,3 +9,6 @@ coverage:
         target: 80%
 comment:
   layout: "diff, flags, files"
+ignore:
+  - "src/TimeEvolution/implicitevol.jl" # work in progress, untested by decision (D13, #74)
+  - "src/precompile.jl" # the workload runs only while the package is precompiled
