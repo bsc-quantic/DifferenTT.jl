@@ -204,8 +204,8 @@ The first public release. Version 0.0.1 is the state of the library that produce
   the Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
   first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
   projection. A second-order closure by odd reflection is planned for v0.2.
-- `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`; the
-  paper's Chorin runs use it.
+- `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`;
+  `Grid(arch, box_size; periodic = DifferenTT.periodic_axes(bcs))` gives them the period `L`.
 - `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity it returns, and that
   `chorin_evolve!` stores, is the provisional field `u*` of the next step rather than the projected one. The order
   predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version.

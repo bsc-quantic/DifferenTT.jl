@@ -85,9 +85,9 @@ grid1.dx, first(grid1.points[1]), last(grid1.points[1])
 
 # A periodic axis needs a different spacing. Its node at ``L`` is the image of the node at 0, so it is not stored, and
 # the ``n`` stored nodes are spaced by ``h = L/n``; only then do the wrapped stencils of a [`PeriodicBC`](@ref) have
-# period ``L``. We ask for it with the `periodic` flag, which [`periodic_axes`](@ref) derives from the boundary
-# conditions of a field. Note that without the flag a periodic axis keeps both end nodes, and the period of its
-# stencils becomes ``L + h``, which is the grid that the Chorin runs of the paper (Sec. 5.2) used.
+# period ``L``. We ask for it with the `periodic` flag, which [`periodic_axes`](@ref DifferenTT.periodic_axes)
+# derives from the boundary conditions of a field. Note that without the flag a periodic axis keeps both end nodes,
+# and the period of its stencils becomes ``L + h``.
 
 grid1p = Grid(arch1, 1.0; periodic=true)
 grid1p.dx, last(grid1p.points[1])
@@ -97,13 +97,12 @@ grid1p.dx, last(grid1p.points[1])
 # Building the MPS of ``f`` from its dense vector by successive SVDs would cost ``\mathcal{O}(2^n)`` memory, which is
 # exactly what we want to avoid. Tensor cross interpolation (TCI) builds it instead from the values of ``f`` at a set
 # of nodes that it selects (pivots), whose number grows with ``n \chi^2`` and not with ``2^n`` (Núñez Fernández et
-# al., 2025). The library wraps TensorCrossInterpolation.jl in [`crossinterpolate2`](@ref
-# TensorCrossInterpolation.crossinterpolate2), which maps every multi-index that TCI requests to the coordinates of
-# its node, so that we only write ``f`` as a function of the coordinates.
+# al., 2025). The library wraps TensorCrossInterpolation.jl in `crossinterpolate2`, which maps every multi-index
+# that TCI requests to the coordinates of its node, so that we only write ``f`` as a function of the coordinates.
 #
 # As a first example we take ``f(x) = e^{-x} \sin(8 \pi x)`` on ``[0, 1]``. TCI starts from an initial pivot, by default
 # the node at the origin, and fails if ``f`` vanishes there, as this ``f`` does. We therefore start from the pivot of
-# [`optfirstpivot`](@ref TensorCrossInterpolation.optfirstpivot), the largest of a random search seeded by `rng`.
+# `TensorCrossInterpolation.optfirstpivot`, the largest of a random search seeded by `rng`.
 
 f(x) = exp(-x[1]) * sin(8π * x[1])
 
