@@ -132,7 +132,7 @@ function KrylovKit.linsolve(operator, b, x₀, alg::TTGMRES, a₀::Number=0, a�
             x = +(x, y_k[i] * V[i]; kwargs_tt...)
         end
 
-        # Recompute residual explicitly. TODO(release): avoid the extra application of A, as gmres.jl does
+        # Recompute residual explicitly. TODO(#64): avoid the extra application of A, as gmres.jl does
         r = copy(b)
         x_op = apply(operator, x; kwargs_tt...)
         q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)
@@ -286,7 +286,7 @@ function KrylovKit.linsolve(operator, b, x₀, M⁻¹, alg::TTGMRES, a₀::Numbe
             x = +(x, y_k[i] * V[i]; kwargs_tt...)
         end
 
-        # Recompute residual explicitly. TODO(release): avoid the extra application of A, as gmres.jl does
+        # Recompute residual explicitly. TODO(#64): avoid the extra application of A, as gmres.jl does
         r = copy(b)
         x_op = apply(operator, x; kwargs_tt...)
         q_x = iszero(α₀) ? (α₁ * x_op) : +(α₀ * x, α₁ * x_op; kwargs_tt...)

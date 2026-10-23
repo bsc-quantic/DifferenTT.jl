@@ -93,9 +93,10 @@ template = INSExperiment(
 
 # The pressure has a Dirichlet side, so its Poisson operator is not singular and needs no regularization:
 # [`regularization_check`](@ref) is `false`. The first known limitation of the Chorin projection of v0.1, the mean
-# removal of a singular system (see [`INSExperiment`](@ref)), is therefore inactive here. The second one is not: the
+# removal of a singular system (see [`INSExperiment`](@ref) and issue
+# [#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)), is therefore inactive here. The second one is not: the
 # projection ``\mathbf{u} = \mathbf{u}^* - dt\, \nabla p`` also changes the rows next to the Dirichlet velocity faces,
-# which in this setup are those of the inlet.
+# which in this setup are those of the inlet (issue [#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)).
 
 DifferenTT.regularization_check(template)
 

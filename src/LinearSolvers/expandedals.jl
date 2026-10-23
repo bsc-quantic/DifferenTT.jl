@@ -265,7 +265,7 @@ function ITensorMPS.alternating_update(
     sites = siteinds(init)
 
     for sweep in 1:nsweeps
-        # TODO(release): this deepcopy is expensive; reset the environments of reduced_operator instead
+        # TODO(#65): this deepcopy is expensive; reset the environments of reduced_operator instead
         reduced_operator = deepcopy(ITensorMPS.reduced_operator(operator))
         if maxlinkdim(state) < maxdim[sweep] && sweep > 1
             state = expander_func(state)

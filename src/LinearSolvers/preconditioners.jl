@@ -41,7 +41,7 @@ function rank1_preconditioner(operator::MPO)
     truncate!(rank1_operator; maxdim=1)
 
     preconditioner_tensors = ITensor[]
-    # TODO(release): this way of dropping the link indices of dimension 1 assumes the index order (s', s, links...)
+    # TODO(#68): this way of dropping the link indices of dimension 1 assumes the index order (s', s, links...)
     for tensor in rank1_operator
         mat = order(tensor) == 3 ? dropdims(array(tensor); dims=3) : dropdims(array(tensor); dims=(3, 4))
         invmat = _regularized_inv(mat)
@@ -207,7 +207,7 @@ function linsolve_preconditioner(
     return Preconditioner(MPO([preconditioner_mps...]))
 end
 
-# TODO(release): test the densitymatrix and zipup algorithms for the products below, with maxdim and cutoff
+# TODO(#68): test the densitymatrix and zipup algorithms for the products below, with maxdim and cutoff
 """
     fai_dg(operator::MPO, μ::Real, g_solver::AbstractLinearSolver, D_kwargs; preconditioning=false,
            residual_tol=nothing, compute_residual=false, rng=Random.default_rng(), kwargs...) -> (G̃_L::MPO, D::MPO)

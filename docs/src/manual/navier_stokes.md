@@ -54,23 +54,28 @@ and [Lid-driven cavity](@ref) runs the formulation on the classical benchmark.
 
 ## Known limitations
 
-The following limitations of v0.1 are recorded in the test suite, as `@test_broken` where a test applies, and in the release
-notes. They are planned for v0.2 and are not hidden by any option.
+The following limitations of v0.1 are recorded in the test suite, as `@test_broken` where a test applies, in the release
+notes, and as GitHub issues. They are planned for v0.2 and are not hidden by any option.
 
-  - **Mean removal in the Chorin projection.** When the pressure has no Dirichlet side, its Poisson system is singular and
-    the right-hand side is made consistent by subtracting a constant. That constant divides by ``\prod_i (n_i - 1)`` instead
-    of ``\prod_i n_i``, so the regularized system is not exactly consistent. This is inactive when the pressure has a
-    Dirichlet side, as in the channel of Sec. 5.2 of the paper. For an exact solve, the wrong constant only shifts
-    ``p\,dt`` by a constant and leaves ``\nabla p`` unchanged, since the rank-1 shift of [`ChorinCache`](@ref) removes
-    the node mean itself; a truncated TT solve satisfies this only approximately.
-  - **Wall rows in the Chorin projection.** The projection ``\mathbf{u} = \mathbf{u}^* - dt\, \nabla p`` is applied to every
-    row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep fixed, so the
-    tangential pressure gradient changes the boundary velocity a little at every step.
-  - **Dirichlet closure with ``q = 8``.** The lift fills every ghost node beyond a Dirichlet side with the boundary value,
-    which places the Dirichlet point one spacing beyond the last stored node and makes the closure only first-order
-    accurate for ``q = 8`` (second order for ``q = 2``). This affects the outlet pressure of the Chorin projection.
-  - **Order of the Chorin step.** `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity
-    that it returns, and that `chorin_evolve!` stores, is the provisional field ``\mathbf{u}^*`` of the next step and not
-    the projected one. The order predict, mask, project, which solves the same pressure systems, is to be reconsidered.
-  - **Period of a periodic axis.** `Grid` without the `periodic` flag keeps a node at both ends of a periodic axis, so its
-    stencils have period ``L + h`` ([Grids, fields and boundary conditions](@ref)).
+  - **Mean removal in the Chorin projection** ([#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)). When the
+    pressure has no Dirichlet side, its Poisson system is singular and the right-hand side is made consistent by
+    subtracting a constant. That constant divides by ``\prod_i (n_i - 1)`` instead of ``\prod_i n_i``, so the
+    regularized system is not exactly consistent. This is inactive when the pressure has a Dirichlet side, as in the
+    channel of Sec. 5.2 of the paper. For an exact solve, the wrong constant only shifts ``p\,dt`` by a constant and
+    leaves ``\nabla p`` unchanged, since the rank-1 shift of [`ChorinCache`](@ref) removes the node mean itself; a
+    truncated TT solve satisfies this only approximately.
+  - **Wall rows in the Chorin projection** ([#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)). The
+    projection ``\mathbf{u} = \mathbf{u}^* - dt\, \nabla p`` is applied to every row, including the ``q/2`` rows next to
+    the Dirichlet velocity faces that the time steppers otherwise keep fixed, so the tangential pressure gradient
+    changes the boundary velocity a little at every step.
+  - **Dirichlet closure with ``q = 8``** ([#51](https://github.com/bsc-quantic/DifferenTT.jl/issues/51)). The lift fills
+    every ghost node beyond a Dirichlet side with the boundary value, which places the Dirichlet point one spacing
+    beyond the last stored node and makes the closure only first-order accurate for ``q = 8`` (second order for
+    ``q = 2``). This affects the outlet pressure of the Chorin projection.
+  - **Order of the Chorin step** ([#53](https://github.com/bsc-quantic/DifferenTT.jl/issues/53)). `chorin_step` masks
+    and projects the velocity it receives and then predicts, so the velocity that it returns, and that `chorin_evolve!`
+    stores, is the provisional field ``\mathbf{u}^*`` of the next step and not the projected one. The order predict,
+    mask, project, which solves the same pressure systems, is to be reconsidered.
+  - **Period of a periodic axis** ([#52](https://github.com/bsc-quantic/DifferenTT.jl/issues/52)). `Grid` without the
+    `periodic` flag keeps a node at both ends of a periodic axis, so its stencils have period ``L + h``
+    ([Grids, fields and boundary conditions](@ref)).

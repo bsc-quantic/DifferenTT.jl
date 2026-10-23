@@ -622,14 +622,15 @@ on (Fig. 5 of Torrente et al., *Factorized approximate inverse preconditioners i
 The output is not orthogonalized, and it can throw, so callers need a fallback ([`tt_mul`](@ref)). With fewer than
 `nsite` sites the product of the full tensors is returned instead.
 
-The cross is deliberately run *without* a rank cap. Capping it truncates on greedily chosen interpolation pivots
-instead of on singular values, which costs two to three orders of magnitude in accuracy at a given rank, so
-[`tt_mul`](@ref) caps the result once, by SVD, afterwards. The raw rank stays bounded by the sketch size of
-`max(χ₁, χ₂, target_rank) + oversample` columns. This bound is also the main limitation: the product of two MPS can
-need a rank up to ``\\chi_1 \\chi_2``, and when it exceeds the sketch size the result is not merely truncated but can
-be far off. For two random MPS of bond dimension 16 on 16 sites, whose product has rank 256, the relative error was
-45 with the default sketch, 5 with `target_rank = 64`, and at round-off level from `target_rank = 128`. On the
-low-rank products of smooth fields it agrees with the direct product to the accuracy of the inputs.
+The cross is deliberately run *without* a rank cap. Capping it truncates on greedily chosen interpolation pivots instead
+of on singular values, which costs two to three orders of magnitude in accuracy at a given rank, so [`tt_mul`](@ref)
+caps the result once, by SVD, afterwards. The raw rank stays bounded by the sketch size of
+`max(χ₁, χ₂, target_rank) + oversample` columns. This bound is also the main limitation: the product of two MPS can need
+a rank up to ``\\chi_1 \\chi_2``, and when it exceeds the sketch size the result is not merely truncated but can be far
+off, and nothing reports it ([#55](https://github.com/bsc-quantic/DifferenTT.jl/issues/55)). For two random MPS of bond
+dimension 16 on 16 sites, whose product has rank 256, the relative error was 45 with the default sketch, 5 with
+`target_rank = 64`, and at round-off level from `target_rank = 128`. On the low-rank products of smooth fields it agrees
+with the direct product to the accuracy of the inputs.
 
 # Keywords
 
@@ -985,7 +986,7 @@ function elementwise_function(
     G = copy(mps1)
     x = nothing
 
-    # TODO(release): find out why the least-squares fit fails (SingularException) for about half of the Gaussian
+    # TODO(#54): find out why the least-squares fit fails (SingularException) for about half of the Gaussian
     # sketches, and whether the pseudo-inverse used with the uniform sketches would fix it
     use_pinv = positive_domain
 

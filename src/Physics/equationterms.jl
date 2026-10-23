@@ -15,7 +15,7 @@ See also [`diffusion`](@ref), [`NavierStokesPredictorRHS`](@ref).
 function advection(
     fields::NTuple{N,MPS}, diff_ops::DifferentialOps{N}; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)
 ) where {N}
-    # TODO(release): the products below are RSI products (tt_mul of two MPS), whose sketches come from the global
+    # TODO(#60): the products below are RSI products (tt_mul of two MPS), whose sketches come from the global
     # Random.default_rng(); advection, NavierStokesPredictorRHS and the experiments take no rng, so a run is only
     # reproducible by seeding the global generator (see examples/06_chorin_cylinder.jl). Thread an `rng` through.
     advection_components = ntuple(

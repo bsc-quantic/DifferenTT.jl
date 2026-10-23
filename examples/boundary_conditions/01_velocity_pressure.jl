@@ -414,11 +414,11 @@ end
 # ``q = 2`` only the first ghost node is reached, and the closure is exact for a linear field. For ``q = 8`` the nodes
 # ``u_{-2}, u_{-3}, u_{-4}`` also hold ``g`` instead of the extrapolated values, which leaves an error of order ``1/h``
 # on the first rows of the second derivative; the solution of a Poisson problem is then only first-order accurate. This
-# is a known limitation of v0.1 (listed in `NEWS.md`), whose planned fix for v0.2 is the odd reflection about the first
-# ghost node, ``u_{-1-k} = 2g - u_{-1+k}``. We show it on the linear field ``u(x) = 1 + x``, with the values ``u(-h)``
-# and ``u(L + h)`` of the two first ghost nodes as Dirichlet data. Its exact second derivative is zero, and we print the
-# largest entry of the lifted second derivative on ``2^4`` and ``2^5`` nodes of the [`Grid`](@ref) of ``[0, 1]``, for
-# both stencil orders.
+# is a known limitation of v0.1 (issue [#51](https://github.com/bsc-quantic/DifferenTT.jl/issues/51)), whose planned fix
+# for v0.2 is the odd reflection about the first ghost node, ``u_{-1-k} = 2g - u_{-1+k}``. We show it on the linear
+# field ``u(x) = 1 + x``, with the values ``u(-h)`` and ``u(L + h)`` of the two first ghost nodes as Dirichlet data. Its
+# exact second derivative is zero, and we print the largest entry of the lifted second derivative on ``2^4`` and ``2^5``
+# nodes of the [`Grid`](@ref) of ``[0, 1]``, for both stencil orders.
 
 function linear_field_residual(n, q)
     arch = TTArchitecture((n,))
@@ -840,7 +840,8 @@ A_singular = contract_mpo(singular_cache.poisson_op)
 # and the constant ``\mathbf{1}^\top \mathbf{x} = \mathbf{1}^\top \mathbf{b} / (c n)`` is the only trace of the
 # inconsistent part. The vorticity–streamfunction formulation removes this mean explicitly with [`remove_mean`](@ref),
 # ``\mathbf{b} - \bar{b}\, \mathbf{1}``. The Chorin projection removes a different constant, which is the first known
-# limitation (D8) of v0.1 (see [`INSExperiment`](@ref)): [`poisson_rhs`](@ref) subtracts
+# limitation of v0.1 (see [`INSExperiment`](@ref) and issue
+# [#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)): [`poisson_rhs`](@ref) subtracts
 # ``\sum_j b_j \prod_i h_i / \prod_i L_i = \sum_j b_j / \prod_i (n_i - 1)`` instead of ``\sum_j b_j / \prod_i n_i``,
 # since the box of the grid spans ``(n_i - 1) h_i`` per axis, so the right-hand side keeps the fraction
 # ``1 - \prod_i n_i / (n_i - 1)`` of its sum. We reproduce this term by term:
@@ -1031,7 +1032,7 @@ U_projected, V_projected = as_grid(contract_mps(projected[1])), as_grid(contract
     v=maximum(abs, V_projected - (V9 - dt * ghost_stencil(P, 1, 2, 8, h_y, :wrap, :wrap))) / maximum(abs, U9),
 )
 
-# Here the second known limitation of the Chorin projection of v0.1 (D8) acts. The projection is applied to every row,
+# Here the second known limitation of the Chorin projection of v0.1 acts. The projection is applied to every row,
 # including the ``q/2`` rows next to the inlet, which the time steppers hold at their initial values (Sec. 5). On the
 # inlet node itself the mirrored ``\partial_x p`` vanishes, so ``u`` keeps its Dirichlet value there, but ``v`` changes
 # by ``-dt\, \partial_y p``, and on the next three nodes, which the steppers also hold, both components change. We print
@@ -1043,12 +1044,13 @@ U_projected, V_projected = as_grid(contract_mps(projected[1])), as_grid(contract
 )
 
 # In a run, the next predictor holds these rows at the changed values, so the inlet velocity changes from step to step
-# instead of staying at its Dirichlet values. The test suite records this limitation as `@test_broken`, and it is
-# planned to be fixed in a later version. Two further conventions of [`chorin_step`](@ref) are worth recalling here: the
-# step masks and projects the velocity it receives and then predicts, so the velocity it returns is the provisional
-# ``\mathbf{u}^*`` of the next step rather than the projected field; and the projected velocity is only approximately
-# divergence-free, since the pressure system uses the compact Laplacian instead of the composition of the discrete
-# divergence and gradient (Sec. 5.2 of the paper).
+# instead of staying at its Dirichlet values. The test suite records this limitation as `@test_broken` (issue
+# [#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)), and it is planned to be fixed in a later version. Two
+# further conventions of [`chorin_step`](@ref) are worth recalling here: the step masks and projects the velocity it
+# receives and then predicts, so the velocity it returns is the provisional ``\mathbf{u}^*`` of the next step rather
+# than the projected field (issue [#53](https://github.com/bsc-quantic/DifferenTT.jl/issues/53)); and the projected
+# velocity is only approximately divergence-free, since the pressure system uses the compact Laplacian instead of the
+# composition of the discrete divergence and gradient (Sec. 5.2 of the paper).
 #
 # ## 10. Summary
 #

@@ -1,6 +1,6 @@
 # DifferenTT.jl release notes
 
-## v0.1.0 (unreleased)
+## v0.1.0 (TODO(release): release date)
 
 The first public release. Version 0.0.1 is the state of the library that produced the data of the FAI paper
 (tag `paper-ttfai-data`, commit `6850540`); the changes below are relative to it.
@@ -14,15 +14,14 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - Keyword form `fai_preconditioner(A; μ, solver, totalmaxdim=5, D_cutoff=1e-15, D_maxdim=typemax(Int),
   D_oversample=10, preconditioning=false, residual_tol=nothing, compute_residual=false, rng, kwargs...)`, with the
   defaults the positional form used. `fai_dg` stays internal.
-- `fai_dg(...; compute_residual=false)`: see Changed.
 - `GlobalUpdaterArgs(; converged_store)`: a `Ref{Bool}` that receives whether the global Krylov solve converged.
-- `enable_debug_timings!()` and `disable_debug_timings!()` (they were exported but undefined).
 - `public` declarations for the documented non-exported API (tensor-train utilities, operator and physics building
   blocks, Krylov algorithm types and statistics, the local updaters and the `ExpandedALS` expansions
   (`AbstractUpdater`, `AbstractALSExpansion`, `NullExpansion`, `RandomSPSDexpansion`, `RandomLTexpansion`,
   `ResidualExpansion`), the observer helpers `bind_observer` and `default_differenTT_checkdone`, and the renamed
   functions below).
-- `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code.
+- `THIRD_PARTY_NOTICES.md`, with the KrylovKit.jl and TT-Toolbox notices and the provenance of the RSI code, and
+  `CITATION.cff`, with the citation of the code and of the FAI paper.
 - Plotting moved to the package extension `DifferenTTPlotsExt`: `visualize_scalar`, `visualize_vector` and
   `visualize_vorticity` need `using Plots`, and print a hint otherwise.
 - `Grid(arch, box_size; periodic)`, `interior_grid(...; periodic)` and the exported `periodic_axes(bcs)`: a periodic
@@ -61,7 +60,7 @@ The first public release. Version 0.0.1 is the state of the library that produce
   `@debug`. The CFL and Kolmogorov checks and the `vmax = 1` fallback of `INSVorticityExperiment` keep their
   `@info`/`@warn` messages, since they tell how an experiment will behave for its parameters.
 - `fai_dg`, and through it `fai_preconditioner`, compute and log the residual of the projected FAI system only with
-  `compute_residual = true` (the default is `false`; it used to be always computed and logged).
+  the new keyword `compute_residual = true` (the default is `false`; it used to be always computed and logged).
 - The global solvers (`GlobalCG`, `GlobalGMRES`) warn when they stop without converging, and throw `ArgumentError`
   for a `numiter_store` or `converged_store` that does not support `store[] = value`.
 - `ResidualALS.residual_tol` and `residual_damp` are `Float64`.
@@ -74,7 +73,7 @@ The first public release. Version 0.0.1 is the state of the library that produce
   right-to-left pass, `suffix_sketches(...; positive)`), instead of re-sketching every suffix at every bond. It is
   faster, and with a fixed seed its results (including the `D` of `fai_preconditioner`) differ from v0.0.1 at the
   sketch-noise level.
-- `Project.toml`: version `0.1.0-DEV`; `DataFrames`, `LaTeXStrings` and `Statistics` removed; `Plots` is a weak
+- `Project.toml`: version `0.1.0`; `DataFrames`, `LaTeXStrings` and `Statistics` removed; `Plots` is a weak
   dependency.
 
 ### Breaking
@@ -134,7 +133,7 @@ The first public release. Version 0.0.1 is the state of the library that produce
 - `DifferentialOpsScalar(grid, field, n_eyepad)` threw on a missing grid field. The padded operator is scaled by the
   spacing of the coarse grid of `2^(n - p)` nodes over the same box in QTT, and by the original spacing in TT.
 - The exports `sited_dim` (now `site_dim`) and `enable_debug_timings!` named functions that did not exist;
-  `enable_debug_timings!` and `disable_debug_timings!` are now defined.
+  `enable_debug_timings!` and `disable_debug_timings!` are now defined and exported.
 - Since the paper data were produced: the forward-Euler CFL bound no longer carries a dimension factor.
 - `disable_debug_timings!` had no effect when called in the same world as `enable_debug_timings!`.
 - `tt_mul` (MPS-MPS) and `elementwise_function` returned their (first) input unchanged, with no error, for an MPS with
@@ -199,15 +198,27 @@ The first public release. Version 0.0.1 is the state of the library that produce
 
 ### Known limitations
 
-- Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)`
-  instead of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also
-  changes the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2.
-- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places
-  the Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
+- Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)` instead
+  of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also changes
+  the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2 ([#49],
+  [#50]).
+- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places the
+  Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
   first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
-  projection. A second-order closure by odd reflection is planned for v0.2.
+  projection. A second-order closure by odd reflection is planned for v0.2 ([#51]).
 - `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`;
-  `Grid(arch, box_size; periodic = periodic_axes(bcs))` gives them the period `L`.
+  `Grid(arch, box_size; periodic = periodic_axes(bcs))` gives them the period `L` ([#52]).
 - `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity it returns, and that
   `chorin_evolve!` stores, is the provisional field `u*` of the next step rather than the projected one. The order
-  predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version.
+  predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version ([#53]).
+- The other known issues of v0.1 (bugs, missing options, performance, tests and the experiments) are open GitHub issues,
+  [#54] to [#80]; the ones planned for v0.2 are in the [v0.2 milestone][milestone-v0.2].
+
+[#49]: https://github.com/bsc-quantic/DifferenTT.jl/issues/49
+[#50]: https://github.com/bsc-quantic/DifferenTT.jl/issues/50
+[#51]: https://github.com/bsc-quantic/DifferenTT.jl/issues/51
+[#52]: https://github.com/bsc-quantic/DifferenTT.jl/issues/52
+[#53]: https://github.com/bsc-quantic/DifferenTT.jl/issues/53
+[#54]: https://github.com/bsc-quantic/DifferenTT.jl/issues/54
+[#80]: https://github.com/bsc-quantic/DifferenTT.jl/issues/80
+[milestone-v0.2]: https://github.com/bsc-quantic/DifferenTT.jl/milestone/1

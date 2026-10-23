@@ -80,8 +80,8 @@ last stored node as zero, and the value then enters in a different way depending
 
 Note that the Dirichlet value therefore sits on the first ghost node, one spacing beyond the last stored node, and that
 the lift fills every ghost node with it. This is exact for ``q = 2``, but for ``q = 8`` and a solution with a nonzero
-slope at the boundary it makes the closure, and the solution, only first-order accurate (a known limitation of v0.1;
-the higher-order closure is planned for v0.2).
+slope at the boundary it makes the closure, and the solution, only first-order accurate (a known limitation of v0.1,
+[#51](https://github.com/bsc-quantic/DifferenTT.jl/issues/51); the higher-order closure is planned for v0.2).
 
 # Fields
 

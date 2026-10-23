@@ -38,11 +38,12 @@ julia> periodic_axes(bcs)
 (false, true)
 ```
 
-Two details matter in practice. First, a Dirichlet value sits on the first ghost node, one spacing beyond the last stored
-node, and the lift fills every ghost node with it. This is exact for the stencil order ``q = 2``, but with ``q = 8`` and
-a solution with a nonzero slope at the boundary the closure is only first-order accurate. This is a known limitation of
-v0.1 ([Navier–Stokes](@ref)). Second, the mirrored Neumann closure breaks the symmetry of the Laplacian, and
-[`neumann_weight_mpo`](@ref) restores it for the linear systems; [`symmetrized_laplacian`](@ref) applies it for us.
+Two details matter in practice. First, a Dirichlet value sits on the first ghost node, one spacing beyond the last
+stored node, and the lift fills every ghost node with it. This is exact for the stencil order ``q = 2``, but with
+``q = 8`` and a solution with a nonzero slope at the boundary the closure is only first-order accurate. This is a known
+limitation of v0.1 ([Navier–Stokes](@ref), issue [#51](https://github.com/bsc-quantic/DifferenTT.jl/issues/51)). Second,
+the mirrored Neumann closure breaks the symmetry of the Laplacian, and [`neumann_weight_mpo`](@ref) restores it for the
+linear systems; [`symmetrized_laplacian`](@ref) applies it for us.
 
 ## Grids
 

@@ -414,7 +414,7 @@ every sweep, from the expansion
 which costs three TT inner products and never forms ``A\\mathbf{x}``. Note that this expansion suffers from
 cancellation: its rounding error is of order
 ``\\sqrt{\\epsilon}\\, \\|\\mathbf{b}\\| \\approx 1.5 \\cdot 10^{-8} \\|\\mathbf{b}\\|``, so a tolerance below about
-``10^{-8}`` is checked against rounding noise.
+``10^{-8}`` is checked against rounding noise ([#76](https://github.com/bsc-quantic/DifferenTT.jl/issues/76)).
 
 `A` and `b` can be left as `nothing`: the DMRG-type [`linearsolve`](@ref) methods then bind them to the operator and
 right-hand side of each call (always the unpreconditioned ones, never `M⁻¹`), so that one observer stored in

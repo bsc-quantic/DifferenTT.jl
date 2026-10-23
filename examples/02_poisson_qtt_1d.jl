@@ -324,11 +324,12 @@ end
 # accuracy of the solve.
 #
 # The other three rows are first order, i.e. they decrease by a factor of 4 every two bits, and for two different
-# reasons. On the default `Grid` the boundary is misplaced by one spacing, at both Dirichlet sides or in the period,
-# so the error is ``\mathcal{O}(h)`` whatever the stencil order. The Dirichlet problem with ``q = 8`` is on the right
-# grid, but its closure fills all four ghost nodes of a side with the boundary value, which is consistent only to
-# first order where the solution has a nonzero slope at the boundary. This is a known limitation of v0.1 (see
-# [`DirichletBC`](@ref)), and the reason we use ``q = 2`` for Dirichlet problems in this tutorial.
+# reasons. On the default `Grid` the boundary is misplaced by one spacing, at both Dirichlet sides or in the period, so
+# the error is ``\mathcal{O}(h)`` whatever the stencil order. The Dirichlet problem with ``q = 8`` is on the right grid,
+# but its closure fills all four ghost nodes of a side with the boundary value, which is consistent only to first order
+# where the solution has a nonzero slope at the boundary. This is a known limitation of v0.1 (see [`DirichletBC`](@ref)
+# and issue [#51](https://github.com/bsc-quantic/DifferenTT.jl/issues/51)), and the reason we use ``q = 2`` for
+# Dirichlet problems in this tutorial.
 
 # ## Summary
 #

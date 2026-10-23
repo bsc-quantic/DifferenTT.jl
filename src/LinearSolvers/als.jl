@@ -39,7 +39,7 @@ Base.@kwdef struct ALS <: AbstractDMRGSolver
     updater::AbstractUpdater = KrylovUpdater()
 end
 
-# TODO(release): support the shifted system (a₀ + a₁A)x = b; the updaters already accept `coefficients`, but
+# TODO(#66): support the shifted system (a₀ + a₁A)x = b; the updaters already accept `coefficients`, but
 # `linearsolve` always passes (false, true).
 
 """

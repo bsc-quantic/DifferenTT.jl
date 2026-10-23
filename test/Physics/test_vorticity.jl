@@ -1042,3 +1042,10 @@ end
         @test relerr(dense_field(last(experiment.psi_field), grid, arch), Ψ) < 1e-6
     end
 end
+
+@testset "VorticityFace hierarchy" begin
+    # Every face type of the vorticity–streamfunction scheme is a VorticityFace, and the faces of the cavity are
+    @test isabstracttype(VorticityFace)
+    @test all(T -> T <: VorticityFace, (NoSlipWall, SlipWall, InflowFace, OutflowFace, PeriodicFace))
+    @test all(face -> face isa VorticityFace, collect(Iterators.flatten(cavity_faces(1.0))))
+end

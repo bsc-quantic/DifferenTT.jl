@@ -227,3 +227,27 @@ end
 @testset "_clear_cache! is a no-op on other objects" begin
     @test isnothing(DifferenTT._clear_cache!(1))
 end
+
+@testset "Linear solver and expansion hierarchies" begin
+    # The sweeping solvers are AbstractDMRGSolvers, the global Krylov solvers are not, and both are AbstractLinearSolvers
+    @test isabstracttype(AbstractLinearSolver) && isabstracttype(AbstractDMRGSolver)
+    @test AbstractDMRGSolver <: AbstractLinearSolver
+    for solver in (ALS(), ResidualALS(), AMEn(), ExpandedALS())
+        @test solver isa AbstractDMRGSolver
+    end
+    for solver in (GlobalCG(), GlobalGMRES())
+        @test solver isa AbstractLinearSolver && !(solver isa AbstractDMRGSolver)
+    end
+    # The expansions of ExpandedALS
+    @test isabstracttype(DifferenTT.AbstractALSExpansion)
+    @test all(
+        T -> T <: DifferenTT.AbstractALSExpansion,
+        (
+            DifferenTT.NullExpansion,
+            DifferenTT.RandomSPSDexpansion,
+            DifferenTT.RandomLTexpansion,
+            DifferenTT.ResidualExpansion,
+        ),
+    )
+    @test ExpandedALS().expander_func isa DifferenTT.AbstractALSExpansion
+end
