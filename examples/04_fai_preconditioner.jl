@@ -35,8 +35,8 @@ ITensors.disable_warn_order()
 # ``2^{n_x} \times 2^{n_y}`` nodes, with the eighth-order stencils of the paper (``q = 8``), and take the operator
 # ``A = -W\Delta`` of [`symmetrized_laplacian`](@ref), whose Neumann rows are weighted by ``W`` so that ``A`` is
 # symmetric. The periodic axis is built with the `periodic` flag of [`Grid`](@ref), which gives it the spacing
-# ``h_y = 1/2^{n_y}`` and the period 1; [`periodic_axes`](@ref), which is not exported, reads the flags from the
-# boundary conditions.
+# ``h_y = 1/2^{n_y}`` and the period 1; [`periodic_axes`](@ref DifferenTT.periodic_axes), which is not exported, reads
+# the flags from the boundary conditions.
 
 pressure_bcs = BoundaryConditions(
     BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC())

@@ -690,11 +690,11 @@ maximum(
 # Which sides are walls deserves care. A one-dimensional boundary condition selects them with
 # `DifferenTT.dirichlet_flags`, i.e. every `DirichletBC` side, but in the vorticity–streamfunction formulation an inflow
 # is a `DirichletBC` too, and its vorticity is prescribed, not recovered from ``\psi``. The cache therefore passes the
-# flags of the no-slip walls only, `DifferenTT.noslip_flags(faces)`, to [`wall_vorticity_operator`](@ref), which scales
-# each ``S_1`` by ``1/h^4``, lifts it to two dimensions with [`ndim_operator_mpo`](@ref) and sums over the axes, so that
-# a node next to two walls receives both contributions. We print the flags of the channel and check ``S`` densely
-# against ``\mathbb{I} \otimes S_1/h_y^4``; we also print the columns ``x_i`` on which the two-argument method, which
-# takes every `DirichletBC` side, would add entries.
+# flags of the no-slip walls only, `DifferenTT.noslip_flags(faces)`, to [`wall_vorticity_operator`](@ref
+# DifferenTT.wall_vorticity_operator), which scales each ``S_1`` by ``1/h^4``, lifts it to two dimensions with
+# [`ndim_operator_mpo`](@ref) and sums over the axes, so that a node next to two walls receives both contributions. We
+# print the flags of the channel and check ``S`` densely against ``\mathbb{I} \otimes S_1/h_y^4``; we also print the
+# columns ``x_i`` on which the two-argument method, which takes every `DirichletBC` side, would add entries.
 
 S₁_y = DifferenTT.onedim_wall_vorticity_correction(TTArchitecture((n_y,)), 1, (true, true))
 S = contract_mpo(cache.wall_op)
@@ -773,9 +773,9 @@ end
 #   column next to the face.
 # - On an outflow, the mirrored Neumann closure gives the outflow node a zero first derivative (the last row of the
 #   operator printed in Sec. 5 is zero), so the vorticity that reaches the outflow would never leave the domain.
-#   [`outflow_advection_closure`](@ref) replaces that row by the first-order upwind difference
-#   ``(F_n - F_{n-1})/h_x``, which assumes that the flow leaves through the face: backflow through an `OutflowFace` is
-#   not supported.
+#   [`outflow_advection_closure`](@ref DifferenTT.outflow_advection_closure) replaces that row by the first-order
+#   upwind difference ``(F_n - F_{n-1})/h_x``, which assumes that the flow leaves through the face: backflow through an
+#   `OutflowFace` is not supported.
 #
 # The upwind row is added to the mirrored operator as the entries `(n, n, 1)` and `(n, n - 1, -1)`, through
 # `DifferenTT.onedim_entry_operator`. We print the resulting first derivative along ``x`` on 8 nodes, multiplied by 2,
@@ -799,8 +799,9 @@ D_y_truncated = ghost_operator(1, n_y, :truncate, :truncate)
     ) * h_x,
 )
 
-# The cache obtains these operators by calling [`outflow_advection_closure`](@ref) on the plain operators of the
-# vorticity; without an outflow face, as in the cavity, the function returns its input unchanged.
+# The cache obtains these operators by calling [`outflow_advection_closure`](@ref DifferenTT.outflow_advection_closure)
+# on the plain operators of the vorticity; without an outflow face, as in the cavity, the function returns its input
+# unchanged.
 
 plain_omega_ops = DifferentialOpsScalar(grid, experiment.omega_field; stencil_order=2)
 cavity_omega_ops = DifferentialOpsScalar(cavity_grid, cavity.omega_field; stencil_order=2)

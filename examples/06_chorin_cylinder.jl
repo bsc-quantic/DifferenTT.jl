@@ -35,9 +35,9 @@ ITensors.disable_warn_order()
 # periodic in ``y``.
 #
 # The periodic axis is built with the `periodic` flag of [`Grid`](@ref), taken from the boundary conditions by the
-# non-exported [`periodic_axes`](@ref): the 64 nodes of ``y`` are spaced by ``h_y = 1/64`` and the wrapped stencils have
-# period 1. The numbers of this tutorial are not a reproduction of those of the paper, since they are computed on a much
-# smaller grid.
+# non-exported [`periodic_axes`](@ref DifferenTT.periodic_axes): the 64 nodes of ``y`` are spaced by ``h_y = 1/64`` and
+# the wrapped stencils have period 1. The numbers of this tutorial are not a reproduction of those of the paper, since
+# they are computed on a much smaller grid.
 
 nodes = (6, 6)
 arch = QTTArchitecture(nodes; interleaved=false)
@@ -59,9 +59,9 @@ grid.dx
 # ```
 #
 # which is 1 in the fluid and 0 inside the cylinder. We encode it as an MPS by tensor cross interpolation
-# ([`crossinterpolate2`](@ref TensorCrossInterpolation.crossinterpolate2)), which samples the function at the grid
-# nodes, starting from the pivot of a seeded random search. Its bond dimension stays far below the ``2^6 = 64`` of a
-# generic function on this grid, and the interpolation error is at the level of rounding.
+# (`crossinterpolate2`), which samples the function at the grid nodes, starting from the pivot of a seeded random
+# search. Its bond dimension stays far below the ``2^6 = 64`` of a generic function on this grid, and the interpolation
+# error is at the level of rounding.
 
 mask_function(x) = 0.5 * (1 + tanh(700 * ((x[1] - 0.5)^2 + (x[2] - 0.5)^2 - 0.1^2)))
 pivot = optfirstpivot(Float64, mask_function, grid, arch; rng=StableRNG(1))
