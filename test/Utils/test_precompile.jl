@@ -26,14 +26,20 @@ using Preferences: load_preference
             depots = copy(DEPOT_PATH)
             empty!(DEPOT_PATH)
             push!(DEPOT_PATH, depot)
+            # Pkg.test runs with JULIA_LOAD_PATH = "@:<testdir>", which leaves the default environment off the load path
+            loadpath = copy(LOAD_PATH)
+            "@v#.#" in LOAD_PATH || push!(LOAD_PATH, "@v#.#")
             try
                 DifferenTT.set_precompile_workload(false; default_environment=true)
                 env = joinpath(depot, "environments", "v$(VERSION.major).$(VERSION.minor)")
-                @test isfile(joinpath(env, "LocalPreferences.toml"))
+                prefs = joinpath(env, "LocalPreferences.toml")
+                @test isfile(prefs)
+                @test occursin("precompile_workload = false", read(prefs, String))
                 # The active environment sets nothing, so the setting is inherited through the load path
                 @test load_preference(DifferenTT, "precompile_workload") === false
             finally
                 append!(empty!(DEPOT_PATH), depots)
+                append!(empty!(LOAD_PATH), loadpath)
             end
         end
     end
