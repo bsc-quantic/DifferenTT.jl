@@ -118,3 +118,11 @@ using .TestUtils
         @test ScalarField(arch, bcs).bcu === bcs
     end
 end
+
+@testset "BoundaryCond hierarchy" begin
+    # The one-sided conditions are the subtypes of the abstract BoundaryCond that BoundaryCond1d accepts
+    @test isabstracttype(BoundaryCond)
+    @test all(T -> T <: BoundaryCond, (PeriodicBC, OpenBC, DirichletBC, NeumannBC))
+    @test DirichletBC(1.0) isa BoundaryCond && NeumannBC(0.0) isa BoundaryCond
+    @test BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0)) isa BoundaryCond1d{<:BoundaryCond,<:BoundaryCond}
+end
