@@ -21,7 +21,7 @@ Tensor Cross Interpolation (`maskplots/` holds the pictures of the masks). The c
 were produced before the library fixes listed in `experiments/README.md`, so they are not comparable with new runs.
 Both `generate_masks.jl` sample the mask on the periodic grid of the workers, `Grid(arch, (2.0, 1.0); periodic=(false, true))`,
 and store the description of that grid next to every mask (`common/mask_grid.jl`). Every Chorin worker compares it with its
-own grid and stops with an `ArgumentError` if it differs or is missing, so a mask from the plain grid is never used by mistake.
+own grid and stops with an `ArgumentError` if it differs or is missing, so a mask sampled on another grid is never used by mistake.
 The `masks.jld2` of `chorin_pipeline` has been regenerated on the periodic grid; the one of `chorin_pipeline_globalcg` is a copy of it (the two generators are the same script). A missing mask file is not an
 error: the worker warns ("mask not found") and runs without the obstacle. The statistics run of
 `paper/chorin_pipeline_stats` reads the masks of `chorin_pipeline` on purpose; `CHORIN_MASK_FILE` overrides the path in all

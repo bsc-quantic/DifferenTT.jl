@@ -55,7 +55,7 @@ Three fixes of the library change the numbers (all in `NEWS.md`): the FAI used t
 residual-based truncation of `ResidualALS` now uses `cutoff`, where it used `cutoff²`, so that bond dimensions and
 solutions at `cutoff > 0` differ (`tt_anisotropy_stats` uses `cutoff = 1e-13`; the Chorin worker uses `cutoff = 0`, which
 the change does not affect); and the Chorin and `linsolve_spd` workers now build the grid with `periodic = periodic_axes(bcs)`,
-so that the period in y is the length of the box and not the length plus one cell (the old data used the plain `Grid`).
+so that the period in y is the length of the box (see `NEWS.md`), which changes the numbers.
 Besides, the call of the FAI is now `fai_preconditioner` and the workers no longer pass `compute_cond`; both give the same
 preconditioner (we checked that the matrices agree exactly on a small case). Do not mix collected results of the two
 versions in one collect or plot.

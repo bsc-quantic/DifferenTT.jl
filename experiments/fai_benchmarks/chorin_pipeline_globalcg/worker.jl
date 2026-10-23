@@ -42,10 +42,10 @@ benchmark in turn.
 
 # Comparability with earlier data
 
-Data collected before this change are not comparable with new runs: they used the plain grid (the period in y was `L + h`),
-the transposed FSAI of the old FAI build, the old `ResidualALS` cutoff (the Frobenius floor used `cutoff²`, now it uses
-`cutoff`, as `ALS` and `AMEn` do) and masks sampled on the plain grid (see `NEWS.md`). Do not mix them in one collect or
-plot.
+Data collected before this change are not comparable with new runs: the old FAI build solved the transposed FSAI problem,
+and the old `ResidualALS` used `cutoff²` in the Frobenius floor, where it now uses `cutoff`, as `ALS` and `AMEn` do (see
+`NEWS.md`). The worker now builds the grid with `periodic = periodic_axes(bcs)`, so that the period in y is the length of the
+box (`NEWS.md`), and it stops if the metadata of the mask do not match that grid. Do not mix old and new data in one collect or plot.
 
 # Known limitations
 

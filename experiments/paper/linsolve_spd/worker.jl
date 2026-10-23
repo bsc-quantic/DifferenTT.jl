@@ -31,8 +31,8 @@ The grid is `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period
 mask of `fai_benchmarks/chorin_pipeline/masks.jld2` (or `CHORIN_MASK_FILE`); the worker stops with an `ArgumentError` if the
 metadata of the mask do not match that grid (`common/mask_grid.jl`). The setup is that of the paper repository. New runs are
 not comparable with the data of the current figures (tag `paper-ttfai-data`): the FAI now solves the correct FSAI problem,
-`linsolve_preconditioner` no longer returns the transpose of the inverse for a nonsymmetric operator, and the grid has the
-period of the box (see `NEWS.md`).
+`linsolve_preconditioner` no longer returns the transpose of the inverse for a nonsymmetric operator, and the worker builds
+the grid with the period of the box (`periodic = periodic_axes(bcs)`, see `NEWS.md`).
 
 # Inputs and outputs
 
