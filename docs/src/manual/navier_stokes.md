@@ -8,7 +8,8 @@ The incompressible Navier–Stokes equations couple the velocity ``\mathbf{u}`` 
 constraint ``\nabla \cdot \mathbf{u} = 0``, which makes the pressure a Lagrange multiplier that is determined by a Poisson
 equation at every time step. DifferenTT offers two formulations of the equations, with the same fields, operators,
 time steppers and linear solvers, and we describe here which type to pass and what each one imposes. The derivation of the
-boundary conditions of each formulation is in the corresponding tutorial, and the exact rules are in the docstrings.
+boundary conditions of each formulation is in the corresponding tutorial ([Velocity–pressure formulation](@ref bc_velocity_pressure)
+and [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction)), and the exact rules are in the docstrings.
 The signatures are in the [API reference](@ref api_physics).
 
 ## Time steppers
@@ -34,7 +35,8 @@ The caches that it builds once ([`ChorinCache`](@ref)), the single step [`chorin
 [Grids, fields and boundary conditions](@ref): in the setup of the paper the velocity has a Dirichlet inlet and a Neumann
 outlet, the pressure a Dirichlet outlet, and the second axis is periodic. For such an axis we recommend the grid
 `Grid(arch, box_size; periodic = DifferenTT.periodic_axes(p_bcs))`, which gives the stencils their intended period
-``L`` (the plain `Grid` gives ``L + h``).
+``L`` (the plain `Grid` gives ``L + h``). The tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure) derives
+the closures of this formulation, and [Channel flow past a cylinder](@ref) runs the pipeline of the paper in miniature.
 
 ## Vorticity–streamfunction formulation
 
@@ -47,6 +49,8 @@ each side of the domain is a [`VorticityFace`](@ref) that fixes the conditions o
 the grid, and [`cavity_faces`](@ref) the faces of the lid-driven cavity (Ghia, Ghia & Shin, 1982). The evolution is run
 by [`vorticity_evolve!`](@ref). Walls and inflows are ghost nodes one spacing outside the stored nodes, which is why the
 grid of this formulation is not the default one.
+The derivation of every face is in the tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction),
+and [Lid-driven cavity](@ref) runs the formulation on the classical benchmark.
 
 ## Known limitations
 

@@ -9,11 +9,17 @@ repository, in
 [`README.md`](https://github.com/bsc-quantic/DifferenTT.jl/blob/master/experiments/paper/README.md) lists, for each
 figure and table, the script that produces it, the environment, and the SLURM settings of the runs on the cluster.
 
-The library has changed while the paper was written. Several of the changes alter numbers (for instance the orientation
-of the FAI factor and the convention of the cutoff of [`ResidualALS`](@ref)), and the arguments of some functions
-changed. The scripts follow the current API, and the data of the paper are regenerated with the current version before
-submission, so numbers obtained with older versions need not agree digit by digit. The changes are listed in the release
-notes (`NEWS.md`).
+The figures of the current version of the paper were produced with the library as of the tag
+[`paper-ttfai-data`](https://github.com/bsc-quantic/DifferenTT.jl/tree/paper-ttfai-data) (commit `6850540`) and the
+scripts of the paper repository. The library has changed since then. Several of the changes alter numbers, for instance
+the orientation of the FAI factor and the convention of the cutoff of [`ResidualALS`](@ref), and the arguments of some
+functions changed. The scripts of `experiments/paper` follow the current API, so their results need not agree digit by digit
+with the data of that tag, and the two sets of results must not be mixed in one collection or plot. The changes are listed in
+the release notes (`NEWS.md`), and the README of `experiments/paper` lists the three that matter for the paper.
+
+The data of the paper are regenerated with the release version of the library before submission. **This is still open:** the
+commit that produces the new data, and the place where they are archived (with its DOI), are not yet fixed, and we will state
+them here and in the README of `experiments/paper` once the runs are done.
 
 The heavy runs of the paper need a cluster and are not part of the documentation build or of the tests. The experiment
 scripts also have a smoke mode, with tiny sizes, which only checks that they run.

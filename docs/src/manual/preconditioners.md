@@ -1,3 +1,7 @@
+```@meta
+CurrentModule = DifferenTT
+```
+
 # Preconditioners
 
 DMRG-type solvers reduce a large linear system in the TT format to a sequence of small local problems, which they solve
@@ -166,9 +170,18 @@ the local residual (Oseledets & Dolgov, 2012); the Sinc preconditioner ``B_M`` o
 
 ## Choosing the parameters
 
-The paper's experiments use ``\mu = 10^7``; the results do not change for ``\mu`` between ``10^5`` and ``10^8``, as
-expected from the independence of the exact solution from ``\mu``. Larger values make the system of Eq. (22) worse
-conditioned for Krylov local solvers, so a small ``\mu`` builds faster when the build is solved accurately. The FAI is
+The paper's experiments use ``\mu = 10^7``, and the exact solution of Eq. (22) does not depend on ``\mu``: the results
+do not change for ``\mu`` between ``10^5`` and ``10^8``. The value does set the conditioning of the build. The operator
+of Eq. (22) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the identity on the
+entries above the diagonal, so its condition number is ``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``.
+A ``\mu`` far above the top of the spectrum of ``A`` therefore makes the local Krylov solves of the build slower and, with a
+capped number of sweeps, can return a worse preconditioner. On a ``2^5 \times 2^5`` QTT pressure operator with
+``\lambda_{\max}(A) \approx 8 \cdot 10^3``, ``\chi_{G_L} = 4`` and 30 MALS sweeps, ``\mu = 10^3`` built in 4.6 s with
+``\kappa(G_L^\top G_L A) = 5.3``, whereas ``\mu = 10^7`` gave ``\kappa = 146`` and did not converge within the 30 sweeps.
+Since ``\lambda_{\max}(A)`` grows as ``h^{-2}``, the paper's ``\mu = 10^7`` is close to the top of the spectrum only on
+its finest grids, and on a coarse grid we recommend ``\mu \approx \lambda_{\max}(A)``, estimated from the stencil or from a
+few Lanczos iterations (see [`fai_preconditioner`](@ref) and the tutorial
+[Factorized approximate inverse preconditioners](@ref)). The FAI is
 built by MALS with a local tolerance between ``10^{-5}`` and ``10^{-8}``, stopping once the relative residual of Eq.
 (22) is below ``10^{-1}`` (`residual_tol = 0.1`), and with ``\chi_{G_L}`` between 4 and 10 (`totalmaxdim`). The bond
 dimension of ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and

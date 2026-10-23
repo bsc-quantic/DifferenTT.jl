@@ -113,6 +113,25 @@ Note that this solution is discrete: with Dirichlet conditions the boundary valu
 node, as [Grids, fields and boundary conditions](@ref) explains, so it should be compared with a continuous solution only
 with that in mind.
 
+## Development
+
+When we edit the source of DifferenTT, the package is precompiled again at the next `using DifferenTT`, and the
+precompilation workload of the note above makes each of these rebuilds take about two minutes instead of a few seconds.
+In order to keep the edit–test cycle short, we recommend to turn the workload off on a development machine, for every
+environment at once:
+
+```julia
+using DifferenTT
+DifferenTT.set_precompile_workload(false; default_environment=true)
+```
+
+The setting is a preference of the package, stored in the `LocalPreferences.toml` of the default environment `@v#.#`, which
+every environment whose load path includes it inherits, and it takes effect after a restart of Julia. Without
+`default_environment=true` it is written to the active environment only, and the active environment takes precedence over
+the default one. The documentation workflow keeps the workload on: it builds the package once per run, and the workload
+saves most of the compilation time of the tutorials. We turn the workload on again with
+`DifferenTT.set_precompile_workload(true)`.
+
 ## Next steps
 
   - The [Tutorials](@ref tutorials_overview) repeat this construction with error studies and figures.
