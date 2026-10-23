@@ -80,7 +80,7 @@ for i in (SMOKE ? (2:2:4) : (200:200:25000))
         u = apply(diff_ops.d_ops[2], psi)
         v = -1.0 * apply(diff_ops.d_ops[1], psi)
 
-        # The vorticity is O(U/h) at the lid: clip the colour range to show the interior
+        # The vorticity is O(U/h) at the lid: clip the color range to show the interior
         visualize_scalar(
             omega_field,
             length(omega_field),

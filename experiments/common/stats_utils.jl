@@ -15,7 +15,7 @@ this again?". They mix two sources of variation that this file keeps separable:
     machine-noise floor; the summary decides per configuration from the data);
   * machine: wall-clock times at fixed iteration count.
 
-Ratios (speedups) are computed PAIRED, by repeat index, and summarised geometrically. In the
+Ratios (speedups) are computed PAIRED, by repeat index, and summarized geometrically. In the
 block layout (see stats_harness.jl) a repeat index of one system size is one block, i.e. one job on
 one node, so a pair is a within-node ratio; `n_pairs_samejob` counts the pairs for which that
 holds (a block refilled after a stop or failure is split over jobs), and `samejob_only` restricts
@@ -379,7 +379,7 @@ PAIRED ratios against the baseline of the same size:
   - `iters_reduction` = baseline `iters_col` / own `iters_col`
   - `cond_improvement` = kappa(A) / kappa(P^-1 A)               (condition-number runs only)
 
-each summarised as `<ratio>_{gm,gsd,median,q25,q75,mean,cv,n}` (see `ratio_stats`), plus
+each summarized as `<ratio>_{gm,gsd,median,q25,q75,mean,cv,n}` (see `ratio_stats`), plus
 `n_pairs_samejob`: how many of the baseline pairs ran in the same job (block layout: same node).
 With `samejob_only=true` the timing ratios use only those pairs (condition numbers do not depend
 on the node and keep every pair).
@@ -1276,7 +1276,7 @@ function write_variability_summary(
     end
     println(
         io,
-        "Speedups are per-repeat ratios (baseline / configuration at the $pair_txt), summarised by their geometric mean; `×/÷gsd` is the geometric standard deviation and IQR the interquartile range. Do not recompute them as a ratio of the means above.\n",
+        "Speedups are per-repeat ratios (baseline / configuration at the $pair_txt), summarized by their geometric mean; `×/÷gsd` is the geometric standard deviation and IQR the interquartile range. Do not recompute them as a ratio of the means above.\n",
     )
     println(
         io,

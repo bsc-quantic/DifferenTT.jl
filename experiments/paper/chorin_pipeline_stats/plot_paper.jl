@@ -2,7 +2,7 @@
     Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): paper plotter
 
 We draw here the figures of Sec. 5.2 of the paper from the table of repeats that `collect.jl` wrote. Every statistic is
-recomputed from the per-repeat rows, so the centre and the band that we draw are chosen in the parameter block below
+recomputed from the per-repeat rows, so the center and the band that we draw are chosen in the parameter block below
 (mean ± sd, median and IQR, geometric mean ×/÷ gsd, ...), and the speedups are paired by repeat index with the baseline of
 the same grid (repeat r uses the same seed in every configuration; `PAIRED_SPEEDUPS = false` gives the ratios of all
 pairs).
@@ -105,7 +105,7 @@ BEST_MU_BY = :solve    # :solve or :total, the speedup that picks the best μ fo
 
 # -------------------------------------------------------------------------
 # Statistics
-#   centre: :mean, :median, :gm (geometric mean)
+#   center: :mean, :median, :gm (geometric mean)
 #   spread: :sd, :sem, :ci95, :iqr, :minmax, :gsd (×/÷ geometric sd), :none
 # -------------------------------------------------------------------------
 TIME_CENTER = :mean;
@@ -119,7 +119,7 @@ PAIRED_SPEEDUPS = true      # false: ratios over every (baseline repeat, configu
 SPREAD_STYLE = :ribbon    # curves vs χ / system size: :ribbon, :errorbar, :none
 PROFILE_STYLE = :ribbon    # per-step / per-site curves: :ribbon or :none
 BAND_ALPHA = 0.18
-LOG_BAND_FLOOR = 0.5        # on log axes a band that would cross zero is cut at this fraction of the centre
+LOG_BAND_FLOOR = 0.5        # on log axes a band that would cross zero is cut at this fraction of the center
 
 SHOW_REPEAT_TRACES = true   # thin line per repeat behind the curves of the single-χ plots
 TRACE_ALPHA = 0.25
@@ -138,7 +138,7 @@ PARETO_BASELINE_BAND = true
 DIST_JITTER = 0.35        # horizontal spread of the per-repeat points
 DIST_POINT_SIZE = 4
 DIST_POINT_ALPHA = 0.6
-DIST_SUMMARY_OFFSET = 0.3         # the centre ± spread marker sits this far right of the points
+DIST_SUMMARY_OFFSET = 0.3         # the center ± spread marker sits this far right of the points
 DIST_XROTATION = 45
 DIST_BOTTOM_MARGIN = 12Plots.mm   # room for the rotated configuration labels
 
@@ -371,10 +371,10 @@ const SPREAD_NAMES = Dict(
     :gsd => "×/÷ 1 geometric standard deviation",
     :none => "no band",
 )
-describe_stat(center, spread) = "centre = $(CENTER_NAMES[center]), band = $(SPREAD_NAMES[spread])"
+describe_stat(center, spread) = "center = $(CENTER_NAMES[center]), band = $(SPREAD_NAMES[spread])"
 
 """
-(centre, lower, upper) of the finite samples in `x`; NaNs when nothing is left.
+(center, lower, upper) of the finite samples in `x`; NaNs when nothing is left.
 """
 function center_band(x; center=:mean, spread=:sd)
     v = Float64[Float64(y) for y in x if !ismissing(y) && isfinite(y)]
@@ -388,7 +388,7 @@ function center_band(x; center=:mean, spread=:sd)
     elseif center === :gm
         exp(mean(log.(v)))
     else
-        error("Unknown centre statistic: $center")
+        error("Unknown center statistic: $center")
     end
     sd = n > 1 ? std(v) : 0.0
     lo, hi = if spread === :sd
@@ -560,7 +560,7 @@ function spread_text(c, lo, hi, spread)
 end
 
 """
-Heatmap of the centres Z (rows = y labels), cells annotated with value and spread.
+Heatmap of the centers Z (rows = y labels), cells annotated with value and spread.
 """
 function stat_heatmap(xlabels, ylabels, Z, Zlo, Zhi; xlabel, ylabel, spread)
     nx, ny = length(xlabels), length(ylabels)
@@ -599,7 +599,7 @@ function stat_heatmap(xlabels, ylabels, Z, Zlo, Zhi; xlabel, ylabel, spread)
 end
 
 """
-Every repeat as a jittered point, plus the centre ± spread marker next to it.
+Every repeat as a jittered point, plus the center ± spread marker next to it.
 """
 function dist_plot(labels, samples, colors; ylabel, center, spread, yscale=:identity, breakeven=false)
     n = length(samples)
@@ -1217,7 +1217,7 @@ function plot_system_size(nodes)
         save_paper_plot(p_cum_c, joinpath(out_dir_c, "combined_step_cumulative_time"))
         have_sites && save_paper_plot(p_site_c, joinpath(out_dir_c, "combined_site_iterations"))
 
-        # -- every setup: site iterations (centres), residuals and divergence ratios per step
+        # -- every setup: site iterations (centers), residuals and divergence ratios per step
         all_band = SHOW_BANDS_IN_ALL_SETUPS ? PROFILE_STYLE : :none
         function all_setups_plot(col, ylabel, yscale, legend; per_step=true)
             p = plot(;
@@ -1314,7 +1314,7 @@ function plot_system_size(nodes)
                 r = rowwise(M; stat_kw...)
                 stat_series!(p, x, r...; style=band, logy=true, color=CHI_COLOR[g], lw)
                 ymax === nothing && continue
-                # Off-scale medians: arrow at the top edge, in the colour of the configuration
+                # Off-scale medians: arrow at the top edge, in the color of the configuration
                 out = findall(>(ymax), r.c)
                 isempty(out) && continue
                 append!(clipped, r.c[out])
@@ -1636,7 +1636,7 @@ open(joinpath(PLOTS_DIR, "stats_used.txt"), "w") do io
         "Cumulative total speedup (pairs/step_cumulative_total_speedup_*): per repeat, cumsum(baseline solve_times) / ",
         "(cumsum(FAI solve_times) + FAI precond_build_time); same statistics",
     )
-    println(io, "Best μ per χ_max chosen by the $(BEST_MU_BY) speedup centre")
+    println(io, "Best μ per χ_max chosen by the $(BEST_MU_BY) speedup center")
     println(
         io,
         "Discard first repeat per process: $(DISCARD_FIRST_IN_PROCESS); excluded repeats: $(EXCLUDED_REPEATS); excluded keys: $(EXCLUDED_KEYS)",

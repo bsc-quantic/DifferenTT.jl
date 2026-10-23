@@ -59,7 +59,7 @@ const U_LID = 1.0
 # Ghia, Ghia & Shin (1982), Re = 1000 columns, checked against Tables I, II and V of the paper. Their uniform
 # 129 × 129 grid includes the walls (h = 1/128), so the tabulated points are nodes of their grid, not of ours.
 # Their tabulated vorticities (Tables IV and V, not used here) have the opposite sign to ω = ∂ₓv - ∂ᵧu.
-# Table I: u along the vertical line through the geometric centre (x = 0.5)
+# Table I: u along the vertical line through the geometric center (x = 0.5)
 const GHIA_Y = [
     1.0000,
     0.9766,
@@ -98,7 +98,7 @@ const GHIA_U = [
     -0.18109,
     0.00000,
 ]
-# Table II: v along the horizontal line through the geometric centre (y = 0.5)
+# Table II: v along the horizontal line through the geometric center (y = 0.5)
 const GHIA_X = [
     1.0000,
     0.9688,
@@ -196,7 +196,7 @@ chi_omega = maxlinkdim(last(omega_field))
 
 report = """
 Lid-driven cavity vs Ghia et al. (1982), Re = 1000, step $last_step, $(K1)×$(K2) interior nodes
-  centreline RMS error: $(@sprintf("%.4f", centreline_rms))  (u: $(@sprintf("%.4f", u_rms)), v: $(@sprintf("%.4f", v_rms)))
+  centerline RMS error: $(@sprintf("%.4f", centreline_rms))  (u: $(@sprintf("%.4f", u_rms)), v: $(@sprintf("%.4f", v_rms)))
   ψ_min = $(@sprintf("%.5f", psi_min)) at $(@sprintf("(%.4f, %.4f)", psi_min_loc...))  (Ghia: $(GHIA_PSI_MIN) at $(GHIA_PSI_MIN_LOC))
   χ(ψ) = $chi_psi, χ(ω) = $chi_omega
 """
@@ -204,9 +204,9 @@ print(report)
 write(joinpath(base_folder, "ghia_comparison.txt"), report)
 
 ENV["GKSwstype"] = "100"
-p_u = plot(u_centre, ys; label="ψ–ω TT", xlabel="u(0.5, y)", ylabel="y", title="Vertical centreline")
+p_u = plot(u_centre, ys; label="ψ–ω TT", xlabel="u(0.5, y)", ylabel="y", title="Vertical centerline")
 scatter!(p_u, GHIA_U, GHIA_Y; label="Ghia et al. (1982)")
-p_v = plot(xs, v_centre; label="ψ–ω TT", xlabel="x", ylabel="v(x, 0.5)", title="Horizontal centreline")
+p_v = plot(xs, v_centre; label="ψ–ω TT", xlabel="x", ylabel="v(x, 0.5)", title="Horizontal centerline")
 scatter!(p_v, GHIA_X, GHIA_V; label="Ghia et al. (1982)")
 savefig(plot(p_u, p_v; layout=(1, 2), size=(1200, 500)), joinpath(base_folder, "ghia_centrelines.svg"))
 

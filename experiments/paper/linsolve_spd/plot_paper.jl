@@ -406,7 +406,7 @@ function chi_ticks(χs)
 end
 
 """
-Log y axis with decade ticks (L"10^{k}") and, when some points sit on it, a labelled level under the decades
+Log y axis with decade ticks (L"10^{k}") and, when some points sit on it, a labeled level under the decades
 (the "0" or "passed" level). Returns (; ylims, yticks, zero_y, sep_y).
 """
 function log_axis(values, needs_zero; zero_label=ZERO_TICK_LABEL)
@@ -480,7 +480,7 @@ function draw_curve!(p, x, y, kinds; color, marker, ls, lw, ms, msw, zero_y, lin
 end
 
 """
-Dotted separator between the labelled bottom level and the decades of a log axis.
+Dotted separator between the labeled bottom level and the decades of a log axis.
 """
 function separator!(p, ax, lw)
     (ZERO_LINE && ax.sep_y !== nothing && hline!(p, [ax.sep_y]; color=:gray70, ls=:dot, lw=lw / 2, label=""); p)
@@ -832,7 +832,7 @@ open(joinpath(PLOTS_DIR, "figure_notes.txt"), "w") do io
     println(io, "nneg metric: $(NNEG_METRIC), y scale $(YSCALE_NNEG), shared y limits: $(SHARED_YLIMS)")
     println(
         io,
-        "Grid sizes: 2^nx × 2^ny points (QTT nodes (nx, ny)); operator = -(symmetrised 8th-order Laplacian) of the Chorin pressure solve",
+        "Grid sizes: 2^nx × 2^ny points (QTT nodes (nx, ny)); operator = -(symmetrized 8th-order Laplacian) of the Chorin pressure solve",
     )
     for m in methods
         println(io, "\n[$(m.name)] $(m.section)")
