@@ -1,7 +1,7 @@
 """
     PivotSpace{P<:Pair}
 
-Space of an index whose values are labelled by pivots, as built by the cross interpolation of
+Space of an index whose values are labeled by pivots, as built by the cross interpolation of
 [`interpolative`](@ref): entry `r` of `pivots` lists the `site => value` pairs that select the `r`-th pivot. Wrapping
 the pivots in an owned type lets DifferenTT define `dim`, `hasqns` and `show` for these indices without type piracy.
 
@@ -533,7 +533,9 @@ Reset the counter reported by [`tt_mul_fallbacks`](@ref) to zero.
 reset_tt_mul_fallbacks!() = (TT_MUL_FALLBACKS[]=0; nothing)
 
 """
-Fill the dense ITensor `T` in place with independent uniform draws in [0, 1) from `rng`, and return it.
+    _rand_uniform!(rng::AbstractRNG, T::ITensor) -> ITensor
+
+Fill the dense ITensor `T` in place with independent uniform draws in ``[0, 1)`` from `rng`, and return it.
 """
 function _rand_uniform!(rng::AbstractRNG, T::ITensor)
     # Mutate the underlying NDTensors.Tensor directly with Base's rand!
