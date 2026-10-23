@@ -448,7 +448,7 @@ end
 end
 
 # Known limitations of the Chorin projection, kept as documented in v0.1 (decision D8 of the release plan): both are
-# recorded as @test_broken until they are fixed in v0.2.
+# recorded as @test_broken until they are fixed in v0.2 (issues #49 and #50).
 @testset "Chorin known limitations (D8)" begin
     arch = TTArchitecture((6, 6))
     sites = siteinds(arch)
@@ -468,12 +468,12 @@ end
 
     # The mean removal of poisson_rhs subtracts Σrhs / Π(nᵢ - 1) instead of Σrhs / Π nᵢ, because it divides
     # Σrhs · Π hᵢ by the box volume Π (nᵢ - 1) hᵢ. The regularized right-hand side therefore keeps a
-    # fraction 1 - Π nᵢ / (nᵢ - 1) of its mean.
+    # fraction 1 - Π nᵢ / (nᵢ - 1) of its mean (#49).
     rhs = DifferenTT.poisson_rhs(experiment, cache, u, dt)
     @test_broken abs(DifferenTT.integrate(rhs)) < 1e-10 * sqrt(n1 * n2) * norm(rhs)
 
     # The projection u = u* - dt ∇p also changes the Dirichlet wall rows, so the tangential pressure gradient drags
-    # the wall velocity a little at every step. The wall rows of the correction should be zero.
+    # the wall velocity a little at every step. The wall rows of the correction should be zero (#50).
     p = random_mps(rng(3), sites; linkdims=3)
     u_corr = DifferenTT.∇p_correction(u, experiment, cache, p, dt)
     wall = [i in (1, n1) || j in (1, n2) for j in 1:n2, i in 1:n1] # [y, x], site 1 (x) is the most significant

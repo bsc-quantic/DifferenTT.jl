@@ -403,7 +403,7 @@ function integrate(mps::MPS)
     return scalar(out)
 end
 
-# TODO(release): use a SampleCache in `samples`
+# TODO(#69): use a SampleCache in `samples`
 """
     samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::NTuple{N,Int}) -> (ranges, data)
     samples(mps::MPS, grid::Grid{N}, arch::Architecture, npoints::Int) -> (ranges, data)

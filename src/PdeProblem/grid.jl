@@ -60,9 +60,9 @@ Build the [`Grid`](@ref) of the box ``[0, L_1] \\times \\dots \\times [0, L_N]``
 ``= (L_1, \\dots, L_N)``, and the number of nodes of each axis taken from `arch` (`variable_dims(arch)`: ``2^{N_i}`` in
 QTT, the variable dimension in TT). The nodes include both ends of each non-periodic axis, so ``h_i = L_i/(n_i - 1)``.
 On an axis flagged in `periodic`, the node at ``L_i`` is the image of the node at 0, so ``h_i = L_i/n_i`` and the
-wrapped stencils of a [`PeriodicBC`](@ref) have period ``L_i``; without the flag, their period is ``L_i + h_i``. Pass
-`periodic = periodic_axes(bcs)` to take the flags from the boundary conditions of a field. The one-dimensional methods
-accept a scalar `box_size` and a scalar `periodic`.
+wrapped stencils of a [`PeriodicBC`](@ref) have period ``L_i``; without the flag, their period is ``L_i + h_i``
+([#52](https://github.com/bsc-quantic/DifferenTT.jl/issues/52)). Pass `periodic = periodic_axes(bcs)` to take the flags
+from the boundary conditions of a field. The one-dimensional methods accept a scalar `box_size` and a scalar `periodic`.
 
 # Examples
 

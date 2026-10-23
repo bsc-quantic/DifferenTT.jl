@@ -199,15 +199,27 @@ The first public release. Version 0.0.1 is the state of the library that produce
 
 ### Known limitations
 
-- Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)`
-  instead of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also
-  changes the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2.
-- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places
-  the Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
+- Chorin projection: the mean removal of the regularized pressure right-hand side subtracts `Σrhs / Π(nᵢ - 1)` instead
+  of `Σrhs / Π nᵢ` (inactive when the pressure has a Dirichlet face), and the projection `u = u* - dt ∇p` also changes
+  the Dirichlet wall rows of the velocity. Both are recorded as `@test_broken` and are to be fixed in v0.2 ([#49],
+  [#50]).
+- Dirichlet closure: the lift fills every ghost node beyond a Dirichlet side with the boundary value, which places the
+  Dirichlet point one spacing beyond the last stored node and, with `stencil_order = 8`, makes the closure only
   first-order accurate (second order with `stencil_order = 2`). This affects the outlet pressure of the Chorin
-  projection. A second-order closure by odd reflection is planned for v0.2.
+  projection. A second-order closure by odd reflection is planned for v0.2 ([#51]).
 - `Grid` without `periodic` keeps the nodes at both ends of a periodic axis, so its stencils have period `L + h`;
-  `Grid(arch, box_size; periodic = periodic_axes(bcs))` gives them the period `L`.
+  `Grid(arch, box_size; periodic = periodic_axes(bcs))` gives them the period `L` ([#52]).
 - `chorin_step` masks and projects the velocity it receives and then predicts, so the velocity it returns, and that
   `chorin_evolve!` stores, is the provisional field `u*` of the next step rather than the projected one. The order
-  predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version.
+  predict, mask, project, which solves the same pressure systems, is to be reconsidered for a later version ([#53]).
+- The other known issues of v0.1 (bugs, missing options, performance, tests and the experiments) are open GitHub issues,
+  [#54] to [#80]; the ones planned for v0.2 are in the [v0.2 milestone][milestone-v0.2].
+
+[#49]: https://github.com/bsc-quantic/DifferenTT.jl/issues/49
+[#50]: https://github.com/bsc-quantic/DifferenTT.jl/issues/50
+[#51]: https://github.com/bsc-quantic/DifferenTT.jl/issues/51
+[#52]: https://github.com/bsc-quantic/DifferenTT.jl/issues/52
+[#53]: https://github.com/bsc-quantic/DifferenTT.jl/issues/53
+[#54]: https://github.com/bsc-quantic/DifferenTT.jl/issues/54
+[#80]: https://github.com/bsc-quantic/DifferenTT.jl/issues/80
+[milestone-v0.2]: https://github.com/bsc-quantic/DifferenTT.jl/milestone/1

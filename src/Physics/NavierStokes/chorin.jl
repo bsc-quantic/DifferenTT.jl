@@ -67,7 +67,7 @@ function ChorinCache(experiment::INSExperiment{N}) where {N}
 
     if regularize
         # Rank-1 regularization of the constant null space (see the docstring)
-        # TODO(release): implement pressure pinning (fixing p at one node) as an alternative to the rank-1 shift
+        # TODO(#72): implement pressure pinning (fixing p at one node) as an alternative to the rank-1 shift
         N_sites = length(experiment.p_field.usites)
         c_shift = 1.0 / (2^N_sites)
         mean_pin_mpo = ones_mpo(experiment.p_field.usites, backend_type(Δ))
@@ -96,7 +96,7 @@ where ``Z`` is the projector of [`divergence_dirichlet_correction`](@ref), ``C``
 [`scalar_dirichlet_correction`](@ref) for the second derivative (the ghost values of ``p\\,dt`` are ``dt`` times the
 pressure values), and ``W`` the Neumann weight of [`symmetrize_rhs`](@ref). If `cache.regularize`, a constant is then
 subtracted to make the singular system consistent, which is one of the known limitations of [`INSExperiment`](@ref)
-(the constant is not the node mean).
+(the constant is not the node mean, [#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)).
 
 # Arguments
 
@@ -165,7 +165,8 @@ Solve the pressure system ``A\\,(p\\,dt) = \\mathbf{b}`` of [`ChorinCache`](@ref
 `solver`, starting from ``dt`` times the last stored pressure, if any (a `ResidualObserver` without `A` and `b` in the
 `SweepingArgs` of `solver` is bound to this system). Returns the pressure ``p`` and the residual norm
 ``\\lVert A\\,(p\\,dt) - \\mathbf{b} \\rVert_2``, evaluated with inner products from the expansion of its square and
-clamped at zero, so that it loses its accuracy below about ``\\sqrt{\\epsilon}\\,\\|\\mathbf{b}\\|``.
+clamped at zero, so that it loses its accuracy below about ``\\sqrt{\\epsilon}\\,\\|\\mathbf{b}\\|``
+([#76](https://github.com/bsc-quantic/DifferenTT.jl/issues/76)).
 """
 function poisson_pressure(
     experiment::INSExperiment{N},
@@ -262,7 +263,8 @@ end
 Return the projected velocity ``u_i = u_i^* - dt\\, (\\partial_i p + C_i \\mathbf{1})``, where ``\\partial_i p`` uses
 the pressure derivatives of `cache` and ``C_i`` the Dirichlet lift of the first derivative along axis ``i``
 ([`scalar_dirichlet_correction_dim`](@ref)). The correction acts on every row, including the Dirichlet boundary rows of
-the velocity, which is one of the known limitations of [`INSExperiment`](@ref).
+the velocity, which is one of the known limitations of [`INSExperiment`](@ref)
+([#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)).
 """
 function ∇p_correction(
     u_mpss::NTuple{N,MPS}, experiment::INSExperiment{N}, cache::ChorinCache, p::MPS, dt::Real
@@ -323,7 +325,7 @@ by `crossinterpolate2`, and the products are computed by [`tt_mul`](@ref) with `
 `mask = nothing`, `u_mpss` is returned unchanged.
 """
 function mask_correction(u_mpss::NTuple{N,MPS}, mask::MPS; cutoff::Float64=1e-15, maxdim::Int=typemax(Int64)) where {N}
-    # TODO(release): RSI product with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
+    # TODO(#60): RSI product with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
     return ntuple(i -> tt_mul(u_mpss[i], mask; cutoff=cutoff, maxdim=maxdim), N)
 end
 
@@ -360,17 +362,16 @@ approximate inverse preconditioners in the tensor train format*.
 The step proceeds as follows. We first multiply the velocity by the obstacle mask ([`mask_correction`](@ref)). We then
 solve the pressure Poisson system of [`poisson_rhs`](@ref) with `solver`, starting from the last pressure stored in
 `experiment`, and project the masked velocity, ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`).
-Finally, we advance the projected velocity over ``dt`` with the explicit predictor of
-[`NavierStokesPredictorRHS`](@ref) and `stepper`. Note the order: each step projects the velocity it receives and then
-predicts, so the velocity it returns is the provisional field ``\\mathbf{u}^*`` of the next step, which is not
-projected, and the pressure is the one of the projection at the start of the step. This order follows the pipeline
-of Peddinti et al. (2024), where the mask is applied right before the projection. We are aware that the order
-predict, mask, project, which returns the projected velocity, is the more natural one; since it applies the same
-sequence of operations, shifted by a projection of the initial velocity, it would solve the same pressure systems, and
-it may replace the current order in a future version. The splitting is first-order
-accurate in ``dt`` whatever `stepper` is, and the projected velocity is only approximately divergence-free (see
-[`INSExperiment`](@ref), including its known limitations). `experiment` is not modified; storing the results is left
-to the caller.
+Finally, we advance the projected velocity over ``dt`` with the explicit predictor of [`NavierStokesPredictorRHS`](@ref)
+and `stepper`. Note the order: each step projects the velocity it receives and then predicts, so the velocity it returns
+is the provisional field ``\\mathbf{u}^*`` of the next step, which is not projected, and the pressure is the one of the
+projection at the start of the step. This order follows the pipeline of Peddinti et al. (2024), where the mask is
+applied right before the projection. We are aware that the order predict, mask, project, which returns the projected
+velocity, is the more natural one; since it applies the same sequence of operations, shifted by a projection of the
+initial velocity, it would solve the same pressure systems, and it may replace the current order in a future version
+([#53](https://github.com/bsc-quantic/DifferenTT.jl/issues/53)). The splitting is first-order accurate in ``dt``
+whatever `stepper` is, and the projected velocity is only approximately divergence-free (see [`INSExperiment`](@ref),
+including its known limitations). `experiment` is not modified; storing the results is left to the caller.
 
 # Arguments
 
@@ -406,10 +407,10 @@ function chorin_step(
     t::Real,
 ) where {N}
     dt = stepper.time_evol_kwargs.dt
-    # TODO(v0.2): reconsider the order of the step. Predict -> mask -> project, with chorin_evolve! masking and
+    # TODO(#53): reconsider the order of the step. Predict -> mask -> project, with chorin_evolve! masking and
     # projecting the initial velocity once, applies the same operations (step k becomes P(M(old step k))), solves the
     # same pressure systems, and returns the projected velocity instead of the provisional u*
-    # TODO(release): chorin_step (through poisson_pressure) and chorin_evolve! take no preconditioner, so a reused FAI
+    # TODO(#61): chorin_step (through poisson_pressure) and chorin_evolve! take no preconditioner, so a reused FAI
     # needs a wrapper solver (see examples/06_chorin_cylinder.jl). Accept an optional AbstractPreconditioner and pass
     # it to the preconditioned linearsolve; vorticity_step and vorticity_evolve! have the same limitation.
 
@@ -463,10 +464,11 @@ solves (`linsolve_errorlog`) are written to `log_filename` with [`log_data`](@re
 # Known limitations
 
 The Chorin projection of v0.1 has two known limitations, which are recorded as `@test_broken` in the test suite and
-will be fixed in a later version:
+as GitHub issues, and will be fixed in a later version:
 
-  - **Mean removal.** When the pressure has no `DirichletBC` side, the Poisson system is singular and
-    [`poisson_rhs`](@ref) makes its right-hand side consistent by subtracting a constant. That constant is
+  - **Mean removal** ([#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)). When the pressure has no
+    `DirichletBC` side, the Poisson system is singular and [`poisson_rhs`](@ref) makes its right-hand side consistent by
+    subtracting a constant. That constant is
     ``\\sum_j b_j\\, \\prod_i h_i / \\prod_i L_i = \\sum_j b_j / \\prod_i (n_i - 1)`` instead of the node mean
     ``\\sum_j b_j / \\prod_i n_i``, so the mean of the right-hand side becomes ``1 - \\prod_i n_i/(n_i - 1)`` times its
     original value instead of zero, and the regularized system is not exactly consistent. This is inactive whenever the
@@ -474,10 +476,11 @@ will be fixed in a later version:
     solve, the wrong constant only shifts ``p\\,dt`` by a constant and leaves ``\\nabla p`` unchanged, since the rank-1
     shift of [`ChorinCache`](@ref) removes the node mean itself (see [`INSExperiment`](@ref)); a truncated TT solve
     satisfies this only approximately.
-  - **Wall rows.** The projection ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to
-    every row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep
-    fixed ([`BoundaryNull`](@ref)). The tangential pressure gradient therefore changes the boundary velocity a little at
-    every step, which in the setup of Sec. 5.2 acts on the inlet rows.
+  - **Wall rows** ([#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)). The projection
+    ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to every row, including the ``q/2``
+    rows next to the Dirichlet velocity faces that the time steppers otherwise keep fixed ([`BoundaryNull`](@ref)). The
+    tangential pressure gradient therefore changes the boundary velocity a little at every step, which in the setup of
+    Sec. 5.2 acts on the inlet rows.
 
 See also [`INSExperiment`](@ref).
 """

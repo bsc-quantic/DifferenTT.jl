@@ -46,10 +46,11 @@ The constructor checks that the velocity, the pressure and the mask share their 
 # Known limitations
 
 The Chorin projection of v0.1 has two known limitations, which are recorded as `@test_broken` in the test suite and
-will be fixed in a later version:
+as GitHub issues, and will be fixed in a later version:
 
-  - **Mean removal.** When the pressure has no `DirichletBC` side, the Poisson system is singular and
-    [`poisson_rhs`](@ref) makes its right-hand side consistent by subtracting a constant. That constant is
+  - **Mean removal** ([#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)). When the pressure has no
+    `DirichletBC` side, the Poisson system is singular and [`poisson_rhs`](@ref) makes its right-hand side consistent by
+    subtracting a constant. That constant is
     ``\\sum_j b_j\\, \\prod_i h_i / \\prod_i L_i = \\sum_j b_j / \\prod_i (n_i - 1)`` instead of the node mean
     ``\\sum_j b_j / \\prod_i n_i``, so the mean of the right-hand side becomes ``1 - \\prod_i n_i/(n_i - 1)`` times its
     original value instead of zero, and the regularized system is not exactly consistent. This is inactive whenever the
@@ -60,10 +61,11 @@ will be fixed in a later version:
     ``-W\\Delta\\,\\mathbf{x} = \\mathbf{b} - (\\mathbf{1}^\\top\\mathbf{b}/n)\\,\\mathbf{1}``, where ``n`` is the
     number of nodes: the shift itself removes the node mean, so the wrong constant only shifts ``p\\,dt`` by a constant,
     and ``\\nabla p`` is unchanged. A truncated TT solve satisfies this only approximately.
-  - **Wall rows.** The projection ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to
-    every row, including the ``q/2`` rows next to the Dirichlet velocity faces that the time steppers otherwise keep
-    fixed ([`BoundaryNull`](@ref)). The tangential pressure gradient therefore changes the boundary velocity a little at
-    every step, which in the setup of Sec. 5.2 acts on the inlet rows.
+  - **Wall rows** ([#50](https://github.com/bsc-quantic/DifferenTT.jl/issues/50)). The projection
+    ``\\mathbf{u} = \\mathbf{u}^* - dt\\, \\nabla p`` (`∇p_correction`) is applied to every row, including the ``q/2``
+    rows next to the Dirichlet velocity faces that the time steppers otherwise keep fixed ([`BoundaryNull`](@ref)). The
+    tangential pressure gradient therefore changes the boundary velocity a little at every step, which in the setup of
+    Sec. 5.2 acts on the inlet rows.
 
 # Examples
 

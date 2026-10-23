@@ -531,7 +531,7 @@ function _amen_truncate_enrich_shift!(
     # 2. Enrich the truncated solution with the residual
     kk = min(enrich_maxdim, maxdim - r, prod(dim, linds) - r)
     if kk > 0
-        # TODO(release) (residual TT, as in Sec. 4.3 of Dolgov & Savostyanov): the residual below is the
+        # TODO(#67) (residual TT, as in Sec. 4.3 of Dolgov & Savostyanov): the residual below is the
         # 2-site residual `b₂ - A₂ (X_b X_nb)`, projected both on the left interface of the solution
         # *and on the solution's own right interface*. This has two problems:
         #   - It is not the residual of the paper (their eq. (14)), which is projected only on the

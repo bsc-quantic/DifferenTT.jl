@@ -113,7 +113,7 @@ function _onedim_diagonal_operator(arch::TTArchitecture, axis::Int, values, arra
     adapt(array_type, Matrix(Diagonal(Vector{Float64}(values))))
 end
 
-# TODO(release): a diagonal built from vec2mps and diagmpo would avoid the dense 2ⁿ × 2ⁿ matrix (fine up to n ≈ 11)
+# TODO(#70): a diagonal built from vec2mps and diagmpo would avoid the dense 2ⁿ × 2ⁿ matrix (fine up to n ≈ 11)
 function _onedim_diagonal_operator(arch::QTTArchitecture, axis::Int, values, array_type; cutoff::Float64=1e-15)
     sites = siteinds(2, abs(arch.var_nsites[axis]))
     return adapt(array_type, mat2mpo(Matrix(Diagonal(Vector{Float64}(values))), sites; cutoff=cutoff))
@@ -181,7 +181,8 @@ Return ``\\mathbf{b} - \\bar{b}\\,\\mathbf{1}``, the right-hand side `rhs` minus
 ``\\bar{b} = \\frac{1}{n} \\sum_j b_j`` over the ``n`` grid nodes. A singular system whose null space is the constant
 vector (pure Neumann or periodic boundaries) is only consistent when the right-hand side is orthogonal to that
 vector, and this projection makes it so. The vorticity–streamfunction scheme uses it; note that the Chorin projection
-removes a different constant (see [`poisson_rhs`](@ref) and the known limitations of [`INSExperiment`](@ref)).
+removes a different constant (see [`poisson_rhs`](@ref) and the known limitations of [`INSExperiment`](@ref),
+[#49](https://github.com/bsc-quantic/DifferenTT.jl/issues/49)).
 
 See also the boundary-condition tutorial [Vorticity–streamfunction formulation](@ref bc_vorticity_streamfunction).
 """

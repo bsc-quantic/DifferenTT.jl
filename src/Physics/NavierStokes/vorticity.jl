@@ -777,7 +777,7 @@ nonzero. If ``\\mathbf{b}`` is identically zero (fluid at rest with ``\\psi = 0`
     ``\\|A\\boldsymbol{\\psi} - \\mathbf{b}\\|_2``. The norm is evaluated from the expansion
     ``\\|A\\boldsymbol{\\psi}\\|^2 - 2\\langle \\mathbf{b}, A\\boldsymbol{\\psi} \\rangle + \\|\\mathbf{b}\\|^2``,
     clamped at zero, so it loses its accuracy below about ``\\sqrt{\\epsilon}\\,\\|\\mathbf{b}\\|`` and can then be
-    returned as 0.
+    returned as 0 ([#76](https://github.com/bsc-quantic/DifferenTT.jl/issues/76)).
 
 See also [`VorticityCache`](@ref), [`streamfunction_velocity`](@ref).
 """
@@ -889,7 +889,7 @@ function (rhs::VorticityTransportRHS)(omega::Tuple, t::Real, stage::Int)
     d_ops = rhs.cache.omega_diff_ops.d_ops
 
     # 1. Advection (conservative form)
-    # TODO(release): RSI products with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
+    # TODO(#60): RSI products with sketches from the global Random.default_rng(); accept an `rng` (see `advection`)
     @timeit_debug timeit_to "advection" begin
         uω = tt_mul(rhs.u, ω; cutoff=cutoff, maxdim=maxdim)
         vω = tt_mul(rhs.v, ω; cutoff=cutoff, maxdim=maxdim)

@@ -7,7 +7,7 @@ using LinearAlgebra
 include(joinpath(@__DIR__, "..", "testutils.jl"))
 using .TestUtils
 
-# TODO(release): test that the array_type arguments and adapt calls keep every tensor on the backend of the inputs, with
+# TODO(#73): test that the array_type arguments and adapt calls keep every tensor on the backend of the inputs, with
 # a GPU-like array type that runs on the CPU (e.g. JLArrays, which needs a test dependency) or on CUDA. Until then the
 # pipelines are checked by reading the code; see the WP3a report
 

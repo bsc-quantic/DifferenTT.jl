@@ -1,4 +1,4 @@
-# TODO(release): the first, middle and last sites are handled in separate branches; merge them into one loop
+# TODO(#71): the first, middle and last sites are handled in separate branches; merge them into one loop
 """
     ndim_operator_mpo(onedim_mpo::MPO, axis::Int, site_inds::Vector{<:Index}, arch::QTTArchitecture{N}) -> MPO
 
