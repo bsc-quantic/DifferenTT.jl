@@ -11,7 +11,7 @@ jobs:
         with:
           version: '1'
       - name: Install JuliaFormatter
-        run: julia -e 'using Pkg; Pkg.add(name="JuliaFormatter", version="2")'
+        run: julia -e 'using Pkg; Pkg.add(name="JuliaFormatter", version="2.3")'
       - name: Check formatting
         run: |
           julia -e '
