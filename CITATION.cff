@@ -1,0 +1,46 @@
+# TODO(release): add the affiliations and ORCIDs of the authors, the release date (date-released) and, once the
+# repository is public and linked to Zenodo, the DOI of the release (doi) and the arXiv id of the preprint.
+cff-version: 1.2.0
+message: >-
+  If you use DifferenTT in your work, please cite the paper that introduces the factorized approximate inverse
+  preconditioner in the tensor train format (preferred-citation), and this software.
+type: software
+title: DifferenTT.jl
+abstract: >-
+  A Julia library for solving partial differential equations in the tensor train (TT) format, with finite-difference
+  operators on TT and quantized TT grids, sweeping and Krylov linear solvers, the factorized approximate inverse (FAI)
+  preconditioner in the TT format, time steppers and incompressible Navier–Stokes solvers.
+authors:
+  - given-names: Pau
+    family-names: Torrente
+  - given-names: Stefano
+    family-names: Carignano
+  - given-names: Artur
+    family-names: Garcia
+  - given-names: Daniel
+    family-names: Pérez García
+version: 0.1.0
+license: MIT
+repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
+url: "https://bsc-quantic.github.io/DifferenTT.jl/"
+keywords:
+  - tensor trains
+  - matrix product states
+  - quantized tensor trains
+  - partial differential equations
+  - preconditioning
+  - factorized approximate inverse
+  - Julia
+preferred-citation:
+  type: article
+  title: Factorized approximate inverse preconditioners in the tensor train format
+  status: in-preparation
+  authors:
+    - given-names: Pau
+      family-names: Torrente Badia
+    - given-names: Daniel
+      family-names: Pérez García
+    - given-names: Stefano
+      family-names: Carignano
+    - given-names: Artur
+      family-names: García Sáez
