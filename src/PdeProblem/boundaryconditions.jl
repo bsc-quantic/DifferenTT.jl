@@ -237,7 +237,7 @@ is built from the boundary conditions without depending on their types.
 ```jldoctest
 julia> wall, periodic = BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), BoundaryCond1d(PeriodicBC(), PeriodicBC());
 
-julia> DifferenTT.periodic_axes(BoundaryConditions(wall, periodic))
+julia> periodic_axes(BoundaryConditions(wall, periodic))
 (false, true)
 ```
 """

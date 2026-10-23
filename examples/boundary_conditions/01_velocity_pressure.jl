@@ -228,10 +228,9 @@ closure_errors(periodic, :wrap, :wrap)
 # The circulant has the period ``n h``, which equals the length ``L`` of the axis only if the node at ``L`` is not
 # stored, since it is the image of the node at 0. The plain `Grid` stores it, ``h = L/(n - 1)``, so the wrapped stencil
 # has the period ``L + h`` and is inconsistent at the seam. A periodic axis therefore needs `Grid(arch, L; periodic)`,
-# whose spacing is ``h = L/n``. The flags can be taken from the boundary conditions with `DifferenTT.periodic_axes` (not
-# exported in this version). We apply the wrapped second derivative of ``q = 8`` on ``2^6`` nodes to
-# ``u(x) = \sin(2\pi x / L)`` on both grids, and print the spacing and the largest relative error against
-# ``u'' = -(2\pi/L)^2 u``.
+# whose spacing is ``h = L/n``. The flags can be taken from the boundary conditions with [`periodic_axes`](@ref). We
+# apply the wrapped second derivative of ``q = 8`` on ``2^6`` nodes to ``u(x) = \sin(2\pi x / L)`` on both grids, and
+# print the spacing and the largest relative error against ``u'' = -(2\pi/L)^2 u``.
 
 L = 1.0
 arch64 = QTTArchitecture((6,))
@@ -240,7 +239,7 @@ function wrapped_error(grid)
     u = sin.(2π .* grid.points[1] ./ L)
     return maximum(abs, D2_wrapped * u ./ grid.dx[1]^2 .+ (2π / L)^2 .* u) / (2π / L)^2
 end
-flagged = Grid(arch64, (L,); periodic=DifferenTT.periodic_axes(BoundaryConditions(periodic)))
+flagged = Grid(arch64, (L,); periodic=periodic_axes(BoundaryConditions(periodic)))
 plain = Grid(arch64, L)
 (flagged=(flagged.dx[1], wrapped_error(flagged)), plain=(plain.dx[1], wrapped_error(plain)))
 
@@ -495,7 +494,7 @@ channel_arch = QTTArchitecture((4, 4))
 channel_sites = siteinds(channel_arch)
 u_bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(1.0), NeumannBC(0.0)), periodic)
 v_bcs = BoundaryConditions(BoundaryCond1d(DirichletBC(0.0), NeumannBC(0.0)), periodic)
-channel_grid = Grid(channel_arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(u_bcs))
+channel_grid = Grid(channel_arch, (2.0, 1.0); periodic=periodic_axes(u_bcs))
 uniform = VectorField((ones_mps(channel_sites, 1), zeros_mps(channel_sites)), channel_arch, (u_bcs, v_bcs))
 diagonal_on_grid(Z) = as_array(apply(Z, ones_mps(channel_sites, 1)), channel_arch)
 held_u, held_v = (diagonal_on_grid(BoundaryNull(uniform; stencil_order=8)[i].u_row_deleter) for i in 1:2)
@@ -904,7 +903,7 @@ pdt_chorin, pdt_mean_free = A_singular \ b_chorin, A_singular \ b_mean_free
 paper_arch = QTTArchitecture((4, 4))
 paper_sites = siteinds(paper_arch)
 p_bcs = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(1.0)), periodic)
-paper_grid = Grid(paper_arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(p_bcs))
+paper_grid = Grid(paper_arch, (2.0, 1.0); periodic=periodic_axes(p_bcs))
 U9, V9, u_star9 = channel_velocity(paper_arch, paper_sites, paper_grid)
 p_field = ScalarField(paper_sites, paper_arch, p_bcs)
 experiment = INSExperiment(

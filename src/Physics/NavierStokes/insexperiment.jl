@@ -71,7 +71,7 @@ p_bcs = BoundaryConditions(BoundaryCond1d(NeumannBC(0.0), DirichletBC(0.0)), per
 sites = siteinds(arch)
 mask = …                                       # obstacle mask on `sites`, e.g. from crossinterpolate2
 u_fields = VectorField((mask, zeros_mps(sites)), arch, (u_bcs, v_bcs))
-grid = Grid(arch, (2.0, 1.0); periodic=DifferenTT.periodic_axes(p_bcs))   # period 1 in y
+grid = Grid(arch, (2.0, 1.0); periodic=periodic_axes(p_bcs))   # period 1 in y
 experiment = INSExperiment(grid, u_fields, ScalarField(sites, arch, p_bcs), 3000, mask)
 ```
 

@@ -34,7 +34,7 @@ The caches that it builds once ([`ChorinCache`](@ref)), the single step [`chorin
 [`check_cfl`](@ref) and [`check_kolmogorov_scale`](@ref) are available separately. The boundary conditions are the types of
 [Grids, fields and boundary conditions](@ref): in the setup of the paper the velocity has a Dirichlet inlet and a Neumann
 outlet, the pressure a Dirichlet outlet, and the second axis is periodic. For such an axis we recommend the grid
-`Grid(arch, box_size; periodic = DifferenTT.periodic_axes(p_bcs))`, which gives the stencils their intended period
+`Grid(arch, box_size; periodic = periodic_axes(p_bcs))`, which gives the stencils their intended period
 ``L`` (the plain `Grid` gives ``L + h``). The tutorial [Velocity–pressure formulation](@ref bc_velocity_pressure) derives
 the closures of this formulation, and [Channel flow past a cylinder](@ref) runs the pipeline of the paper in miniature.
 

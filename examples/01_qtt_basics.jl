@@ -85,9 +85,9 @@ grid1.dx, first(grid1.points[1]), last(grid1.points[1])
 
 # A periodic axis needs a different spacing. Its node at ``L`` is the image of the node at 0, so it is not stored, and
 # the ``n`` stored nodes are spaced by ``h = L/n``; only then do the wrapped stencils of a [`PeriodicBC`](@ref) have
-# period ``L``. We ask for it with the `periodic` flag, which [`periodic_axes`](@ref DifferenTT.periodic_axes)
-# derives from the boundary conditions of a field. Note that without the flag a periodic axis keeps both end nodes,
-# and the period of its stencils becomes ``L + h``.
+# period ``L``. We ask for it with the `periodic` flag, which [`periodic_axes`](@ref) derives from the boundary
+# conditions of a field. Note that without the flag a periodic axis keeps both end nodes, and the period of its stencils
+# becomes ``L + h``.
 
 grid1p = Grid(arch1, 1.0; periodic=true)
 grid1p.dx, last(grid1p.points[1])

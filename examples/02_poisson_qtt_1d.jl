@@ -248,14 +248,13 @@ maximum(abs.(contract_mps(x_n) - x_n_dense)), maximum(abs.(x_n_dense - u_neumann
 # ``u(x) = e^{\sin(2 \pi x)}``. The grid must not store the node at ``L = 1``, which is the image of the node at 0:
 # with the `periodic` flag, the ``n`` stored nodes are spaced by ``h = 1/n`` and the wrapped stencil has period 1.
 # Without it, the default grid keeps both end nodes and the period becomes ``1 + h``. We compare the two below. The
-# flag of each axis follows from the boundary conditions through [`periodic_axes`](@ref DifferenTT.periodic_axes),
-# which is not exported, so we call it qualified.
+# flag of each axis follows from the boundary conditions through [`periodic_axes`](@ref).
 
 u_periodic(x) = exp(sin(2π * x))
 f_periodic(x) = (1 - 4π^2 * cos(2π * x)^2 + 4π^2 * sin(2π * x)) * u_periodic(x)
 
 periodic = BoundaryConditions(BoundaryCond1d(PeriodicBC(), PeriodicBC()))
-DifferenTT.periodic_axes(periodic)
+periodic_axes(periodic)
 
 # ## Convergence under grid refinement
 #
@@ -278,7 +277,7 @@ function poisson_error(problem, nbits, order)
         u, f = u_neumann, f_neumann
     else
         conditions = periodic
-        flags = problem == :periodic ? DifferenTT.periodic_axes(conditions)[1] : false
+        flags = problem == :periodic ? periodic_axes(conditions)[1] : false
         grid, shift = Grid(arch, 1.0; periodic=flags), 0.0
         u, f = u_periodic, f_periodic
     end

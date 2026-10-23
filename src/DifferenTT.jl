@@ -130,7 +130,7 @@ export tt_mul, elementwise_function, sample, samples, integrate
 export tt_mul_fallbacks, reset_tt_mul_fallbacks!
 
 # Export types and functions from PdeProblem
-export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions
+export BoundaryCond, PeriodicBC, OpenBC, DirichletBC, NeumannBC, BoundaryCond1d, BoundaryConditions, periodic_axes
 export ScalarField, VectorField, Grid, interior_grid
 export DifferentialOpsScalar, DifferentialOps
 export BoundaryNullScalar, BoundaryNull
