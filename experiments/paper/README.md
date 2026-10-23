@@ -46,6 +46,39 @@ The comments of each `submit.sh` give the time of each block or unit that we mea
 to add repeats afterwards (`BENCH_REPEAT_OFFSET`). The plotters read the `nocond` runs (`results_nocond/`); the runs
 with local condition numbers are much slower and are not used by the paper's figures.
 
+## The penalty μ of the FAI build (`FAI_MU_RULE`)
+
+The FAI solves Eq. (22) with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
+max(μ, λmax(A)) / min(μ, λmin(A)), so μ only needs to sit at the top of the spectrum of A. The paper uses μ = 10⁷, which is
+close to λmax(A) on the 2¹⁰ × 2¹⁰ Chorin grid but 130 to 1300 times above it in the anisotropy benchmark. Both statistics
+workers (`tt_anisotropy_stats/`, `chorin_pipeline_stats/`) therefore take two environment variables:
+
+| Variable | Values | Effect |
+|---|---|---|
+| `FAI_MU_RULE` | `fixed` (default) or `gershgorin` | `fixed`: the μ = 10⁷ of the worker, as in the paper. `gershgorin`: μ = ‖A‖_∞, the Gershgorin bound of λmax(A), computed per problem from the 1D factors of the operator the FAI is built on (`../common/mu_rules.jl`) |
+| `FAI_MU_SCALE` | a positive number, default 1.0 | multiplies the value of the rule (not allowed with `fixed`) |
+
+With the rule, μ = N (4 + ρ (N - 1)) / h² for the FAI on L of the anisotropy benchmark (4N / h² for the FAI on L₀; 7840 to
+7.8 × 10⁴ at the paper sizes) and 6.5016 (h_x⁻² + h_y⁻²) for the Chorin pressure operator (5.3 × 10⁵ on 2⁸ × 2⁸, 8.5 × 10⁶
+on 2¹⁰ × 2¹⁰). `../common/mu_rules_check.jl` checks λmax(A) ≤ μ ≤ 1.5 λmax(A) on small cases (`experiments/smoke.jl` runs
+it as `mu_rules_check`). A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/`
+(`_mugersh_x<scale>` with a scale), never into the fixed-μ folders; its keys name the rule (`fai_mu_gersh_gdim_χ`,
+`fai_L0_mu_gersh_gdim_χ`, `mu_gersh_gdim_χ`) and the result files store the numeric μ (`"mu"`), the rule (`"mu_rule"`) and
+the scale (`"mu_scale"`). Set the same variables for the collector and the plotter, which then read that folder, write
+`plots_paper_mugersh/` and label the rule μ = ‖A‖_∞:
+
+```bash
+FAI_MU_RULE=gershgorin bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
+FAI_MU_RULE=gershgorin bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
+FAI_MU_RULE=gershgorin julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl nocond
+FAI_MU_RULE=gershgorin julia --project=experiments experiments/paper/tt_anisotropy_stats/plot_paper.jl
+```
+
+The job scripts pass the folder to the workers and the collector (`TT_ANISOTROPY_STATS_RESULTS_DIR`,
+`CHORIN_STATS_RESULTS_DIR`). Every FAI result also stores the iterations of the local solves of the build
+(`precond_build_total_iters`, `precond_build_iters_per_site`, summed over the sweeps, and `precond_build_nsweeps`), where a
+change of the conditioning of the build shows up; the outer solve is not expected to change much.
+
 ## The data of the current figures, and what changed since
 
 The figures of the current version of the paper were produced by the code of the tag `paper-ttfai-data` (commit `6850540`)
