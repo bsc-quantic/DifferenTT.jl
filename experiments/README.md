@@ -84,12 +84,12 @@ command line (`sbatch --account=<project> --qos=<qos> experiments/validation/tun
 
 ### Data from before this update are not comparable
 
-The `collected_results.jld2` files that are tracked in this repository, and the Chorin masks, were produced with the library
-before the fixes of the FAI orientation (the FAI solved the transposed FSAI problem), the `ResidualALS` cutoff convention (its
-Frobenius floor used `cutoff²`, now `cutoff` as in `ALS` and `AMEn`) and the period of periodic grids (the plain `Grid` has the
-period `L + h`; the Chorin and tunnel scripts now use `Grid(arch, L; periodic=periodic_axes(bcs))`, whose period is `L`); see
-`NEWS.md`. They are not comparable with new runs and must not be mixed with them in one collection or plot. The READMEs of the
-folders that show results say so.
+The `collected_results.jld2` files that are tracked in this repository were produced with the library before the fixes of the
+FAI orientation (the FAI solved the transposed FSAI problem) and of the `ResidualALS` cutoff convention (its Frobenius floor
+used `cutoff²`, now `cutoff` as in `ALS` and `AMEn`); see `NEWS.md`. The Chorin and tunnel scripts now build the grid with
+`Grid(arch, L; periodic=periodic_axes(bcs))`, whose period in y is `L` (`NEWS.md`), which also changes the numbers. The tracked
+data are not comparable with new runs and must not be mixed with them in one collection or plot. The READMEs of the folders
+that show results say so.
 
 The Chorin workers stop with an `ArgumentError` if their mask was sampled on another grid (`common/mask_grid.jl`). The masks
 of `fai_benchmarks/chorin_pipeline` are regenerated, and `fai_benchmarks/chorin_pipeline_globalcg` carries a copy of them (its

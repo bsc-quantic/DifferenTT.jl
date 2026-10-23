@@ -27,8 +27,8 @@ that of `fai_benchmarks/chorin_pipeline/masks.jld2` (the worker deliberately sha
 
 The setups above are those of the paper repository. Three changes of the library since the data of the current figures
 (tag `paper-ttfai-data`) make new runs not comparable with them: the FAI now solves the correct (not the transposed)
-FSAI problem, the grid has the period of the box in y (it was the box plus one cell, so the masks had to be regenerated),
-and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²` (no effect here, where `cutoff = 0`).
+FSAI problem, the worker builds the grid with `periodic = periodic_axes(bcs)`, so that the period in y is the length of the
+box (`NEWS.md`), and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²` (no effect here, where `cutoff = 0`).
 A known limitation of the library bears on the numbers: the Dirichlet closure with `stencil_order = 8` is only first-order
 accurate (see "Known limitations" in `NEWS.md`).
 

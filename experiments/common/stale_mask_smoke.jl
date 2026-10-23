@@ -2,7 +2,7 @@
     Stale mask for the smoke test of the mask safeguard
 
 Copies the smoke mask `masks.jld2` of `DIFFERENTT_SMOKE_DIR` to `masks_stale.jld2` and changes the metadata of every mask
-to a grid with no periodic axis, as if the file had been sampled on the plain grid of the old workers. The smoke test
+to a grid with no periodic axis, as if the file had been sampled on a grid with another period. The smoke test
 (`experiments/smoke.jl`) then runs a Chorin worker on that file (`CHORIN_MASK_FILE`) and requires that it stops with
 an `ArgumentError` (`common/mask_grid.jl`).
 
