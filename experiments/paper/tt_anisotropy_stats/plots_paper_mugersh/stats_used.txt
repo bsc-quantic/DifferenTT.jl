@@ -1,0 +1,10 @@
+Statistics drawn by tt_anisotropy_stats/plot_paper.jl
+Data: /home/paubsc/phd/mn5/mn5home/refactoredDifferenTT/DifferenTT.jl/experiments/paper/tt_anisotropy_stats/results_nocond_mugersh/collected_results.jld2
+Repeats per configuration: 10-10 (median 10.0)
+Times, iterations, Pareto, time distributions: center = median, band = interquartile range (25th-75th percentile)
+Speedups (vs F, vs χ, heatmaps, speedup distributions): center = geometric mean, band = ×/÷ 1 geometric standard deviation
+Per-site iteration profiles: center = median, band = interquartile range (25th-75th percentile)
+Speedups: paired by repeat index with the baseline of the same (N, F)
+Solve speedup = baseline solve_time / solve_time; total speedup = baseline solve_time / total_time (incl. build)
+Sinc mode: all; best M per F chosen by: the center of the quantity each figure plots
+Discard first repeat per process: false; excluded repeats: Int64[]; excluded keys: String[]; excluded cases: Tuple{Int64, Float64}[]
