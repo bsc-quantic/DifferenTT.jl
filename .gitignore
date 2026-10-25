@@ -7,6 +7,7 @@
 /notes/
 *.err
 *.out
+*.log
 *.cov
 lcov.info
 
@@ -20,8 +21,10 @@ experiments/**/*.svg
 experiments/**/*.pdf
 experiments/**/*.jld2
 
-!collected_results.jld2
-!masks.jld2
+# Small collections and masks of fai_benchmarks/ only; the data of paper/ are archived on Zenodo
+# (experiments/README.md, "Data")
+!experiments/fai_benchmarks/**/collected_results.jld2
+!experiments/fai_benchmarks/**/masks.jld2
 # Data of Table 1 of the paper (D1 era), see experiments/paper/README.md
 !experiments/paper/anisotropy_floor/discrete_floor.jld2
 
