@@ -76,12 +76,16 @@ using .TestUtils
         relerr(m) = norm(contract_mps(m) - A_exact) / norm(A_exact)
 
         # The cross must not truncate internally: capping it afterwards by SVD has to land within
-        # a small factor of the optimal rank-r truncation of the exact product.
+        # a small factor of the optimal rank-r truncation of the exact product. Capping the cross
+        # instead of the exact product adds up to twice the error of the uncapped cross (triangle
+        # inequality); that floor is ~3e-8 here, as large as the rank-6 optimum, and depends on
+        # the platform's BLAS (~1e-7 on macOS), so it cannot be a fixed constant.
+        floor_err = relerr(tt_mul(m1, m2; rng=StableRNG(7)))
         for r in (4, 6)
-            capped = tt_mul(m1, m2; maxdim=r)
+            capped = tt_mul(m1, m2; maxdim=r, rng=StableRNG(7))
             optimal = truncate!(copy(exact); maxdim=r, cutoff=0.0)
             @test maxlinkdim(capped) <= r
-            @test relerr(capped) <= 1.5 * relerr(optimal) + 1e-9
+            @test relerr(capped) <= 1.5 * relerr(optimal) + 2 * floor_err
         end
 
         # The output is recompressed: finite, orthogonal, and no larger than the exact product.
