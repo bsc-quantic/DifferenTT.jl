@@ -17,9 +17,11 @@ functions changed. The scripts of `experiments/paper` follow the current API, so
 with the data of that tag, and the two sets of results must not be mixed in one collection or plot. The changes are listed in
 the release notes (`NEWS.md`), and the README of `experiments/paper` lists the three that matter for the paper.
 
-The data of the paper are regenerated with the release version of the library before submission. **This is still open:** the
-commit that produces the new data, and the place where they are archived (with its DOI), are not yet fixed, and we will state
-them here and in the README of `experiments/paper` once the runs are done.
+The data of the paper were regenerated with the release version of the library, at the tag
+[`paper-ttfai-v0.1-data`](https://github.com/bsc-quantic/DifferenTT.jl/tree/paper-ttfai-v0.1-data) (commit `3945c32`),
+and are archived on Zenodo: [doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326). The README of the
+archive gives the provenance of each file and where to copy it to redraw the figures with the scripts of
+`experiments/paper`.
 
 The heavy runs of the paper need a cluster and are not part of the documentation build or of the tests. The experiment
 scripts also have a smoke mode, with tiny sizes, which only checks that they run.

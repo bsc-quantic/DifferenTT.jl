@@ -108,9 +108,9 @@ and check the printed `ranks_mask` and `error_mask` (tolerance 1e-10, bond dimen
 |---|---|
 | `collected_results.jld2` of a benchmark (a few hundred kB; about 1 MB at most) | The task files `tasks/task_NNN.jld2` and the logs (`.gitignore`) |
 | The input masks `masks.jld2` (about 0.8 MB each) and the pictures `maskplots/*.png` | Any other `.jld2`, `.png`, `.svg` or `.pdf` that a script writes (`.gitignore`), such as `circle_data/` of `tunnel2d` and the `test_*.png` of `tunnel2dsteps` |
-| Small tables that a script prints to Markdown (`summary.md`, `ghia_comparison.txt`, `discrete_floor.md`) and `paper/anisotropy_floor/discrete_floor.jld2` (Table 1, D1 era) | SLURM output (`output.out`, `error.err`, `slurm-*.out`) and snapshots of long runs (`finaldata/`) |
+| Small tables that a script prints to Markdown (`summary.md`, `ghia_comparison.txt`, `discrete_floor.md`) and `paper/anisotropy_floor/discrete_floor.jld2` (Table 1) | SLURM output (`output.out`, `error.err`, `slurm-*.out`) and snapshots of long runs (`finaldata/`) |
 
 A file above about 1 MB does not go into the repository: it is kept outside it, on the cluster or in an archive, and the
-README of the benchmark that produced it records where and which commit made it. The data of the rerun of the paper
-experiments (session R) is the first case: `paper/README.md` carries a `TODO(session R)` for the commit and the location
-of that data, which is decided when the rerun has been done.
+README of the benchmark that produced it records where and which commit made it. The data of the paper are the first case:
+they are archived on Zenodo ([doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326)), and
+`paper/README.md` records the commit that produced them.

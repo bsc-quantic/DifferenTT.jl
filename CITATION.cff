@@ -22,6 +22,10 @@ authors:
 version: 0.1.0
 license: MIT
 repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23663326
+    description: The data of the paper, produced at the tag paper-ttfai-v0.1-data (experiments/paper/README.md)
 url: "https://bsc-quantic.github.io/DifferenTT.jl/"
 keywords:
   - tensor trains
