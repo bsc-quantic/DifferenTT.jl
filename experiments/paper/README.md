@@ -82,8 +82,15 @@ change of the conditioning of the build shows up; the outer solve is not expecte
 
 ## The data of the current figures, and what changed since
 
-The figures of the current version of the paper were produced by the code of the tag `paper-ttfai-data` (commit `6850540`)
-with the scripts of the paper repository. **New runs of the scripts of this folder are not comparable with those data.**
+The figures and tables of the paper are drawn from the rerun of the scripts of this folder at commit `3945c32` (tag
+`paper-ttfai-v0.1-data`), on MareNostrum 5 in October 2026, with `FAI_MU_RULE=gershgorin` for the two statistics runs.
+Following the data policy of `experiments/README.md`, those data are archived on Zenodo, not in this repository:
+[doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326). The archive holds `linsolve_spd.jld2`, the
+`collected_results.jld2` of `tt_anisotropy_stats` and `chorin_pipeline_stats`, `discrete_floor.{jld2,md}`, the logs, the
+`Project.toml` and `Manifest.toml` of `experiments/`, and a README that says where to copy each file to redraw the figures.
+
+Earlier drafts of the paper used the data of the tag `paper-ttfai-data` (commit `6850540`), produced with the scripts of
+the paper repository. **New runs of the scripts of this folder are not comparable with those data.**
 Three fixes of the library change the numbers (all in `NEWS.md`): the FAI used to solve the transposed FSAI problem (and
 `linsolve_preconditioner` returned the transpose of the inverse for a nonsymmetric operator); the Frobenius floor of the
 residual-based truncation of `ResidualALS` now uses `cutoff`, where it used `cutoff²`, so that bond dimensions and
@@ -94,12 +101,11 @@ Besides, the call of the FAI is now `fai_preconditioner` and the workers no long
 preconditioner (we checked that the matrices agree exactly on a small case). Do not mix collected results of the two
 versions in one collect or plot.
 
-The old data stay in the paper repository. Three files in this repository are the exception:
+The old data stay in the paper repository. Of the data of the paper, this repository keeps only:
 
 - `anisotropy_floor/discrete_floor.jld2` and `.md`: the data of Table 1 (the discrete floor and the ranks of the exact
-  solution), computed in the D1 era. We commit them because the plotters of `../fai_benchmarks/tt_anisotropy` read them.
-  The floor and the ranks depend on the discretization of the operator only, not on the FAI or on `ResidualALS`, but we
-  regenerate them in session R with the others.
+  solution), regenerated in the rerun (the same files as in the Zenodo archive). We commit them because the plotters of
+  `../fai_benchmarks/tt_anisotropy` read them.
 - `linsolve_spd/plots/summary.md`: the summary of the final run of the D1 era.
 
 ## What the maintainer has to do before a run (TODO)
@@ -115,5 +121,5 @@ The old data stay in the paper repository. Three files in this repository are th
 
    The masks of `chorin_pipeline_globalcg` are a separate file, not read by `paper/`. A missing mask file is not an error:
    the Chorin worker then warns and runs without the obstacle, so check the log for "mask not found".
-2. TODO(session R): after the rerun on the release candidate, record here the commit that produced the new data and where
-   they are kept (the data policy is in `experiments/README.md`), and regenerate Table 1 with the others.
+2. **Data.** A new run of the paper is a new version of the data: archive it as a new version of the Zenodo record above,
+   and record here the commit and the tag that produced it and its DOI (the data policy is in `experiments/README.md`).
