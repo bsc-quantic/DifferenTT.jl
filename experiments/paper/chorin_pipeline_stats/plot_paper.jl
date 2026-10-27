@@ -14,20 +14,20 @@ pairs).
     per-step curves of the single-χ plots can show every repeat behind the central line;
   - cumulative-time plots (amortization of the preconditioner build), per-step overlays of the residual and of the
     divergence ratio;
-  - `plots_paper/pairs/`: legend-free panels per grid (iterations per step and speedups on log axes, Pareto front),
-    drawn at their printed size and placed two per row in the paper, plus the shared `legend_strip` (`PLOT_PAIRS`).
-    These are the figures of the paper;
-  - `plots_paper/stats_used.txt` records which statistics we drew, for the figure captions.
+  - `plots_paper_mugersh/pairs/`: legend-free panels per grid (iterations per step and speedups on log axes, Pareto
+    front), drawn at their printed size and placed two per row in the paper, plus the shared `legend_strip`
+    (`PLOT_PAIRS`). These are the figures of the paper;
+  - `plots_paper_mugersh/stats_used.txt` records which statistics we drew, for the figure captions.
 
 The families other than the pairs are switched off by default (`PLOT_*` flags below). The dataset carries no condition
 numbers, so the κ profiles are not drawn.
 
 # Inputs and outputs
 
-Reads `results_nocond/collected_results.jld2` (`"df"`: one row per configuration and repeat) of this folder, written by
-`collect.jl nocond`, and writes PDF figures to `plots_paper/` (and subfolders per grid and χ_max) of this folder. With
-`FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`, see `worker.jl`), it reads `results_nocond_mugersh/` and writes
-`plots_paper_mugersh/` instead; a rule-based run is one μ configuration per grid, labelled μ = ‖A‖_∞. In
+Reads `results_nocond_mugersh/collected_results.jld2` (`"df"`: one row per configuration and repeat) of this folder,
+written by `collect.jl nocond` with the default μ rule, `gershgorin` (see `worker.jl`), and writes PDF figures to
+`plots_paper_mugersh/` (and subfolders per grid and χ_max) of this folder; a rule-based run is one μ configuration per
+grid, labelled μ = ‖A‖_∞. With `FAI_MU_RULE=fixed` it reads `results_nocond/` and writes `plots_paper/` instead. In
 smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, and
 draws the single smoke grid; `experiments/smoke.jl` sets it.
 
@@ -94,7 +94,7 @@ include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
 include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 # Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
 const OUT_ROOT = output_root(@__DIR__)
-# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default reads the fixed-μ data
+# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default is the rule of the paper
 const MU_RULE, MU_SCALE = fai_mu_rule()
 RESULTS_FILE = joinpath(OUT_ROOT, mu_results_folder("results_nocond", MU_RULE, MU_SCALE), "collected_results.jld2")
 PLOTS_DIR = joinpath(OUT_ROOT, mu_results_folder("plots_paper", MU_RULE, MU_SCALE))

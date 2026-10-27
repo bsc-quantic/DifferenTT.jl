@@ -7,8 +7,8 @@
 # SLURM job arrays (one per layout, see below) and a collector job that depends on both. Every
 # submission queues a collector; the one that runs last sees every finished unit.
 #
-# Usage: bash experiments/paper/chorin_pipeline_stats/submit.sh [nocond]
-#        FAI_MU_RULE=gershgorin bash experiments/paper/chorin_pipeline_stats/submit.sh nocond   (μ = ‖A‖_∞)
+# Usage: bash experiments/paper/chorin_pipeline_stats/submit.sh [nocond]   (μ = ‖A‖_∞, as in the paper)
+#        FAI_MU_RULE=fixed bash experiments/paper/chorin_pipeline_stats/submit.sh nocond   (μ = 1e7, earlier drafts)
 #
 # By default, condition-number estimates are collected for (8,8) and (10,10). Pass "nocond" to
 # skip them. Timings/iteration statistics should come from a "nocond" run; a condition-number run
@@ -99,11 +99,11 @@ if [ "$1" == "nocond" ]; then
     RESULTS_DIR="${SCRIPT_DIR}/results_nocond"
 fi
 
-# Penalty μ of the FAI build (experiments/common/mu_rules.jl): fixed (default, the μ = 1e7 of the worker) or gershgorin
-# (μ = ‖A‖_∞ of each problem, times FAI_MU_SCALE). A rule-based run writes under <results dir>_mugersh[_x<scale>] and
-# passes that folder to the worker and the collector through CHORIN_STATS_RESULTS_DIR, so it never mixes with
-# fixed-μ data.
-FAI_MU_RULE="${FAI_MU_RULE:-fixed}"
+# Penalty μ of the FAI build (experiments/common/mu_rules.jl): gershgorin (default, μ = ‖A‖_∞ of each problem, times
+# FAI_MU_SCALE, as in the paper) or fixed (the μ = 1e7 of the worker, as in the earlier drafts). A rule-based run
+# writes under <results dir>_mugersh[_x<scale>] and passes that folder to the worker and the collector through
+# CHORIN_STATS_RESULTS_DIR, so it never mixes with fixed-μ data.
+FAI_MU_RULE="${FAI_MU_RULE:-gershgorin}"
 FAI_MU_SCALE="${FAI_MU_SCALE:-1.0}"
 MU_EXPORTS=""
 if [ "${FAI_MU_RULE}" == "gershgorin" ]; then

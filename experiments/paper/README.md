@@ -43,19 +43,21 @@ The runs of the paper are submitted to SLURM; the job scripts read `SLURM_ACCOUN
 | `chorin_pipeline_stats/` | `bash experiments/paper/chorin_pipeline_stats/submit.sh nocond` | `julia --project=experiments experiments/paper/chorin_pipeline_stats/collect.jl nocond`, then `plot_paper.jl` | for 10 repeats, 10 block jobs for the 8×8 grid (up to 2 days) and 100 unit jobs for the 10×10 grid (up to 1 day), 20 CPUs each; a collector job of 4 CPUs and 30 minutes |
 
 The comments of each `submit.sh` give the time of each block or unit that we measured in the run of October 2026, and how
-to add repeats afterwards (`BENCH_REPEAT_OFFSET`). The plotters read the `nocond` runs (`results_nocond/`); the runs
-with local condition numbers are much slower and are not used by the paper's figures.
+to add repeats afterwards (`BENCH_REPEAT_OFFSET`). The plotters read the `nocond` runs of the default μ rule
+(`results_nocond_mugersh/`, see below); the runs with local condition numbers are much slower and are not used by the
+paper's figures.
 
 ## The penalty μ of the FAI build (`FAI_MU_RULE`)
 
 The FAI solves Eq. (21) with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
-max(μ, λmax(A)) / min(μ, λmin(A)), so μ only needs to sit at the top of the spectrum of A. The paper uses μ = 10⁷, which is
-close to λmax(A) on the 2¹⁰ × 2¹⁰ Chorin grid but 130 to 1300 times above it in the anisotropy benchmark. Both statistics
-workers (`tt_anisotropy_stats/`, `chorin_pipeline_stats/`) therefore take two environment variables:
+max(μ, λmax(A)) / min(μ, λmin(A)), so μ only needs to sit at the top of the spectrum of A. The paper sets μ = ‖A‖_∞, the
+Gershgorin bound of λmax(A) (Eqs. (32) and (37)). The earlier drafts used a fixed μ = 10⁷, which is close to λmax(A) on
+the 2¹⁰ × 2¹⁰ Chorin grid but 130 to 1300 times above it in the anisotropy benchmark. Both statistics workers
+(`tt_anisotropy_stats/`, `chorin_pipeline_stats/`) take two environment variables:
 
 | Variable | Values | Effect |
 |---|---|---|
-| `FAI_MU_RULE` | `fixed` (default) or `gershgorin` | `fixed`: the μ = 10⁷ of the worker, as in the paper. `gershgorin`: μ = ‖A‖_∞, the Gershgorin bound of λmax(A), computed per problem from the stencil coefficients of the operator the FAI is built on, Σ_k \|c_k\| per axis times h⁻² (or h⁻¹ for the mixed terms), which no boundary closure can exceed (`../common/mu_rules.jl`) |
+| `FAI_MU_RULE` | `gershgorin` (default) or `fixed` | `gershgorin`: μ = ‖A‖_∞, the Gershgorin bound of λmax(A), as in the paper, computed per problem from the stencil coefficients of the operator the FAI is built on, Σ_k \|c_k\| per axis times h⁻² (or h⁻¹ for the mixed terms), which no boundary closure can exceed (`../common/mu_rules.jl`). `fixed`: the μ = 10⁷ of the task list of the worker, as in the earlier drafts |
 | `FAI_MU_SCALE` | a positive number, default 1.0 | multiplies the value of the rule (not allowed with `fixed`) |
 
 With the rule, μ = N (4 + ρ (N - 1)) / h² for the FAI on L of the anisotropy benchmark (4N / h² for the FAI on L₀; 7840 to
@@ -65,14 +67,14 @@ on 2¹⁰ × 2¹⁰). `../common/mu_rules_check.jl` checks that Σ_k |c_k| bound
 it as `mu_rules_check`). A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/`
 (`_mugersh_x<scale>` with a scale), never into the fixed-μ folders; its keys name the rule (`fai_mu_gersh_gdim_χ`,
 `fai_L0_mu_gersh_gdim_χ`, `mu_gersh_gdim_χ`) and the result files store the numeric μ (`"mu"`), the rule (`"mu_rule"`) and
-the scale (`"mu_scale"`). Set the same variables for the collector and the plotter, which then read that folder, write
-`plots_paper_mugersh/` and label the rule μ = ‖A‖_∞:
+the scale (`"mu_scale"`). The collectors and the plotters read the same variables, so by default they read that folder,
+and the plotters write `plots_paper_mugersh/` and label the rule μ = ‖A‖_∞. To run, collect and plot with the fixed μ,
+which writes under `results/` or `results_nocond/` and `plots_paper/`, set the variable for every step:
 
 ```bash
-FAI_MU_RULE=gershgorin bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
-FAI_MU_RULE=gershgorin bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
-FAI_MU_RULE=gershgorin julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl nocond
-FAI_MU_RULE=gershgorin julia --project=experiments experiments/paper/tt_anisotropy_stats/plot_paper.jl
+FAI_MU_RULE=fixed bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
+FAI_MU_RULE=fixed julia --project=experiments experiments/paper/tt_anisotropy_stats/collect.jl nocond
+FAI_MU_RULE=fixed julia --project=experiments experiments/paper/tt_anisotropy_stats/plot_paper.jl
 ```
 
 The job scripts pass the folder to the workers and the collector (`TT_ANISOTROPY_STATS_RESULTS_DIR`,
@@ -83,9 +85,9 @@ change of the conditioning of the build shows up; the outer solve is not expecte
 ## The data of the current figures, and what changed since
 
 The figures and tables of the paper are drawn from the rerun of the scripts of this folder at commit `3945c32` (tag
-`paper-ttfai-v0.1-data`), on MareNostrum 5 in October 2026, with `FAI_MU_RULE=gershgorin` for the two statistics runs.
-Following the data policy of `experiments/README.md`, those data are archived on Zenodo, not in this repository:
-[doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326). The archive holds `linsolve_spd.jld2`, the
+`paper-ttfai-v0.1-data`), on MareNostrum 5 in October 2026, with `FAI_MU_RULE=gershgorin` (now the default) for the two
+statistics runs. Following the data policy of `experiments/README.md`, those data are archived on Zenodo, not in this
+repository: [doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326). The archive holds `linsolve_spd.jld2`, the
 `collected_results.jld2` of `tt_anisotropy_stats` and `chorin_pipeline_stats`, `discrete_floor.{jld2,md}`, the logs, the
 `Project.toml` and `Manifest.toml` of `experiments/`, and a README that says where to copy each file to redraw the figures.
 

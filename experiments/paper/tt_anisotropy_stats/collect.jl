@@ -11,14 +11,15 @@ cannot read it: use `plot_paper.jl` of this folder.
 
 # Inputs and outputs
 
-Input: the task files in the `tasks/` folder of `results/` (or `results_nocond/` with `nocond`), in this folder, or in
-`TT_ANISOTROPY_STATS_RESULTS_DIR` if set. With `FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`), the folders of the
-rule-based runs, `results_mugersh/` and `results_nocond_mugersh/` (see `worker.jl`). Output: `collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`,
-`"df_dropped"`). Two environment variables change the statistics: `BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat
-that each worker process ran (with a single solve per repeat it can still carry residual JIT cost, which matters for
-solves of less than a second; the summary then reports the numbers before and after), and `BENCH_SAMEJOB_PAIRS_ONLY=1`
-computes the speedups only from pairs that ran in the same job, that is on the same node (a block that was refilled in a
-later job is dropped); by default all the pairs are used and `n_pairs_samejob` counts the ones of the same job.
+Input: the task files in the `tasks/` folder of `results_mugersh/` (or `results_nocond_mugersh/` with `nocond`), in this
+folder, or in `TT_ANISOTROPY_STATS_RESULTS_DIR` if set: the folders of the default μ rule, `gershgorin` (see
+`worker.jl`); with `FAI_MU_RULE=fixed`, the folders `results/` and `results_nocond/` of the fixed μ. Output:
+`collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`, `"df_dropped"`). Two environment variables change
+the statistics: `BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat that each worker process ran (with a single solve
+per repeat it can still carry residual JIT cost, which matters for solves of less than a second; the summary then
+reports the numbers before and after), and `BENCH_SAMEJOB_PAIRS_ONLY=1` computes the speedups only from pairs that ran
+in the same job, that is on the same node (a block that was refilled in a later job is dropped); by default all the
+pairs are used and `n_pairs_samejob` counts the ones of the same job.
 
 In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
 committed results; `experiments/smoke.jl` sets it.

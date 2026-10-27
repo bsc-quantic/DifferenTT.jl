@@ -14,8 +14,9 @@ repeat, so that the plotter can draw the spread of the times and the speedups pa
 Each task is one combination of dimension, floor and preconditioner:
 
 - N ∈ {10, 20} and F ∈ {1, 2, 4, 10, 30, 100} (F = 1 is the Poisson equation);
-- no preconditioner (baseline); Sinc on L₀ with M ∈ {3, 4, 5, 7, 10}; FAI on L with μ = 10⁷ and χ_G ∈ {4, 6, 8, 10};
-  and, as a control, FAI on L₀ with μ = 10⁷ and χ_G = 10 (11 tasks per (N, F), 132 in total, `NTASKS` of `submit.sh`).
+- no preconditioner (baseline); Sinc on L₀ with M ∈ {3, 4, 5, 7, 10}; FAI on L with μ = ‖L‖_∞ (Eq. (32) of the paper)
+  and χ_G ∈ {4, 6, 8, 10}; and, as a control, FAI on L₀ with μ = ‖L₀‖_∞ and χ_G = 10 (11 tasks per (N, F), 132 in
+  total, `NTASKS` of `submit.sh`).
 
 We solve with `ResidualALS` (the "MALS" of the paper, local solves preconditioned at every site) to a relative
 residual of 1e-5, with `cutoff = 1e-13`, at most 3000 local iterations, 30 sweeps and a solution bond dimension of at
@@ -25,10 +26,12 @@ most 150 for N = 10, and 50 sweeps and 300 for N = 20. The right-hand side is f 
 every code path outside the timed region. The problem is built once per job under the seed `task.N`, so every repeat
 solves the same system; what varies per repeat is the initial guess and the randomized build of the FAI.
 
-The setups above are those of the paper repository. Two changes of the library since the data of the current figures
-(tag `paper-ttfai-data`) make new runs not comparable with them: the FAI now solves the correct (not the transposed)
-FSAI problem, and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²`, so the bond dimensions
-and the solutions at `cutoff > 0` differ (see `NEWS.md`).
+The setups above are those of the paper repository, with the μ of the paper (see "Penalty μ of the FAI build" below).
+The figures of the paper come from a run of this worker at the tag `paper-ttfai-v0.1-data` (`paper/README.md`). Two
+changes of the library since the data of the earlier drafts of the paper (tag `paper-ttfai-data`) make new runs not
+comparable with those: the FAI now solves the correct (not the transposed) FSAI problem, and the Frobenius floor of
+`ResidualALS` uses `cutoff` where it used `cutoff²`, so the bond dimensions and the solutions at `cutoff > 0` differ
+(see `NEWS.md`).
 
 # Inputs and outputs
 
@@ -37,20 +40,23 @@ case at one repeat index, in a seeded random order and on one problem, so that t
 node; array indices run over the 12 cases first and the repeats next. With `BENCH_LAYOUT=task`, `ARGS[1]` is a task id
 and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it, we estimate the local condition
 numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_rep_RRR.jld2` (key `"result"`) under
-`results/` or `results_nocond/` of this folder, or under `TT_ANISOTROPY_STATS_RESULTS_DIR` if set. The other
+`results_mugersh/` or `results_nocond_mugersh/` of this folder (`results/` or `results_nocond/` with
+`FAI_MU_RULE=fixed`), or under `TT_ANISOTROPY_STATS_RESULTS_DIR` if set. The other
 configuration variables (`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`) are
 described in `common/stats_harness.jl` and `submit.sh`. FAI results also store the iterations of the local solves of the
 build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed over sweeps, and `precond_build_nsweeps`).
 
 # Penalty μ of the FAI build
 
-`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `fai_configs` and
-`fai_L0_configs`, as in the paper. With `gershgorin`, μ = ‖A‖_∞ of the operator the FAI is built on, bounded at run time
-from the stencil coefficients of its 1D factors: N (4 + ρ (N - 1)) / h² for the FAI on L, and 4N / h² for the FAI on L₀ (ρ = 0),
-times `FAI_MU_SCALE` (default 1.0). The μ of the task list is then only a placeholder. A rule-based run writes under
-`results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with the keys `fai_mu_gersh_gdim_χ`
-and `fai_L0_mu_gersh_gdim_χ` instead of `fai_mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in
-`"mu_rule"` and `"mu_scale"`; `collect.jl` and `plot_paper.jl` read the same variables to find the folder.
+`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `gershgorin`, the default and the rule of the paper, μ = ‖A‖_∞ of
+the operator the FAI is built on, bounded at run time from the stencil coefficients of its 1D factors:
+N (4 + ρ (N - 1)) / h² for the FAI on L (Eq. (32) of the paper), and 4N / h² for the FAI on L₀ (ρ = 0), times
+`FAI_MU_SCALE` (default 1.0). The μ of the task list (`fai_configs`, `fai_L0_configs`) is then only a placeholder. A
+rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with
+the keys `fai_mu_gersh_gdim_χ` and `fai_L0_mu_gersh_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in
+`"mu_rule"` and `"mu_scale"`; `collect.jl` and `plot_paper.jl` read the same variables to find the folder. With `fixed`,
+the FAI uses the μ = 10⁷ of the task list, as in the earlier drafts of the paper, and writes under `results/` or
+`results_nocond/` with the keys `fai_mu_1.0e7_gdim_χ`.
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the sweep to N = 5, F = 10 and 7 nodes per dimension, with the baseline,
 Sinc (M = 3), FAI and FAI on L₀ at χ_G = 4, through the `SMOKE` branches next to the constants, and writes under
@@ -64,7 +70,7 @@ From the root of the repository:
     DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
     julia --project=experiments experiments/paper/tt_anisotropy_stats/worker.jl 1 nocond
     bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
-    FAI_MU_RULE=gershgorin bash experiments/paper/tt_anisotropy_stats/submit.sh nocond
+    FAI_MU_RULE=fixed bash experiments/paper/tt_anisotropy_stats/submit.sh nocond   # μ = 10⁷, earlier drafts
 
 # Resources
 
@@ -151,7 +157,7 @@ const pc_tol_map = Dict(5 => 1e-1, 10 => 1e-1, 15 => 1e-1, 20 => 1e-1)
 
 # Preconditioners: Baseline, Sinc-Quadrature (M sweep, built on L0 = -Δ), FAI on L (mu and gdim
 # sweep) and FAI on L0 (control: shows whether FAI's advantage comes from capturing the coupling).
-# With FAI_MU_RULE other than "fixed", the mu of these configurations is a placeholder.
+# The mu of these configurations is used only with FAI_MU_RULE=fixed; the default rule replaces it (common/mu_rules.jl).
 const sinc_M_values = SMOKE ? [3] : [3, 4, 5, 7, 10]
 const fai_configs = SMOKE ? [(1e7, 4)] : [(1e7, 4), (1e7, 6), (1e7, 8), (1e7, 10)]
 const fai_L0_configs = SMOKE ? [(1e7, 4)] : [(1e7, 10)]
