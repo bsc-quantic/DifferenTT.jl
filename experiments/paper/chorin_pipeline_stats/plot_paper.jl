@@ -244,9 +244,9 @@ PAIR_LEGEND_PARETO_REGION = true  # list the net speedup region in the Pareto le
 PAIR_SPEEDUP_YMAX = Dict{String,Float64}("8x8" => 2.5)
 PAIR_SPEEDUP_YMIN = 0.7
 # Lower y limit of the (linear) cumulative total speedup panels, per grid; grids not listed are not capped
-PAIR_CUM_TOTAL_SPEEDUP_YMIN = Dict{String,Float64}("10x10" => 0.9)
+PAIR_CUM_TOTAL_SPEEDUP_YMIN = Dict{String,Float64}("8x8" => 0.8, "10x10" => 0.8)
 # Explicit y ticks of the cumulative total speedup panels, per grid; grids not listed use the default ticks
-PAIR_CUM_TOTAL_SPEEDUP_YTICKS = Dict{String,Vector{Float64}}("10x10" => [1.0, 1.2, 1.4])
+PAIR_CUM_TOTAL_SPEEDUP_YTICKS = Dict{String,Vector{Float64}}("8x8" => [0.8, 0.9, 1.0, 1.1], "10x10" => [0.8, 1.0, 1.2, 1.4, 1.6])
 PAIR_ANNOTATION_FONT_SIZE = 7
 PAIR_XLABEL_STEP = "Time Step"
 PAIR_YLABEL_ITERS = "Local CG Iterations"
