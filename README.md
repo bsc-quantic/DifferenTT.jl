@@ -121,8 +121,9 @@ TODO(release): the arXiv identifier of the preprint (`eprint`, `archivePrefix = 
 To cite the code itself, use the metadata of [`CITATION.cff`](CITATION.cff) (GitHub shows it as "Cite this repository").
 
 The scripts that produce the figures and tables of the paper are in [`experiments/paper/`](experiments/paper/), with the
-instructions to rerun them. TODO(session R): the commit or tag of the rerun on the release version, and the DOI of its
-archived data.
+instructions to rerun them. The data of the paper were produced at the tag
+[`paper-ttfai-v0.1-data`](https://github.com/bsc-quantic/DifferenTT.jl/tree/paper-ttfai-v0.1-data) and are archived on
+Zenodo: [doi:10.5281/zenodo.23663326](https://doi.org/10.5281/zenodo.23663326).
 
 ## License
 
