@@ -377,32 +377,34 @@ of its quality.
 
 The cost is dominated by the solve for ``\\tilde{G}_L``, an MPS with ``N`` sites of dimension ``d^2`` whose operator
 contains ``A`` and the projector ``\\mathcal{P}_L`` of bond dimension 2 (Eq. (14)) twice. In the paper's experiments we
-use ``\\mu = 10^7`` (the exact solution does not depend on ``\\mu``, Appendix B.1), build ``\\tilde{G}_L`` with the
-two-site [`ALS`](@ref) at a local tolerance between ``10^{-5}`` and ``10^{-8}``, stop once the residual of Eq. (21) is
-below ``10^{-1}`` (`residual_tol = 0.1`), and keep ``\\chi_{G_L}`` between 4 and 10. Appendix B.1 reports no change of
-the results for ``\\mu`` between ``10^5`` and ``10^8``; that range lies above the whole spectrum of the anisotropy
-benchmark of Sec. 5.1 (``\\lambda_{\\max}(A) < 8 \\cdot 10^4``), so it does not cover a ``\\mu`` at the top of the
-spectrum there (see below). The FAI pays off when it is reused, e.g. across the time steps of the Chorin projection,
-and when the local dimension is small (Sec. 5.2); with a large local dimension ``d^2`` the build becomes expensive
-(Sec. 5.1). Note two limitations. The shortcut of Eq. (22) for ``D`` holds only if ``\\tilde{G}_L``
-solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error of its row, but
-on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy (Appendix B.6).
+build ``\\tilde{G}_L`` with the two-site [`ALS`](@ref) at a local tolerance between ``10^{-5}`` and ``10^{-8}``, stop
+once the residual of Eq. (21) is below ``10^{-1}`` (`residual_tol = 0.1`), keep ``\\chi_{G_L}`` between 4 and 10, and
+set ``\\mu`` to the Gershgorin bound ``\\|A\\|_\\infty`` (see below). The FAI pays off when it is reused, e.g. across
+the time steps of the Chorin projection, and when the local dimension is small (Sec. 5.2); with a large local dimension
+``d^2`` the build becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (22) for ``D`` holds only if
+``\\tilde{G}_L`` solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error
+of its row, but on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy
+(Appendix B.6).
 
-The value of ``\\mu`` sets the conditioning of the build, although not its exact solution. Since ``\\mathcal{P}_L``
-acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (21) is block diagonal, with the leading principal
-submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and ``\\mu`` times the
-identity on the entries above the diagonal, so its condition number is
-``\\max(\\mu, \\lambda_{\\max}(A)) / \\min(\\mu, \\lambda_{\\min}(A))``. A ``\\mu`` far above ``\\lambda_{\\max}(A)``,
-such as ``10^7`` on a coarse grid, multiplies it by ``\\mu / \\lambda_{\\max}(A)``: the build converges more slowly and,
-with a capped number of sweeps, can return a worse preconditioner (on a ``2^5 \\times 2^5`` QTT pressure operator with
-``\\lambda_{\\max}(A) \\approx 8 \\cdot 10^3``, ``\\chi_{G_L} = 4`` and 30 MALS sweeps, ``\\mu = 10^7`` gave
-``\\kappa(G_L^\\top G_L A) = 146`` and ``\\mu = 10^3`` gave 5.3). Since ``\\lambda_{\\max}(A)`` grows as ``h^{-2}``, the
-paper's ``\\mu = 10^7`` is close to the top of the spectrum only on its finest grids. A value at the top of the
+The value of ``\\mu`` sets the conditioning of the build, although not its exact solution (Appendix B.1). Since
+``\\mathcal{P}_L`` acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (21) is block diagonal, with the
+leading principal submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and
+``\\mu`` times the identity on the entries above the diagonal, so its condition number is
+``\\max(\\mu, \\lambda_{\\max}(A)) / \\min(\\mu, \\lambda_{\\min}(A))``. A ``\\mu`` far above ``\\lambda_{\\max}(A)``
+multiplies it by ``\\mu / \\lambda_{\\max}(A)``: the build converges more slowly and, with a capped number of sweeps,
+can return a worse preconditioner (on a ``2^5 \\times 2^5`` QTT pressure operator with
+``\\lambda_{\\max}(A) \\approx 8 \\cdot 10^3``, ``\\chi_{G_L} = 4`` and 30 MALS sweeps, a ``\\mu`` about 1200 times
+``\\lambda_{\\max}(A)`` gave ``\\kappa(G_L^\\top G_L A) = 146`` and ``\\mu = 10^3`` gave 5.3). A value at the top of the
 spectrum, ``\\mu \\approx \\lambda_{\\max}(A)``, is a reasonable choice: it keeps the condition number of the build at
 ``\\kappa(A)`` and weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. A rough
-estimate suffices, e.g. the Gershgorin bound ``\\|A\\|_\\infty \\ge \\lambda_{\\max}(A)``, which for a Kronecker sum
-is at most the sum of the ``\\|\\cdot\\|_\\infty`` of its one-dimensional terms (``4/h^2`` per axis for the
-second-order Laplacian), or a few Lanczos iterations.
+estimate suffices. The paper takes the Gershgorin bound ``\\mu = \\|A\\|_\\infty \\ge \\lambda_{\\max}(A)`` (Eqs. (32)
+and (37)), which for a finite-difference operator on a regular grid follows from the stencil coefficients alone: a
+central stencil ``\\sum_k c_k u_{i+k} / h^2`` along an axis contributes at most ``\\sum_k |c_k| / h^2`` to a row sum of
+``|A|`` (``4/h^2`` for the second-order Laplacian), and the boundary closures of the paper's operators do not exceed it.
+The repository's `experiments/common/mu_rules.jl` computes this bound from [`derivative_coefficients`](@ref) for the
+operators of the paper's benchmarks (`laplacian_mu_gershgorin` for the Chorin pressure operator,
+`anisotropy_mu_gershgorin` for ``\\mathcal{L}(\\rho)``), and checks it against the assembled operators of small cases
+(`mu_rules_check.jl`). For other operators, a few Lanczos iterations also give an estimate.
 
 # Arguments
 
@@ -410,7 +412,8 @@ second-order Laplacian), or a few Lanczos iterations.
 
 # Keywords
 
-  - `μ::Real`: weight of the equations of the entries above the diagonal of ``\\tilde{G}_L`` in Eq. (21), e.g. `1e7`.
+  - `μ::Real`: weight of the equations of the entries above the diagonal of ``\\tilde{G}_L`` in Eq. (21), e.g. the
+    Gershgorin bound ``\\|A\\|_\\infty`` (see above).
   - `solver::AbstractLinearSolver`: solver of Eq. (21), e.g. [`ResidualALS`](@ref) with `ishermitian` and `isposdef`
     set, since the system is SPD.
   - `totalmaxdim::Int=5`: maximum bond dimension ``\\chi_{G_L}`` of ``G_L = D \\tilde{G}_L``.
@@ -431,12 +434,14 @@ second-order Laplacian), or a few Lanczos iterations.
 # Examples
 
 ```julia
-A, sites = …                                  # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+A, grid = …                                   # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+σ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8)))   # Σ_k |c_k| of the stencil
+μ = σ * sum(h -> 1 / h^2, grid.dx)             # Gershgorin bound ‖A‖_∞ ≥ λ_max(A)
 build = ResidualALS(;
     sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=8),
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5),
 )
-M⁻¹ = fai_preconditioner(A; μ=1e7, solver=build, totalmaxdim=8, residual_tol=0.1)
+M⁻¹ = fai_preconditioner(A; μ, solver=build, totalmaxdim=8, residual_tol=0.1)
 x = linearsolve(ResidualALS(), A, b, M⁻¹, nothing)
 ```
 

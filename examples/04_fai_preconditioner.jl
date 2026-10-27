@@ -144,13 +144,22 @@ println("truncated A⁻¹       ", join((lpad(k, 4) for k in truncated_negative)
 #
 # where ``\mathcal{P}_L`` keeps the lower-triangular entries of the vectorized unknown and ``\mu > 0`` weights the
 # equations ``\mu (\tilde{G}_L)_{ij} = 0`` of the entries above the diagonal. We use the settings of Table 3 of the
-# paper: ``\mu = 10^7``, MALS ([`ResidualALS`](@ref)) with a local CG tolerance of ``10^{-8}`` and at most 30 sweeps,
-# stopped once the relative residual of Eq. (21) is below ``10^{-1}``, and a maximum bond dimension ``\chi_{G_L}`` for
-# both ``\tilde{G}_L`` and ``G_L``. The rescaling ``D`` is computed by RSI with uniform random sketches (Sec. 3.2),
-# which we seed.
+# paper: MALS ([`ResidualALS`](@ref)) with a local CG tolerance of ``10^{-8}`` and at most 30 sweeps, stopped once the
+# relative residual of Eq. (21) is below ``10^{-1}``, and a maximum bond dimension ``\chi_{G_L}`` for both
+# ``\tilde{G}_L`` and ``G_L``. The rescaling ``D`` is computed by RSI with uniform random sketches (Sec. 3.2), which we
+# seed. As in the paper, we set ``\mu`` to the Gershgorin bound ``\|A\|_\infty \ge \lambda_{\max}(A)`` of Eq. (37),
+# which needs only the stencil: a central stencil ``\sum_k c_k u_{i+k} / h^2`` contributes at most
+# ``\sigma / h^2``, with ``\sigma = \sum_k |c_k|``, to every row sum of ``|A|``, and the boundary closures do not exceed
+# it, so that ``\mu = \sigma (h_x^{-2} + h_y^{-2})``, with ``\sigma = 2048/315 \approx 6.50`` for ``q = 8``
+# ([`derivative_coefficients`](@ref)).
+
+σ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8)))
+h = Grid(QTTArchitecture((5, 5); interleaved=false), (2.0, 1.0); periodic=periodic_axes(pressure_bcs)).dx
+μ = σ * sum(1 ./ h .^ 2)
+@printf("μ = ‖A‖_∞ = %.1f, λ_max(A) = %.1f\n", μ, λA[end])
 
 fai_builder(χG) = mals(χG, 1e-8; nsweeps=30)
-function build_fai(op, χG; μ=1e7)
+function build_fai(op, χG)
     fai_preconditioner(op; μ, solver=fai_builder(χG), totalmaxdim=χG, residual_tol=0.1, rng=StableRNG(1))
 end
 
@@ -180,25 +189,21 @@ for χG in χGs
 end
 
 # The first build includes the compilation of the code, so its time is not representative. The condition number drops
-# from ``\kappa(A) \approx 1.5 \cdot 10^4`` by a factor of 10 for ``\chi_{G_L} = 2`` and of 100 for ``\chi_{G_L} = 4``,
-# and the smallest eigenvalue of ``M^{-1}`` stays positive, as it must. The bond dimension of ``G_L`` plays the role of
-# the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at the
-# expense of its quality.
+# from ``\kappa(A) \approx 1.5 \cdot 10^4`` by a factor of 10 for ``\chi_{G_L} = 2``, of 1000 for ``\chi_{G_L} = 3`` and
+# of more than 2500 for ``\chi_{G_L} = 4``, and the smallest eigenvalue of ``M^{-1}`` stays positive, as it must. The
+# bond dimension of ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing
+# and applying the preconditioner, at the expense of its quality.
 #
-# The value of ``\mu`` matters for the build, although not for its exact solution (Appendix B.1). Since ``\mathcal{P}_L``
-# acts on each row of the unknown separately, the operator of Eq. (21) is block diagonal, with the leading principal
-# submatrices of ``A``, whose eigenvalues lie in ``[\lambda_{\min}(A), \lambda_{\max}(A)]``, and ``\mu`` times the
-# identity on the entries above the diagonal. Its condition number is therefore
-# ``\max(\mu, \lambda_{\max}) / \min(\mu, \lambda_{\min})``. On this coarse grid
-# ``\lambda_{\max}(A) \approx 8.2 \cdot 10^3``, so ``\mu = 10^7`` lies three orders of magnitude above the top of the
-# spectrum and raises the condition number of Eq. (21) to about ``2 \cdot 10^7``, while any ``\mu`` inside the spectrum
-# keeps it at ``\kappa(A)``. Since ``\lambda_{\max}(A)`` grows as ``h^{-2}``, it reaches about ``8 \cdot 10^6`` on the
-# ``2^{10} \times 2^{10}`` grid of Sec. 5.2, where ``\mu = 10^7`` is close to the top of the spectrum. A build with a
-# capped number of sweeps, such as the 30 of Table 3, is therefore slower to converge on coarse grids, and can return a
-# worse preconditioner, the larger ``\mu`` is above ``\lambda_{\max}(A)``. A value at the top of the spectrum,
-# ``\mu \approx \lambda_{\max}(A)``, is a reasonable choice: it keeps the condition number of the build at that of ``A``
-# and still weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. We keep the
-# ``\mu = 10^7`` of Table 3 in this tutorial.
+# The value of ``\mu`` matters for the build, although not for its exact solution (Appendix B.1). Since
+# ``\mathcal{P}_L`` acts on each row of the unknown separately, the operator of Eq. (21) is block diagonal, with the
+# leading principal submatrices of ``A``, whose eigenvalues lie in ``[\lambda_{\min}(A), \lambda_{\max}(A)]``, and
+# ``\mu`` times the identity on the entries above the diagonal. Its condition number is therefore
+# ``\max(\mu, \lambda_{\max}) / \min(\mu, \lambda_{\min})``: any ``\mu`` inside the spectrum keeps it at ``\kappa(A)``,
+# while a ``\mu`` above ``\lambda_{\max}(A)`` multiplies it by ``\mu / \lambda_{\max}(A)``. A build with a capped number
+# of sweeps, such as the 30 of Table 3, then converges more slowly and can return a worse preconditioner. A value at the
+# top of the spectrum, ``\mu \approx \lambda_{\max}(A)``, keeps the condition number of the build at that of ``A`` and
+# still weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. The Gershgorin bound is
+# such a value: on this grid it exceeds ``\lambda_{\max}(A)`` by less than 0.1 %.
 
 # ## Inside the FAI
 #
@@ -208,7 +213,7 @@ end
 # preconditioner:
 
 G̃, D = DifferenTT.fai_dg(
-    A, 1e7, fai_builder(3), (; cutoff=1e-15, maxdim=typemax(Int), oversample=10); residual_tol=0.1, rng=StableRNG(1)
+    A, μ, fai_builder(3), (; cutoff=1e-15, maxdim=typemax(Int), oversample=10); residual_tol=0.1, rng=StableRNG(1)
 )
 G3 = contract_mpo(fais[3].operator)
 norm(contract_mpo(apply(D, G̃; maxdim=3)) - G3) / norm(G3)
@@ -228,9 +233,9 @@ g_exact = 1 ./ diag(cholesky(Symmetric(Ad)).L) .^ 2
 @printf("min g = %.2e > 0, max |g - g_exact|/g_exact = %.2f\n", minimum(g), maximum(abs.(g - g_exact) ./ g_exact))
 @printf("1/A_ii ≤ g_exact ≤ 1/λ_min: %s\n", all(1 ./ diag(Ad) .<= g_exact .* (1 + 1e-12)) && all(g_exact .<= 1 / λA[1]))
 
-# The upper part of ``\tilde{G}_L`` is more than three orders of magnitude below its lower part, and every diagonal
-# entry is positive, although they differ from the exact ones by up to 40 %, as expected from a solve with this target
-# residual, after which the lower part of ``\tilde{G}_L A - \mathbf{I}`` still has a relative norm of 0.19.
+# The upper part of ``\tilde{G}_L`` is more than two orders of magnitude below its lower part, and every diagonal entry
+# is positive, although they differ from the exact ones by up to 54 %, as expected from a solve with this target
+# residual, after which the lower part of ``\tilde{G}_L A - \mathbf{I}`` still has a relative norm of 0.23.
 #
 # In order to check ``D``, we form the product ``D \tilde{G}_L`` without truncation. It equals
 # ``\mathrm{diag}(\mathbf{d})\, \tilde{G}_L`` for a vector ``\mathbf{d}``, which reproduces
@@ -296,7 +301,7 @@ for (name, preconditioner) in preconditioners
 end
 
 # The FAI reduces the local iterations by a factor of 2.2 to 3.3, less than the reduction of the global condition number
-# would suggest, since ``\sqrt{\kappa}`` drops by a factor of 3 to 10. The local problems of MALS are projections
+# would suggest, since ``\sqrt{\kappa}`` drops by a factor of 3 to 50. The local problems of MALS are projections
 # ``U^\top A U``, whose spectra lie within that of ``A`` (Sec. 2.1), so their condition numbers can only be smaller than
 # ``\kappa(A)`` and there is less to gain; the next tutorial measures them site by site. Each preconditioned local
 # iteration moreover costs ``1 + 2\chi_{G_L}/\chi_A`` unpreconditioned ones, about 2.3 for ``\chi_{G_L} = 4`` and
@@ -327,8 +332,9 @@ end
     global_cg_iterations(fais[4])
 )
 
-# The FAI reduces the TT-CG iterations by a factor of 8, close to the factor of 10 by which it reduces
-# ``\sqrt{\kappa}``, since here the whole operator is preconditioned and not its local projections.
+# The FAI reduces the TT-CG iterations by a factor of 13, much more than the local iterations of MALS, since here the
+# whole operator is preconditioned and not its local projections. The gain stays below the factor of 50 by which
+# ``\sqrt{\kappa}`` drops, since the condition number only bounds the iterations of CG.
 
 # ## Summary
 #

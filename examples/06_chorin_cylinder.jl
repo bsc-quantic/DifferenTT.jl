@@ -204,17 +204,20 @@ println("iterations per step: ", Int.(baseline.iterations))
 #
 # The pressure operator of the experiment is the field `poisson_op` of its [`ChorinCache`](@ref): ``A = -W\Delta``, with
 # the Neumann rows weighted by ``W`` so that ``A`` is SPD. It does not depend on the velocity or on the mask, so we
-# build its FAI once, with the settings of Table 3 of the paper: ``\mu = 10^7``, at most 30 MALS sweeps at a local
-# tolerance of ``10^{-8}``, stopped at a residual of ``10^{-1}`` of Eq. (21), and ``\chi_{G_L} = 4``.
+# build its FAI once, with the settings of Table 3 of the paper: at most 30 MALS sweeps at a local tolerance of
+# ``10^{-8}``, stopped at a residual of ``10^{-1}`` of Eq. (21), ``\chi_{G_L} = 4``, and the Gershgorin bound
+# ``\mu = \|A\|_\infty = \sigma (h_x^{-2} + h_y^{-2})`` of Eq. (37), with ``\sigma = \sum_k |c_k| = 2048/315`` the sum
+# of the absolute coefficients of the eighth-order stencil ([`derivative_coefficients`](@ref)).
 
 A = ChorinCache(template).poisson_op
+μ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8))) * sum(h -> 1 / h^2, grid.dx)
 fai_build = ResidualALS(;
     sweep_kwargs=SweepingArgs(; nsweeps=30, maxdim=4, cutoff=0.0),
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-8, krylovdim=1, maxiter=3000),
     residual_tol=1e-9,
 )
 build_time = @elapsed fai = fai_preconditioner(
-    A; μ=1e7, solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(2)
+    A; μ, solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(2)
 )
 @printf("χ_A = %d, χ_G = %d, build %.1f s\n", maxlinkdim(A), maxlinkdim(fai.operator), build_time)
 
@@ -227,7 +230,7 @@ preconditioned_time = @elapsed chorin_evolve!(preconditioned_run, preconditioned
 println("iterations per step: ", Int.(preconditioned.iterations))
 @printf("evolution %.1f s, pressure solves %.2f s\n", preconditioned_time, sum(preconditioned.times))
 
-# The FAI reduces the local CG iterations of every pressure solve by a factor of three to four. This second evolution
+# The FAI reduces the local CG iterations of every pressure solve by a factor of 3.5 to 7.4. This second evolution
 # runs with the code already compiled, and shows where the time goes: a step takes about a second, almost all of it in
 # the predictor, whose RK4 stages evaluate the advection by element-wise products of tensor trains, while the pressure
 # solves take a few hundredths of a second. Both runs give the same flow up to the tolerance of the pressure solves:
@@ -260,9 +263,9 @@ cumulative_fai = build_time .+ cumsum(preconditioned.times[2:end])
 # the iterations themselves. The build, on the other hand, costs as much as hundreds of solves, and is never amortized
 # in a run of this length. The paper reaches a net speedup only on finer grids, where the condition number of the
 # pressure operator, which grows as ``\mathcal{O}(h^{-2})``, makes every solve expensive: on the
-# ``2^{10} \times 2^{10}`` grid of Sec. 5.2, an FAI with ``\chi_{G_L}`` between 4 and 5 gives a cumulative speedup of
-# 1.31 to 1.34 after 1000 steps, build included, while on the ``2^8 \times 2^8`` grid the advantage is already diluted
-# by the fixed costs.
+# ``2^{10} \times 2^{10}`` grid of Sec. 5.2, FAIs with ``\chi_{G_L}`` between 4 and 7 reduce the iterations by a factor
+# of 4.0 to 5.6 and give a cumulative speedup of about 1.25 after 1000 steps, build included, while on the
+# ``2^8 \times 2^8`` grid the fixed costs dilute the speedup to at most 13 %.
 
 # ## Summary
 #

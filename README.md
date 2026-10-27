@@ -43,7 +43,7 @@ We solve a two-dimensional Poisson problem in the QTT format with MALS (`Residua
 preconditioner. The grid has 2⁵ × 2⁵ nodes on [0, 2] × [0, 1], with a Neumann and a Dirichlet side in x and periodic
 sides in y, as for the pressure of a channel flow, and the stencil order is q = 8. The same MALS solver, with bond
 dimension χ_G = 4, builds the factor of the preconditioner; we take μ = 10⁴, close to the top of the spectrum of A
-(about 8 · 10³ on this grid), which the manual recommends on coarse grids.
+(about 8 · 10³ on this grid), as the manual recommends.
 
 ```julia
 using DifferenTT, ITensors, ITensorMPS

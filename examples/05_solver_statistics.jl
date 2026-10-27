@@ -68,9 +68,12 @@ maxlinkdim.(getindex.(Ref(𝓛), Fs))
 
 # The one-dimensional operators ``\mathcal{A}_\ell`` of ``B_M`` are those of the non-exported
 # [`onedim_differential_operator`](@ref), scaled by ``-1/h^2``. With ``M = 3`` quadrature points on each side, ``B_3``
-# has bond dimension 7, the value that already reaches the floor in the experiments of Sec. 5.1. The FAI is built as in
-# Sec. 5.1: ``\mu = 10^7``, 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of ``10^{-1}`` of
-# Eq. (21), and ``\chi_{G_L} = 4``, the smallest bond dimension of the paper.
+# has bond dimension 7, the value that already reaches the floor in the experiments of Sec. 5.1. The FAI is built with
+# the settings of Table 2 of the paper: 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of
+# ``10^{-1}`` of Eq. (21), ``\chi_{G_L} = 4``, the smallest bond dimension of the paper, and the Gershgorin bound
+# ``\mu = \|\mathcal{L}(\rho)\|_\infty = N (4 + \rho (N - 1)) / h^2`` of Eq. (32), the largest row sum of
+# ``|\mathcal{L}(\rho)|``: the second differences contribute ``4/h^2`` per dimension and each of the
+# ``N(N-1)/2`` mixed terms ``2\rho/h^2``.
 
 𝒜 = -DifferenTT.onedim_differential_operator(2, arch, 1, dirichlet; stencil_order=2) ./ grid.dx[1]^2
 B3 = sincquadrature_preconditioner(arch, sites, fill(𝒜, N), 3)
@@ -80,8 +83,9 @@ fai_build = ResidualALS(;
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000),
     residual_tol=1e-9,
 )
+μs = Dict(F => N * (4 + ρs[F] * (N - 1)) / grid.dx[1]^2 for F in Fs)
 fai = Dict(
-    F => fai_preconditioner(𝓛[F]; μ=1e7, solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(1)) for
+    F => fai_preconditioner(𝓛[F]; μ=μs[F], solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(1)) for
     F in Fs
 )
 maxlinkdim(B3.operator), maxlinkdim(fai[100.0].operator)

@@ -170,22 +170,26 @@ the local residual (Oseledets & Dolgov, 2012); the Sinc preconditioner ``B_M`` o
 
 ## Choosing the parameters
 
-The paper's experiments use ``\mu = 10^7``, and the exact solution of Eq. (21) does not depend on ``\mu``: the results
-do not change for ``\mu`` between ``10^5`` and ``10^8``. The value does set the conditioning of the build. The operator
-of Eq. (21) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the identity on the
-entries above the diagonal, so its condition number is ``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``.
-A ``\mu`` far above the top of the spectrum of ``A`` therefore makes the local Krylov solves of the build slower and, with a
-capped number of sweeps, can return a worse preconditioner. On a ``2^5 \times 2^5`` QTT pressure operator with
-``\lambda_{\max}(A) \approx 8 \cdot 10^3``, ``\chi_{G_L} = 4`` and 30 MALS sweeps, ``\mu = 10^3`` built in 4.6 s with
-``\kappa(G_L^\top G_L A) = 5.3``, whereas ``\mu = 10^7`` gave ``\kappa = 146`` and did not converge within the 30 sweeps.
-Since ``\lambda_{\max}(A)`` grows as ``h^{-2}``, the paper's ``\mu = 10^7`` is close to the top of the spectrum only on
-its finest grids, and on a coarse grid we recommend ``\mu \approx \lambda_{\max}(A)``, estimated from the stencil or from a
-few Lanczos iterations (see [`fai_preconditioner`](@ref) and the tutorial
-[Factorized approximate inverse preconditioners](@ref)). The FAI is
-built by MALS with a local tolerance between ``10^{-5}`` and ``10^{-8}``, stopping once the relative residual of Eq.
-(21) is below ``10^{-1}`` (`residual_tol = 0.1`), and with ``\chi_{G_L}`` between 4 and 10 (`totalmaxdim`). The bond
-dimension of ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and
-applying the preconditioner, at the expense of its quality.
+The exact solution of Eq. (21) does not depend on ``\mu`` (Appendix B.1), but the value sets the conditioning of the
+build. The operator of Eq. (21) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the
+identity on the entries above the diagonal, so its condition number is
+``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``. A ``\mu`` far above the top of the spectrum of ``A``
+therefore makes the local Krylov solves of the build slower and, with a capped number of sweeps, can return a worse
+preconditioner. On a ``2^5 \times 2^5`` QTT pressure operator with ``\lambda_{\max}(A) \approx 8 \cdot 10^3``,
+``\chi_{G_L} = 4`` and 30 MALS sweeps, ``\mu = 10^3`` built in 4.6 s with ``\kappa(G_L^\top G_L A) = 5.3``, whereas a
+``\mu`` about 1200 times ``\lambda_{\max}(A)`` gave ``\kappa = 146`` and did not converge within the 30 sweeps. We
+therefore recommend ``\mu \approx \lambda_{\max}(A)``. The paper takes the Gershgorin bound
+``\mu = \|A\|_\infty \ge \lambda_{\max}(A)`` (Eqs. (32) and (37)), which for a finite-difference operator on a regular
+grid follows from the stencil coefficients alone: the central stencil ``\sum_k c_k u_{i+k} / h^2`` of
+[`derivative_coefficients`](@ref) contributes at most ``\sum_k |c_k| / h^2`` per axis to a row sum of ``|A|``, and the
+boundary closures of the paper's operators do not exceed it. The example below computes it, and
+`experiments/common/mu_rules.jl` in the repository does so for the operators of the paper's benchmarks; for other
+operators, a few Lanczos iterations also give an estimate (see [`fai_preconditioner`](@ref) and the tutorial
+[Factorized approximate inverse preconditioners](@ref)). The FAI is built by MALS with a local tolerance between
+``10^{-5}`` and ``10^{-8}``, stopping once the relative residual of Eq. (21) is below ``10^{-1}``
+(`residual_tol = 0.1`), and with ``\chi_{G_L}`` between 4 and 10 (`totalmaxdim`). The bond dimension of ``G_L`` plays
+the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at
+the expense of its quality.
 
 The FAI pays off when its build is amortized and its application is cheap. In the Chorin projection of Sec. 5.2, the
 same pressure operator is solved at every time step, so the preconditioner is built once per run and reused, and on QTT
@@ -201,12 +205,15 @@ using DifferenTT, ITensorMPS, Random
 arch = QTTArchitecture((6, 6))                       # 2⁶ × 2⁶ grid, 12 sites
 sites = siteinds(arch)
 bc = BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), 2)...)
-A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), Grid(arch, (1.0, 1.0)))
+grid = Grid(arch, (1.0, 1.0))
+A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), grid)   # stencil order 8
 b = random_mps(Xoshiro(1), sites; linkdims=2)
 
+σ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8)))   # Σ_k |c_k| ≈ 6.50
+μ = σ * sum(h -> 1 / h^2, grid.dx)                  # Gershgorin bound ‖A‖_∞ ≥ λ_max(A), ≈ 5.2 ⋅ 10⁴
 cg = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5)
 build = ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=8), updater_kwargs=cg)
-M⁻¹ = fai_preconditioner(A; μ=1e7, solver=build, totalmaxdim=8, residual_tol=0.1, rng=Xoshiro(1))
+M⁻¹ = fai_preconditioner(A; μ, solver=build, totalmaxdim=8, residual_tol=0.1, rng=Xoshiro(1))
 
 numiter = KrylovSweepStats()
 solver = ResidualALS(;
@@ -217,8 +224,9 @@ x = linearsolve(solver, A, b, M⁻¹, nothing)
 sum(DifferenTT.positions_sum(numiter))               # total local CG iterations
 ```
 
-In our run, the preconditioner reduced the local CG iterations of this solve from 1639 to 435, while its build took
-more than 30 times as long as one unpreconditioned solve, which illustrates why the FAI is meant to be reused.
+In our run, the preconditioner reduced the local CG iterations of this solve from 1639 to 433, while its build took 3
+to 4 times as long as one unpreconditioned solve, which illustrates why the FAI is meant to be reused. A ``\mu`` 200
+times above ``\|A\|_\infty`` gave the same iterations, but made the build 10 times slower.
 
 ## Checking definiteness
 
