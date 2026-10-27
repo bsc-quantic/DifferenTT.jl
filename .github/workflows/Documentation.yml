@@ -27,8 +27,12 @@ jobs:
       - uses: julia-actions/cache@v3
       - name: Instantiate docs environment
         run: julia --project=docs -e 'using Pkg; Pkg.instantiate()'
+      # The documentation is not published until the paper is out: GitHub Pages cannot be switched off on this plan, so
+      # the gh-pages branch was emptied (2026-10-27) and, without a token, deploydocs only builds and logs
+      # "Deploying: ✘". To publish again, set the repository variable DOCS_DEPLOY to true
+      # (gh variable set DOCS_DEPLOY --body true).
       - name: Build and deploy
         run: julia --project=docs docs/make.jl
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          DOCUMENTER_KEY: ${{ secrets.DOCUMENTER_KEY }}
+          GITHUB_TOKEN: ${{ vars.DOCS_DEPLOY == 'true' && secrets.GITHUB_TOKEN || '' }}
+          DOCUMENTER_KEY: ${{ vars.DOCS_DEPLOY == 'true' && secrets.DOCUMENTER_KEY || '' }}
