@@ -127,7 +127,7 @@ The first public release. Version 0.0.1 is the state of the library that produce
   operator (both with and without `symmetrize`). Results for symmetric operators are unchanged.
 - `inverse_laplacian_preconditioner` throws `ArgumentError` instead of `ErrorException` for unsupported boundary
   conditions.
-- `fai_preconditioner(...; preconditioning=true)` preconditions the complement block `μ(I - P_L)` of Eq. (22) with
+- `fai_preconditioner(...; preconditioning=true)` preconditions the complement block `μ(I - P_L)` of Eq. (21) with
   `(I - P_L)/μ` instead of `μ(I - P_L)`. The build needed about 22 times more local iterations for `μ ≥ 1e3`; results
   for `μ = 1` are unchanged.
 - `DifferentialOpsScalar(grid, field, n_eyepad)` threw on a missing grid field. The padded operator is scaled by the

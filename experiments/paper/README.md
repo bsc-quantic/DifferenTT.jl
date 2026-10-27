@@ -12,8 +12,8 @@ paper repository and we did not change them. The benchmarks that the paper does 
 |---|---|---|---|---|
 | Fig. 3: negative eigenvalues of the truncated approximate inverses (`fig:spd_nneg`) | `linsolve_spd/` | `worker.jl` | – (one results file) | `plot_paper.jl` (`plot_results.jl` is a quick look at the same data) |
 | Table 1: anisotropy floor and solution ranks (`tab:anisotropy_floor`) | `anisotropy_floor/` | `discrete_floor.jl` (computes the table) | – | – |
-| Figs. 9-11: MALS iterations, solve time and iterations per site, anisotropic diffusion (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) | `tt_anisotropy_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
-| Table 2 and Figs. 12-13: Chorin pipeline, MALS parameters, iterations and cumulative speedup (`tab:chorin_mals_params`, `fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) | `chorin_pipeline_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
+| Table 2 and Figs. 9-10: anisotropic diffusion, MALS parameters, iterations and iterations per site (`tab:anisotropy_params`, `fig:mals_iters`, `fig:mals_site_iters`) | `tt_anisotropy_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
+| Table 3 and Figs. 11-12: Chorin pipeline, MALS parameters, iterations and cumulative speedup (`tab:chorin_mals_params`, `fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) | `chorin_pipeline_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
 
 The statistics benchmarks run every task `BENCH_N_REPEATS` times and write one file per task and repeat; the collector
 turns them into one table and the plotter draws the spread over the repeats. Their shared helpers are in
@@ -48,7 +48,7 @@ with local condition numbers are much slower and are not used by the paper's fig
 
 ## The penalty μ of the FAI build (`FAI_MU_RULE`)
 
-The FAI solves Eq. (22) with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
+The FAI solves Eq. (21) with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
 max(μ, λmax(A)) / min(μ, λmin(A)), so μ only needs to sit at the top of the spectrum of A. The paper uses μ = 10⁷, which is
 close to λmax(A) on the 2¹⁰ × 2¹⁰ Chorin grid but 130 to 1300 times above it in the anisotropy benchmark. Both statistics
 workers (`tt_anisotropy_stats/`, `chorin_pipeline_stats/`) therefore take two environment variables:

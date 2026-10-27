@@ -239,7 +239,7 @@ bc = BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0))
 field = ScalarField(siteinds(arch), arch, BoundaryConditions(bc, bc, bc))
 grid = interior_grid(arch, (1.0, 1.0, 1.0))
 F, N = 10, 3
-L = -1.0 * equicorrelated_laplacian(field, grid; correlation=(F - 1) / (F + N - 1), stencil_order=2)  # Eq. (32)
+L = -1.0 * equicorrelated_laplacian(field, grid; correlation=(F - 1) / (F + N - 1), stencil_order=2)  # Eq. (31)
 maxlinkdim(L)  # 3
 ```
 """

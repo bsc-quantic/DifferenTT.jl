@@ -1,5 +1,5 @@
 """
-    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): worker
+    TT anisotropy benchmark, statistics variant (paper Table 2 and Figs. 9-10): worker
 
 We solve the anisotropic diffusion equation -∇⋅(K∇u) = 1 on (0, 1)ᴺ with homogeneous Dirichlet conditions, where K =
 (1-ρ) I + ρ 𝟏𝟏ᵀ is the equicorrelated diffusion tensor, in the non-quantized TT format with 15 nodes per dimension (Sec.
@@ -21,7 +21,7 @@ We solve with `ResidualALS` (the "MALS" of the paper, local solves preconditione
 residual of 1e-5, with `cutoff = 1e-13`, at most 3000 local iterations, 30 sweeps and a solution bond dimension of at
 most 150 for N = 10, and 50 sweeps and 300 for N = 20. The right-hand side is f ≡ 1 (`TT_ANISOTROPY_RHS` selects
 `ones`, `random` or `manufactured`). The FAI is built with the two-site ALS solver (10 sweeps,
-`TT_ANISOTROPY_STATS_FAI_NSWEEPS`, stopped at a relative residual of 0.1 of Eq. (22)), after a warm-up that compiles
+`TT_ANISOTROPY_STATS_FAI_NSWEEPS`, stopped at a relative residual of 0.1 of Eq. (21)), after a warm-up that compiles
 every code path outside the timed region. The problem is built once per job under the seed `task.N`, so every repeat
 solves the same system; what varies per repeat is the initial guess and the randomized build of the FAI.
 
@@ -75,8 +75,8 @@ job script sets 7). The comments of `submit.sh` give the time of each block as m
 
 # Paper
 
-Figs. 9-11 (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) of Sec. 5.1, drawn by `plot_paper.jl` from the
-output of `collect.jl`.
+Sec. 5.1: Table 2 (`tab:anisotropy_params`) lists the parameters of the runs, which are the constants of this worker,
+and Figs. 9-10 (`fig:mals_iters`, `fig:mals_site_iters`) are drawn by `plot_paper.jl` from the output of `collect.jl`.
 """
 
 using ITensors

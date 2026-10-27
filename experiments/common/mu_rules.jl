@@ -1,7 +1,7 @@
 """
     Rules for the penalty μ of the FAI build (shared by the paper workers, collectors and plotters)
 
-The FAI solves Eq. (22) of the paper with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
+The FAI solves Eq. (21) of the paper with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
 max(μ, λmax(A)) / min(μ, λmin(A)). μ only needs to sit at the top of the spectrum of A: a μ far above λmax(A) multiplies
 the condition number of the build by μ / λmax(A). The paper uses μ = 10⁷, which is close to λmax(A) only on the finest
 Chorin grid. The rule `gershgorin` sets μ = ‖A‖_∞, the Gershgorin upper bound of λmax(A). We bound it from the stencil

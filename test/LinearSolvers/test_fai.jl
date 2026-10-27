@@ -12,10 +12,10 @@ using .TestUtils
 κ(M) = (λ=eigvals(M); maximum(abs, λ) / minimum(abs, λ))
 cg_args(; kwargs...) = LocalUpdaterArgs(; ishermitian=true, isposdef=true, kwargs...)
 
-# The identities of Sec. 3, Lemma 1 and Appendix B of Torrente et al. hold for the exact solution of Eq. (22). We get it
+# The identities of Sec. 3, Lemma 1 and Appendix B of Torrente et al. hold for the exact solution of Eq. (21). We get it
 # with exact (QR) local solves on a 2⁴-point QTT Laplacian: the vectorized unknown has 4 sites of dimension 4, so
 # 2-site ALS with bond dimension 16 represents it exactly.
-@testset "FAI identities for the exact solution of Eq. (22)" begin
+@testset "FAI identities for the exact solution of Eq. (21)" begin
     A, sites, _, _ = qtt_laplacian((4,))
     Ad = todense(A)
     L = cholesky(Symmetric(Ad)).L
@@ -34,7 +34,7 @@ cg_args(; kwargs...) = LocalUpdaterArgs(; ishermitian=true, isposdef=true, kwarg
     @test all(1 ./ diag(Ad) .<= g .* (1 + 1e-10))
     @test all(g .<= (1 + 1e-10) / eigmin(Symmetric(Ad)))
 
-    # D = diag(G̃_L)^(-1/2) (Eq. (23)) is diagonal and positive
+    # D = diag(G̃_L)^(-1/2) (Eq. (22)) is diagonal and positive
     @test norm(Dd - Diagonal(diag(Dd))) == 0
     @test diag(Dd) ≈ g .^ (-1 / 2) rtol = 1e-8
 
@@ -81,7 +81,7 @@ end
     Gp = todense(Fp.operator)
     @test κ(Gp' * Gp * Ad) < 1.1
 
-    # residual_tol stops the build once the relative residual of Eq. (22) is below it, which compute_residual logs
+    # residual_tol stops the build once the relative residual of Eq. (21) is below it, which compute_residual logs
     loose = ALS(; sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=16), updater_kwargs=cg_args(; rtol=1e-6))
     logs, _ = Test.collect_test_logs(; min_level=Logging.Info) do
         fai_preconditioner(A; μ=1.0, solver=loose, residual_tol=1e-1, compute_residual=true, rng=rng(1))

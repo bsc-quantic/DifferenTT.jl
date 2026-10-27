@@ -1,5 +1,5 @@
 """
-    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): worker
+    Chorin pipeline benchmark, statistics variant (paper Table 3 and Figs. 11-12): worker
 
 We solve the pressure Poisson system of every time step of a Chorin projection of the flow past a cylinder, the setup of
 Sec. 5.2 of the paper: Re = 3000 in the box [0, 2] × [0, 1] (periodic in y), a cylinder of radius 0.1 at (0.5, 0.5)
@@ -20,7 +20,7 @@ Each task is one system size with either no preconditioner (the baseline) or the
 At each step we solve with `ResidualALS` (the "MALS" of the paper, local solves preconditioned at every site) to a relative
 residual of 1e-3, with `cutoff = 0` and at most 100 sweeps and 2000 local iterations, starting from the previous
 pressure. We build the FAI once per task, before the time loop, on the pressure operator with the two-site ALS solver (30 sweeps, `cutoff = 1e-12`, stopped at a
-relative residual of 0.1 of Eq. (22)); the element-wise map D uses `cutoff = 1e-11` and an oversampling of 20. The mask is
+relative residual of 0.1 of Eq. (21)); the element-wise map D uses `cutoff = 1e-11` and an oversampling of 20. The mask is
 that of `fai_benchmarks/chorin_pipeline/masks.jld2` (the worker deliberately shares it with that benchmark). The grid is
 `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the worker stops with an
 `ArgumentError` if the metadata of the mask do not match that grid (`common/mask_grid.jl`).
@@ -80,8 +80,8 @@ each unit as measured in the run of October 2026.
 
 # Paper
 
-Sec. 5.2: Table 2 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
-and Figs. 12-13 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
+Sec. 5.2: Table 3 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
+and Figs. 11-12 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
 the output of `collect.jl`.
 """
 

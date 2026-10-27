@@ -1,5 +1,5 @@
 """
-    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): paper plotter
+    TT anisotropy benchmark, statistics variant (paper Figs. 9-10): paper plotter
 
 We draw here the figures of Sec. 5.1 of the paper from the table of repeats that `collect.jl` wrote. A case is a pair
 (dimension N, floor F); every configuration is compared with the baseline of the same case. We recompute every
@@ -41,7 +41,9 @@ There is no job script: we run it locally on the collected data.
 
 # Paper
 
-Figs. 9-11 (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) of Sec. 5.1.
+Figs. 9-10 (`fig:mals_iters`, `fig:mals_site_iters`) of Sec. 5.1, from the pairs of total local iterations against F and
+of iterations per site. The solve-time pair (`solve_time_vs_F` in `PAIR_VS_F`) is drawn too, but the paper does not show
+it.
 """
 
 using JLD2

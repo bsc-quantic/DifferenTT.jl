@@ -419,8 +419,8 @@ using .TestUtils
                 @test sum(diag(Pd)) ≈ (incl ? D * (D + 1) ÷ 2 : D * (D - 1) ÷ 2)
             end
         end
-        # one site of dimension 2: the diagonal (1, 0, 1, 1) of Eq. (20) of the FAI paper, for row >= column, with the
-        # combiner merging (column, row) as fai_dg does
+        # one site of dimension 2: the diagonal (1, 0, 1, 1) of the example of Sec. 3.1 of the FAI paper, for
+        # row >= column, with the combiner merging (column, row) as fai_dg does
         s = DifferenTT.site_indices([2])
         helper = DifferenTT.site_indices([2])
         P = DifferenTT.triang_projector_mpo(s, [combiner(s[1], helper[1])], :lower)

@@ -1,5 +1,5 @@
 """
-    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): collector
+    TT anisotropy benchmark, statistics variant (paper Table 2 and Figs. 9-10): collector
 
 The workers of this benchmark write one file per task and repeat, and the plotter needs them as one table. We read every
 `tasks/task_NNN_rep_RRR.jld2` of the results folder with `collect_dataset` (`common/stats_utils.jl`), which checks that the
@@ -34,7 +34,7 @@ runs last sees every finished unit.
 
 # Paper
 
-Figs. 9-11 of Sec. 5.1 (through `plot_paper.jl`).
+Figs. 9-10 of Sec. 5.1 (through `plot_paper.jl`); the parameters of Table 2 are the constants of the worker.
 """
 
 using JLD2

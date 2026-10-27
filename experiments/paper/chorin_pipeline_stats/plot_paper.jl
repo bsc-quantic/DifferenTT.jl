@@ -1,5 +1,5 @@
 """
-    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): paper plotter
+    Chorin pipeline benchmark, statistics variant (paper Table 3 and Figs. 11-12): paper plotter
 
 We draw here the figures of Sec. 5.2 of the paper from the table of repeats that `collect.jl` wrote. Every statistic is
 recomputed from the per-repeat rows, so the center and the band that we draw are chosen in the parameter block below
@@ -43,7 +43,7 @@ There is no job script: we run it locally on the collected data.
 
 # Paper
 
-Figs. 12-13 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) of Sec. 5.2; the parameters of Table 2
+Figs. 11-12 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) of Sec. 5.2; the parameters of Table 3
 (`tab:chorin_mals_params`) are the constants of the worker.
 """
 

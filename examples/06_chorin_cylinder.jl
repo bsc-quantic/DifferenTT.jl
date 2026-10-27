@@ -12,8 +12,8 @@
 # We proceed as follows. We first set up the channel of Sec. 5.2, with a cylinder encoded by cross interpolation, and
 # choose the time step from the CFL condition. We then wrap the pressure solver so that it can carry a preconditioner
 # and record its work at every step, and run the same evolution with plain MALS and with MALS preconditioned by one
-# reused FAI. Finally, we compare the iterations per step (Fig. 12 of the paper) and the cumulative solve time,
-# including the build of the preconditioner (Fig. 13).
+# reused FAI. Finally, we compare the iterations per step (Fig. 11 of the paper) and the cumulative solve time,
+# including the build of the preconditioner (Fig. 12).
 
 using DifferenTT
 using ITensors, ITensorMPS
@@ -204,8 +204,8 @@ println("iterations per step: ", Int.(baseline.iterations))
 #
 # The pressure operator of the experiment is the field `poisson_op` of its [`ChorinCache`](@ref): ``A = -W\Delta``, with
 # the Neumann rows weighted by ``W`` so that ``A`` is SPD. It does not depend on the velocity or on the mask, so we
-# build its FAI once, with the settings of Table 2 of the paper: ``\mu = 10^7``, at most 30 MALS sweeps at a local
-# tolerance of ``10^{-8}``, stopped at a residual of ``10^{-1}`` of Eq. (22), and ``\chi_{G_L} = 4``.
+# build its FAI once, with the settings of Table 3 of the paper: ``\mu = 10^7``, at most 30 MALS sweeps at a local
+# tolerance of ``10^{-8}``, stopped at a residual of ``10^{-1}`` of Eq. (21), and ``\chi_{G_L} = 4``.
 
 A = ChorinCache(template).poisson_op
 fai_build = ResidualALS(;
@@ -240,7 +240,7 @@ u_baseline, u_preconditioned = last(baseline_run.u_fields)[1], last(precondition
 
 # ## Cumulative cost
 #
-# Fig. 13 of the paper measures the cumulative speedup up to each step, as the ratio between the time of the plain
+# Fig. 12 of the paper measures the cumulative speedup up to each step, as the ratio between the time of the plain
 # pressure solves and that of the preconditioned ones plus the build of the FAI. We compute it from step 2 on, since the
 # first solve of each run includes the compilation of the code.
 
@@ -266,7 +266,7 @@ cumulative_fai = build_time .+ cumsum(preconditioned.times[2:end])
 
 # ## Summary
 #
-# The figure shows (a) the local CG iterations of the pressure solve at each step, a miniature of Fig. 12 of the paper,
+# The figure shows (a) the local CG iterations of the pressure solve at each step, a miniature of Fig. 11 of the paper,
 # (b) the cumulative time of the pressure solves from step 2 on, with the build of the FAI included, and (c) the
 # horizontal velocity of the last stored state of the preconditioned run, a provisional field ``\mathbf{u}^*``. The flow
 # is not resolved on this grid, which shows as node-to-node oscillations upstream of the cylinder. The velocity is
