@@ -16,7 +16,7 @@ DifferenTT = {path = ".."}
 
 [compat]
 Documenter = "1"
-ITensorMPS = "0.3.44"
+ITensorMPS = "0.3.44, 0.4"
 ITensors = "0.9.25"
 LinearAlgebra = "1.12"
 Literate = "2"

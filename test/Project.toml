@@ -23,7 +23,7 @@ DifferenTT = {path = ".."}
 [compat]
 Adapt = "4.5"
 Aqua = "0.8"
-ITensorMPS = "0.3.44"
+ITensorMPS = "0.3.44, 0.4"
 ITensors = "0.9.25"
 JLD2 = "0.6.3"
 KrylovKit = "0.10.2"
