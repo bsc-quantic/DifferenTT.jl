@@ -15,6 +15,10 @@ authors:
     family-names: Torrente Badia
     affiliation: "Barcelona Supercomputing Center; Universitat Politècnica de Catalunya"
     orcid: "https://orcid.org/0009-0005-2942-3263"
+  - given-names: Daniel
+    family-names: Pérez García
+    affiliation: "Barcelona Supercomputing Center"
+    orcid: "https://orcid.org/0009-0009-0283-7019"
   - given-names: Stefano
     family-names: Carignano
     affiliation: "Barcelona Supercomputing Center"
@@ -23,10 +27,6 @@ authors:
     family-names: García Sáez
     affiliation: "Barcelona Supercomputing Center; Qilimanjaro Quantum Tech"
     orcid: "https://orcid.org/0000-0003-3561-0223"
-  - given-names: Daniel
-    family-names: Pérez García
-    affiliation: "Barcelona Supercomputing Center"
-    orcid: "https://orcid.org/0009-0009-0283-7019"
 version: 0.1.0
 license: MIT
 repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
