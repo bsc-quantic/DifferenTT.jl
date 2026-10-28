@@ -259,6 +259,9 @@ PAIR_LINE_WIDTH_THICK = 1.6
 PAIR_MARKER_SIZE = 2.5
 PAIR_MARGIN = 1Plots.mm
 PAIR_ANNOTATE_BEST_M = true
+PAIR_LABEL_SINC = "B_M"   # Sinc in the pair legend strip (math mode): "$B_M, M=3$"
+PAIR_LABEL_FAI = "TT-FAI"   # FAI / FAI(L0) in the pair legend strip
+PAIR_LABEL_FAI_L0 = "TT-FAI\$(L_0)\$"
 PAIR_LEGEND_COLUMNS = 4    # entries per legend row (-1 = all in a single row)
 PAIR_LEGEND_ROW_HEIGHT = 15   # pt
 PAIR_LEGEND_LINE_LENGTH = 0.2  # sample line length, as a fraction of the column width
@@ -671,11 +674,11 @@ series_ls(k) = (
     end
 )
 
-function series_label(k)
+function series_label(k; fai=LABEL_FAI, fai_L0=LABEL_FAI_L0)
     k == "baseline" && return "Baseline"
     v = INFO[k]
     v.method == "sinc" && return latexstring("$LABEL_SINC \$M=$(v.M)\$")
-    name = v.method == "fai_L0" ? LABEL_FAI_L0 : LABEL_FAI
+    name = v.method == "fai_L0" ? fai_L0 : fai
     return if MULTI_MU
         latexstring("$name \$\\chi_{max}=$(v.chi), \\mu=$(v.mu_tex)\$")
     else
@@ -1201,7 +1204,7 @@ function pair_legend_entries()
         push!(
             entries,
             (
-                latexstring("$LABEL_SINC (best \$M\$)"),
+                latexstring("\$$PAIR_LABEL_SINC\$ (best \$M\$)"),
                 COLOR_SINC_BEST,
                 :dashdot,
                 :diamond,
@@ -1212,16 +1215,26 @@ function pair_legend_entries()
         append!(
             entries,
             [
-                (series_label(k), SERIES_COLOR[k], :dashdot, :diamond, PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH) for
-                k in SINC_KEYS
+                (
+                    latexstring("\$$PAIR_LABEL_SINC, M=$(INFO[k].M)\$"),
+                    SERIES_COLOR[k],
+                    :dashdot,
+                    :diamond,
+                    PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH,
+                ) for k in SINC_KEYS
             ],
         )
     end
     append!(
         entries,
         [
-            (series_label(k), SERIES_COLOR[k], series_ls(k), series_marker(k), PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH) for
-            k in vcat(FAI_KEYS, L0_KEYS)
+            (
+                series_label(k; fai=PAIR_LABEL_FAI, fai_L0=PAIR_LABEL_FAI_L0),
+                SERIES_COLOR[k],
+                series_ls(k),
+                series_marker(k),
+                PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH,
+            ) for k in vcat(FAI_KEYS, L0_KEYS)
         ],
     )
     return entries

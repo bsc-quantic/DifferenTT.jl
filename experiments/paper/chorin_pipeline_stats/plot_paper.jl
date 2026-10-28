@@ -270,6 +270,7 @@ PAIR_LINE_WIDTH_THICK = 1.6
 PAIR_ITERS_LINE_WIDTH = Dict{String,Tuple{Float64,Float64}}("8x8" => (0.5, 0.8), "10x10" => (0.5, 0.8))
 PAIR_MARKER_SIZE = 2.5
 PAIR_MARGIN = 1Plots.mm
+PAIR_LABEL_FAI = "TT-FAI"   # FAI in the legend strips
 PAIR_LEGEND_COLUMNS = 4    # entries per legend row (-1 = all in a single row)
 PAIR_LEGEND_ROW_HEIGHT = 15   # pt
 PAIR_LEGEND_LINE_LENGTH = 0.2  # sample line length, as a fraction of the column width
@@ -660,7 +661,7 @@ function fmt_mu(μ)
     m = μ / 10.0^e
     return isapprox(m, 1; atol=1e-8) ? "10^{$e}" : "$(round(m; digits=2)) \\times 10^{$e}"
 end
-chi_label(g) = latexstring("FAI \$\\chi_{max}=$(g)\$")
+chi_label(g; name="FAI") = latexstring("$name \$\\chi_{max}=$(g)\$")
 
 function make_colors(n)
     n == 0 && return []
@@ -1568,7 +1569,7 @@ end
 # One strip per figure pair, each listing only the series drawn in those panels
 if PLOT_PAIRS && !isempty(ALL_CHIS)
     lw, lw_thick = PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH, PAIR_CANVAS_SCALE * PAIR_LINE_WIDTH_THICK
-    chi_entries(marker) = [(chi_label(g), CHI_COLOR[g], :solid, marker, lw) for g in ALL_CHIS]
+    chi_entries(marker) = [(chi_label(g; name=PAIR_LABEL_FAI), CHI_COLOR[g], :solid, marker, lw) for g in ALL_CHIS]
     strips = Dict(
         "legend_strip_iterations" => vcat(
             Any[("Baseline", COLOR_BASELINE, :solid, :none, lw_thick)],
