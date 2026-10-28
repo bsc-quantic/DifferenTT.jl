@@ -1,7 +1,7 @@
 #!/bin/bash
 #SBATCH --job-name=circ_evol
 # Static #SBATCH lines do not expand variables: override the account and QoS with
-#   sbatch --account=<project> --qos=<qos> validation/tunnel2d/tunnel2d.slurm
+#   sbatch --account=<project> --qos=<qos> experiments/validation/tunnel2d/tunnel2d.slurm
 #SBATCH --account=bsc21
 #SBATCH --chdir=.
 #SBATCH --output=experiments/validation/tunnel2d/circle_data/output.out
