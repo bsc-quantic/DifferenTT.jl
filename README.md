@@ -111,7 +111,7 @@ If you use DifferenTT in your work, please cite the paper that introduces the FA
 ```bibtex
 @misc{torrente_fai_tt,
   title  = {Factorized approximate inverse preconditioners in the tensor train format},
-  author = {Torrente Badia, Pau and P{\'e}rez Garc{\'i}a, Daniel and Carignano, Stefano and Garc{\'i}a S{\'a}ez, Artur},
+  author = {Torrente Badia, Pau and P{\'e}rez Garc{\'i}a, Daniel and Garcia-Saez, Artur and Carignano, Stefano },
   note   = {In preparation},
 }
 ```

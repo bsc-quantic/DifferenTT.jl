@@ -19,14 +19,14 @@ authors:
     family-names: Pérez García
     affiliation: "Barcelona Supercomputing Center"
     orcid: "https://orcid.org/0009-0009-0283-7019"
-  - given-names: Stefano
-    family-names: Carignano
-    affiliation: "Barcelona Supercomputing Center"
-    orcid: "https://orcid.org/0000-0001-6549-5364"
   - given-names: Artur
     family-names: Garcia-Saez
     affiliation: "Barcelona Supercomputing Center; Qilimanjaro Quantum Tech"
     orcid: "https://orcid.org/0000-0003-3561-0223"
+  - given-names: Stefano
+    family-names: Carignano
+    affiliation: "Barcelona Supercomputing Center"
+    orcid: "https://orcid.org/0000-0001-6549-5364"
 version: 0.1.0
 license: MIT
 repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
@@ -56,11 +56,11 @@ preferred-citation:
       family-names: Pérez García
       affiliation: "Barcelona Supercomputing Center"
       orcid: "https://orcid.org/0009-0009-0283-7019"
-    - given-names: Stefano
-      family-names: Carignano
-      affiliation: "Barcelona Supercomputing Center"
-      orcid: "https://orcid.org/0000-0001-6549-5364"
     - given-names: Artur
       family-names: Garcia-Saez
       affiliation: "Barcelona Supercomputing Center; Qilimanjaro Quantum Tech"
       orcid: "https://orcid.org/0000-0003-3561-0223"
+    - given-names: Stefano
+      family-names: Carignano
+      affiliation: "Barcelona Supercomputing Center"
+      orcid: "https://orcid.org/0000-0001-6549-5364"
