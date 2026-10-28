@@ -1,5 +1,5 @@
 """
-    TT anisotropy benchmark, statistics variant (paper Figs. 9-11): paper plotter
+    TT anisotropy benchmark, statistics variant (paper Figs. 9-10): paper plotter
 
 We draw here the figures of Sec. 5.1 of the paper from the table of repeats that `collect.jl` wrote. A case is a pair
 (dimension N, floor F); every configuration is compared with the baseline of the same case. We recompute every
@@ -13,21 +13,21 @@ the speedups are paired by repeat index with the baseline.
   - all N in one figure (`*_vs_F_all_N`), with a line style per N;
   - per case: speedup against χ_max with Sinc reference lines, Pareto front, site-by-site iterations, and the
     distributions over the repeats;
-  - `plots_paper/pairs/`: legend-free panels drawn at their printed size, to be placed two per row in the paper, plus
-    the shared `legend_strip` that goes under each pair (`PLOT_PAIRS`). These are the figures of the paper;
-  - `plots_paper/stats_used.txt` records which statistics we drew, for the figure captions.
+  - `plots_paper_mugersh/pairs/`: legend-free panels drawn at their printed size, to be placed two per row in the paper,
+    plus the shared `legend_strip` that goes under each pair (`PLOT_PAIRS`). These are the figures of the paper;
+  - `plots_paper_mugersh/stats_used.txt` records which statistics we drew, for the figure captions.
 
 The families other than the pairs are switched off by default (`PLOT_*` flags below).
 
 # Inputs and outputs
 
-Reads `results_nocond/collected_results.jld2` (`"df"`: one row per N, F, configuration and repeat) of this folder, written
-by `collect.jl nocond`, and writes PDF figures to `plots_paper/` (and `N_<N>/F_<F>/` for the per-case ones) of this folder.
-With `FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`, see `worker.jl`), it reads `results_nocond_mugersh/` and writes
-`plots_paper_mugersh/` instead. The μ of a rule-based run differs between cases but is one configuration, labelled
-μ = ‖A‖_∞; fixed-μ data are drawn as before.
-In smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote,
-and draws the single smoke case; `experiments/smoke.jl` sets it.
+Reads `results_nocond_mugersh/collected_results.jld2` (`"df"`: one row per N, F, configuration and repeat) of this
+folder, written by `collect.jl nocond` with the default μ rule, `gershgorin` (see `worker.jl`), and writes PDF figures
+to `plots_paper_mugersh/` (and `N_<N>/F_<F>/` for the per-case ones) of this folder. The μ of a rule-based run differs
+between cases but is one configuration, labelled μ = ‖A‖_∞. With `FAI_MU_RULE=fixed` it reads `results_nocond/` and
+writes `plots_paper/` instead, labelling each μ by its value. In smoke mode (`DIFFERENTT_SMOKE=1`) it reads and writes
+the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, and draws the single smoke case; `experiments/smoke.jl`
+sets it.
 
 # How to run
 
@@ -41,7 +41,9 @@ There is no job script: we run it locally on the collected data.
 
 # Paper
 
-Figs. 9-11 (`fig:mals_iters`, `fig:mals_solve`, `fig:mals_site_iters`) of Sec. 5.1.
+Figs. 9-10 (`fig:mals_iters`, `fig:mals_site_iters`) of Sec. 5.1, from the pairs of total local iterations against F and
+of iterations per site. The solve-time pair (`solve_time_vs_F` in `PAIR_VS_F`) is drawn too, but the paper does not show
+it.
 """
 
 using JLD2
@@ -95,7 +97,7 @@ include(joinpath(@__DIR__, "..", "..", "common", "smoke.jl"))
 include(joinpath(@__DIR__, "..", "..", "common", "mu_rules.jl"))
 # Smoke mode reads (and writes) the folder DIFFERENTT_SMOKE_DIR instead of this folder.
 const OUT_ROOT = output_root(@__DIR__)
-# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default reads the fixed-μ data
+# FAI_MU_RULE / FAI_MU_SCALE select the results of a μ rule (common/mu_rules.jl); the default is the rule of the paper
 const MU_RULE, MU_SCALE = fai_mu_rule()
 RESULTS_FILE = joinpath(OUT_ROOT, mu_results_folder("results_nocond", MU_RULE, MU_SCALE), "collected_results.jld2")
 PLOTS_DIR = joinpath(OUT_ROOT, mu_results_folder("plots_paper", MU_RULE, MU_SCALE))

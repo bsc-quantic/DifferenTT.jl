@@ -219,27 +219,27 @@ be studied separately when prototyping; call it qualified, `DifferenTT.fai_dg`.
 
 We vectorize ``X = \\tilde{G}_L`` by fusing, at each site, its row index (a copy of the sites, the output of
 ``\\tilde{G}_L``) with its column index into one index of dimension ``d^2``, and solve with `g_solver` the projected
-system of Eq. (22) of Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*,
+system of Eq. (21) of Torrente et al., *Factorized approximate inverse preconditioners in the tensor train format*,
 
 ```math
-\\left[\\mathbb{P}_L \\mathcal{T}_A \\mathbb{P}_L + \\mu (\\mathbb{I} - \\mathbb{P}_L)\\right]
+\\left[\\mathcal{P}_L \\mathcal{T}_A \\mathcal{P}_L + \\mu (\\mathcal{I} - \\mathcal{P}_L)\\right]
 \\mathrm{vec}(\\tilde{G}_L) = \\mathrm{vec}(\\mathbf{I}),
 ```
 
 where ``\\mathcal{T}_A \\mathrm{vec}(X) = \\mathrm{vec}(XA)`` is the operator written ``\\mathbf{I} \\otimes A`` in Eq.
-(19) for a symmetric ``A``, ``\\mathbb{P}_L`` = [`triang_projector_mpo`](@ref) keeps the lower-triangular entries of
-``X`` (Eqs. (14)–(20)), and ``\\mu > 0`` weights the equations ``\\mu X_{ij} = 0`` of the entries above the diagonal.
-Its exact solution satisfies Eq. (10), ``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j``, and does not depend on
-``\\mu`` (Appendix B.1). The initial guess is ``10^{-3}`` times the lower-triangular matrix of ones. We then extract
-``\\mathrm{diag}(\\tilde{G}_L)`` as an MPS with delta tensors ([`diagmps`](@ref)), and evaluate
-``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) element-wise by RSI with uniform sketches
+(19) for a symmetric ``A``, ``\\mathcal{P}_L`` = [`triang_projector_mpo`](@ref) keeps the lower-triangular entries of
+``X`` (Eq. (14), Sec. 3.1 and Fig. 4), and ``\\mu > 0`` weights the equations ``\\mu X_{ij} = 0`` of the entries above
+the diagonal. Its exact solution satisfies Eq. (10), ``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j``, and does
+not depend on ``\\mu`` (Appendix B.1). The initial guess is ``10^{-3}`` times the lower-triangular matrix of ones. We
+then extract ``\\mathrm{diag}(\\tilde{G}_L)`` as an MPS with delta tensors ([`diagmps`](@ref)), and evaluate
+``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (22)) element-wise by RSI with uniform sketches
 ([`elementwise_function`](@ref), Sec. 3.2). The inverse square root is evaluated as ``1/\\sqrt{\\max(x, \\epsilon)}``,
 so a non-positive entry, which Lemma 1 rules out unless its whole row is lost, gives a large finite entry of ``D``
 rather than an error.
 
 `D_kwargs` may hold the `cutoff` (default `1e-15`), `maxdim` (default `typemax(Int)`) and `oversample` (default `10`)
 of [`elementwise_function`](@ref). With `preconditioning = true`, the system is preconditioned by
-``\\mathbb{P}_L R \\mathbb{P}_L + \\mu^{-1}(\\mathbb{I} - \\mathbb{P}_L)``, where ``R`` is the
+``\\mathcal{P}_L R \\mathcal{P}_L + \\mu^{-1}(\\mathcal{I} - \\mathcal{P}_L)``, where ``R`` is the
 [`rank1_preconditioner`](@ref) of its operator and ``\\mu^{-1}`` inverts the complement block. Note that this does not
 speed the build up: on a ``2^6``-point QTT Laplacian with `ResidualALS`, it multiplied the local CG iterations by 3.1
 for ``\\mu = 1``, 1.04 for ``\\mu = 10^3`` and 7.8 for ``\\mu = 10^7``, for a preconditioner of the same quality;
@@ -367,42 +367,44 @@ tensor train format*). We therefore build the inverse in factorized form, as in 
 (1993): ``G_L^\\top G_L`` is positive semidefinite by construction, and definite whenever ``G_L`` is non-singular,
 whatever the truncation of ``G_L``. Since ``G_L`` approximates the inverse ``L_A^{-1}`` of the Cholesky factor
 ``A = L_A L_A^\\top``, which we cannot compute in the TT format, we proceed in two steps. We first solve the projected
-system of Eq. (22) with `solver` for the lower-triangular approximate inverse ``\\tilde{G}_L``, defined by
+system of Eq. (21) with `solver` for the lower-triangular approximate inverse ``\\tilde{G}_L``, defined by
 ``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j`` (Eq. (10)); this needs no Cholesky factor. We then set
-``G_L = D \\tilde{G}_L``, truncated to `totalmaxdim`, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is
+``G_L = D \\tilde{G}_L``, truncated to `totalmaxdim`, where ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (22)) is
 evaluated element-wise by RSI with uniform sketches ([`elementwise_function`](@ref), Sec. 3.2). For an exact
 ``\\tilde{G}_L`` this gives ``G_L = L_A^{-1}`` and ``M^{-1} = A^{-1}``. The bond dimension of ``G_L`` plays the role of
 the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at the expense
 of its quality.
 
 The cost is dominated by the solve for ``\\tilde{G}_L``, an MPS with ``N`` sites of dimension ``d^2`` whose operator
-contains ``A`` and the projector ``\\mathbb{P}_L`` of bond dimension 2 (Eq. (14)) twice. In the paper's experiments we
-use ``\\mu = 10^7`` (the exact solution does not depend on ``\\mu``, Appendix B.1), build ``\\tilde{G}_L`` with the
-two-site [`ALS`](@ref) at a local tolerance between ``10^{-5}`` and ``10^{-8}``, stop once the residual of Eq. (22) is
-below ``10^{-1}`` (`residual_tol = 0.1`), and keep ``\\chi_{G_L}`` between 4 and 10. Appendix B.1 reports no change of
-the results for ``\\mu`` between ``10^5`` and ``10^8``; that range lies above the whole spectrum of the anisotropy
-benchmark of Sec. 5.1 (``\\lambda_{\\max}(A) < 8 \\cdot 10^4``), so it does not cover a ``\\mu`` at the top of the
-spectrum there (see below). The FAI pays off when it is reused, e.g. across the time steps of the Chorin projection,
-and when the local dimension is small (Sec. 5.2); with a large local dimension ``d^2`` the build becomes expensive
-(Sec. 5.1). Note two limitations. The shortcut of Eq. (23) for ``D`` holds only if ``\\tilde{G}_L``
-solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error of its row, but
-on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy (Appendix B.6).
+contains ``A`` and the projector ``\\mathcal{P}_L`` of bond dimension 2 (Eq. (14)) twice. In the paper's experiments we
+build ``\\tilde{G}_L`` with the two-site [`ALS`](@ref) at a local tolerance between ``10^{-5}`` and ``10^{-8}``, stop
+once the residual of Eq. (21) is below ``10^{-1}`` (`residual_tol = 0.1`), keep ``\\chi_{G_L}`` between 4 and 10, and
+set ``\\mu`` to the Gershgorin bound ``\\|A\\|_\\infty`` (see below). The FAI pays off when it is reused, e.g. across
+the time steps of the Chorin projection, and when the local dimension is small (Sec. 5.2); with a large local dimension
+``d^2`` the build becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (22) for ``D`` holds only if
+``\\tilde{G}_L`` solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error
+of its row, but on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy
+(Appendix B.6).
 
-The value of ``\\mu`` sets the conditioning of the build, although not its exact solution. Since ``\\mathbb{P}_L``
-acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (22) is block diagonal, with the leading principal
-submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and ``\\mu`` times the
-identity on the entries above the diagonal, so its condition number is
-``\\max(\\mu, \\lambda_{\\max}(A)) / \\min(\\mu, \\lambda_{\\min}(A))``. A ``\\mu`` far above ``\\lambda_{\\max}(A)``,
-such as ``10^7`` on a coarse grid, multiplies it by ``\\mu / \\lambda_{\\max}(A)``: the build converges more slowly and,
-with a capped number of sweeps, can return a worse preconditioner (on a ``2^5 \\times 2^5`` QTT pressure operator with
-``\\lambda_{\\max}(A) \\approx 8 \\cdot 10^3``, ``\\chi_{G_L} = 4`` and 30 MALS sweeps, ``\\mu = 10^7`` gave
-``\\kappa(G_L^\\top G_L A) = 146`` and ``\\mu = 10^3`` gave 5.3). Since ``\\lambda_{\\max}(A)`` grows as ``h^{-2}``, the
-paper's ``\\mu = 10^7`` is close to the top of the spectrum only on its finest grids. A value at the top of the
+The value of ``\\mu`` sets the conditioning of the build, although not its exact solution (Appendix B.1). Since
+``\\mathcal{P}_L`` acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (21) is block diagonal, with the
+leading principal submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and
+``\\mu`` times the identity on the entries above the diagonal, so its condition number is
+``\\max(\\mu, \\lambda_{\\max}(A)) / \\min(\\mu, \\lambda_{\\min}(A))``. A ``\\mu`` far above ``\\lambda_{\\max}(A)``
+multiplies it by ``\\mu / \\lambda_{\\max}(A)``: the build converges more slowly and, with a capped number of sweeps,
+can return a worse preconditioner (on a ``2^5 \\times 2^5`` QTT pressure operator with
+``\\lambda_{\\max}(A) \\approx 8 \\cdot 10^3``, ``\\chi_{G_L} = 4`` and 30 MALS sweeps, a ``\\mu`` about 1200 times
+``\\lambda_{\\max}(A)`` gave ``\\kappa(G_L^\\top G_L A) = 146`` and ``\\mu = 10^3`` gave 5.3). A value at the top of the
 spectrum, ``\\mu \\approx \\lambda_{\\max}(A)``, is a reasonable choice: it keeps the condition number of the build at
 ``\\kappa(A)`` and weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. A rough
-estimate suffices, e.g. the Gershgorin bound ``\\|A\\|_\\infty \\ge \\lambda_{\\max}(A)``, which for a Kronecker sum
-is at most the sum of the ``\\|\\cdot\\|_\\infty`` of its one-dimensional terms (``4/h^2`` per axis for the
-second-order Laplacian), or a few Lanczos iterations.
+estimate suffices. The paper takes the Gershgorin bound ``\\mu = \\|A\\|_\\infty \\ge \\lambda_{\\max}(A)`` (Eqs. (32)
+and (37)), which for a finite-difference operator on a regular grid follows from the stencil coefficients alone: a
+central stencil ``\\sum_k c_k u_{i+k} / h^2`` along an axis contributes at most ``\\sum_k |c_k| / h^2`` to a row sum of
+``|A|`` (``4/h^2`` for the second-order Laplacian), and the boundary closures of the paper's operators do not exceed it.
+The repository's `experiments/common/mu_rules.jl` computes this bound from [`derivative_coefficients`](@ref) for the
+operators of the paper's benchmarks (`laplacian_mu_gershgorin` for the Chorin pressure operator,
+`anisotropy_mu_gershgorin` for ``\\mathcal{L}(\\rho)``), and checks it against the assembled operators of small cases
+(`mu_rules_check.jl`). For other operators, a few Lanczos iterations also give an estimate.
 
 # Arguments
 
@@ -410,8 +412,9 @@ second-order Laplacian), or a few Lanczos iterations.
 
 # Keywords
 
-  - `μ::Real`: weight of the equations of the entries above the diagonal of ``\\tilde{G}_L`` in Eq. (22), e.g. `1e7`.
-  - `solver::AbstractLinearSolver`: solver of Eq. (22), e.g. [`ResidualALS`](@ref) with `ishermitian` and `isposdef`
+  - `μ::Real`: weight of the equations of the entries above the diagonal of ``\\tilde{G}_L`` in Eq. (21), e.g. the
+    Gershgorin bound ``\\|A\\|_\\infty`` (see above).
+  - `solver::AbstractLinearSolver`: solver of Eq. (21), e.g. [`ResidualALS`](@ref) with `ishermitian` and `isposdef`
     set, since the system is SPD.
   - `totalmaxdim::Int=5`: maximum bond dimension ``\\chi_{G_L}`` of ``G_L = D \\tilde{G}_L``.
   - `D_cutoff::Real=1e-15`, `D_maxdim::Int=typemax(Int)`, `D_oversample::Int=10`: truncation cutoff, maximum bond
@@ -419,10 +422,10 @@ second-order Laplacian), or a few Lanczos iterations.
   - `preconditioning::Bool=false`: precondition the solve for ``\\tilde{G}_L`` with [`rank1_preconditioner`](@ref).
     In our tests this did not speed the build up (see the internal `DifferenTT.fai_dg`).
   - `residual_tol::Union{Float64,Nothing}=nothing`: if set, stop the sweeps of `solver` once the relative residual of
-    Eq. (22) is below it (through a [`ResidualObserver`](@ref) used as `sweep_observer!`).
-  - `compute_residual::Bool=false`: compute and log the relative residual of Eq. (22) after the solve.
+    Eq. (21) is below it (through a [`ResidualObserver`](@ref) used as `sweep_observer!`).
+  - `compute_residual::Bool=false`: compute and log the relative residual of Eq. (21) after the solve.
   - `rng::AbstractRNG=Random.default_rng()`: random number generator of the sketches of ``D``.
-  - `kwargs...`: passed to [`linearsolve`](@ref) for Eq. (22).
+  - `kwargs...`: passed to [`linearsolve`](@ref) for Eq. (21).
 
 # Returns
 
@@ -431,12 +434,14 @@ second-order Laplacian), or a few Lanczos iterations.
 # Examples
 
 ```julia
-A, sites = …                                  # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+A, grid = …                                   # SPD MPO, e.g. -1.0 * symmetrized_laplacian(field, grid)
+σ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8)))   # Σ_k |c_k| of the stencil
+μ = σ * sum(h -> 1 / h^2, grid.dx)             # Gershgorin bound ‖A‖_∞ ≥ λ_max(A)
 build = ResidualALS(;
     sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=8),
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5),
 )
-M⁻¹ = fai_preconditioner(A; μ=1e7, solver=build, totalmaxdim=8, residual_tol=0.1)
+M⁻¹ = fai_preconditioner(A; μ, solver=build, totalmaxdim=8, residual_tol=0.1)
 x = linearsolve(ResidualALS(), A, b, M⁻¹, nothing)
 ```
 

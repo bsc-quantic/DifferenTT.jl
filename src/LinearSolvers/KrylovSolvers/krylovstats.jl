@@ -5,7 +5,7 @@ Record of the iteration counts of the local Krylov solves of a DMRG-type solve. 
 [`LocalUpdaterArgs`](@ref).
 
 The iteration counts of the local solver are what a preconditioner is meant to reduce, and they vary strongly along
-the tensor train (Fig. 11 of Torrente et al.), so we store them per position and per sweep. The layout of
+the tensor train (Fig. 10 of Torrente et al.), so we store them per position and per sweep. The layout of
 [`krylov_numiters`](@ref) is `position → sweep → visits`:
 
   - `position` is the first site of the local problem, from 1 to `N - nsite + 1` for a tensor train of `N` sites;

@@ -399,14 +399,14 @@ end
     triang_projector_mpo(sites::Vector{<:Index}, which_triang::Symbol=:upper, include_diag::Bool=true;
                          array_type=Array) -> MPO
 
-Return the projector ``\\mathbb{P}_L`` that keeps the lower (or upper) triangular entries of a vectorized matrix and
+Return the projector ``\\mathcal{P}_L`` that keeps the lower (or upper) triangular entries of a vectorized matrix and
 sets the others to zero, as an MPO of bond dimension 2.
 
 In the FAI construction the unknown is a lower triangular matrix ``\\tilde{G}_L``, which we vectorize in order to
 solve for it with the linear solvers of the package. Its triangularity then becomes a constraint on the vector, which
 we impose by projection (Sec. 3.1 of Torrente et al., *Factorized approximate inverse preconditioners in the tensor
 train format*). To this end, we take the mask of [`lower_triang_mpo`](@ref), vectorize it, and place it on the diagonal
-of an operator in the vectorized space, by contracting each site with a delta tensor (Eq. (20) and Fig. 4). The
+of an operator in the vectorized space, by contracting each site with a delta tensor (Sec. 3.1 and Fig. 4). The
 projector therefore keeps the bond dimension 2 of the mask, and its diagonal entries are 1 on the kept entries and 0
 on the others.
 
@@ -416,8 +416,8 @@ of dimension `dim(sites[k])`, the first standing for the column and the second f
 their order matter. For example, `fai_dg` vectorizes ``\\tilde{G}_L`` with `combiner(sites[k], helper_sites[k])`, where
 the helper sites carry the row index and become the output sites `sites'` of ``\\tilde{G}_L``, so that the projector
 with `which_triang = :lower` keeps the entries with row ``\\ge`` column, in the order of [`contract_mpo`](@ref) (site 1
-most significant). On a single site of dimension 2, its diagonal is ``(1, 0, 1, 1)``, as in Eq. (20). The second method
-builds the combiners `combiner(sites[k], sites[k]')` itself.
+most significant). On a single site of dimension 2, its diagonal is ``(1, 0, 1, 1)``, as in the example of Sec. 3.1.
+The second method builds the combiners `combiner(sites[k], sites[k]')` itself.
 
 # Arguments
 

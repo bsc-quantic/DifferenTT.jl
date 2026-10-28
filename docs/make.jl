@@ -40,7 +40,7 @@ push!(tutorials, "Boundary conditions" => bc_pages)
 makedocs(;
     modules=[DifferenTT],
     sitename="DifferenTT.jl",
-    authors="Pau Torrente, Stefano Carignano, Artur Garcia, Daniel Pérez García",
+    authors="Pau Torrente Badia, Stefano Carignano, Artur García Sáez, Daniel Pérez García",
     format=Documenter.HTML(;
         prettyurls=get(ENV, "CI", "false") == "true",
         edit_link="master",

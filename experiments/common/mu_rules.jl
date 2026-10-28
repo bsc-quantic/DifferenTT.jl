@@ -1,11 +1,13 @@
 """
     Rules for the penalty μ of the FAI build (shared by the paper workers, collectors and plotters)
 
-The FAI solves Eq. (22) of the paper with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
+The FAI solves Eq. (21) of the paper with the operator P_L (I ⊗ A) P_L + μ (I - P_L), whose condition number is
 max(μ, λmax(A)) / min(μ, λmin(A)). μ only needs to sit at the top of the spectrum of A: a μ far above λmax(A) multiplies
-the condition number of the build by μ / λmax(A). The paper uses μ = 10⁷, which is close to λmax(A) only on the finest
-Chorin grid. The rule `gershgorin` sets μ = ‖A‖_∞, the Gershgorin upper bound of λmax(A). We bound it from the stencil
-coefficients c_k of `derivative_coefficients` alone, without building any operator:
+the condition number of the build by μ / λmax(A). The paper uses the rule `gershgorin` (Eqs. (32) and (37)), the
+default here, which sets μ = ‖A‖_∞, the Gershgorin upper bound of λmax(A). The rule `fixed` keeps the μ of the task list
+of each worker, the 10⁷ of the earlier drafts of the paper (the data of the tag `paper-ttfai-data`), which is close to
+λmax(A) only on the finest Chorin grid. We bound ‖A‖_∞ from the stencil coefficients c_k of `derivative_coefficients`
+alone, without building any operator:
 
   - in 1D, every row of the operator D (h = 1) is the central stencil, with the coefficients of the ghost nodes dropped
     (Dirichlet, open sides), wrapped (periodic) or moved onto an interior node of the same row (the Neumann mirror). By
@@ -25,7 +27,8 @@ assembled operators of small cases.
 
 # Environment variables
 
-  - `FAI_MU_RULE`: `fixed` (default, the μ of the worker, 10⁷) or `gershgorin`.
+  - `FAI_MU_RULE`: `gershgorin` (default, μ = ‖A‖_∞, as in the paper) or `fixed` (the μ of the task list of the
+    worker, 10⁷, as in the earlier drafts).
   - `FAI_MU_SCALE`: factor applied to the value of the rule (default 1.0); only allowed with a rule other than `fixed`.
 
 A rule-based run writes under a separate results folder (`results_nocond_mugersh`, see `mu_results_folder`), and its
@@ -43,10 +46,11 @@ const MU_RULES = ("fixed", "gershgorin")
 """
     fai_mu_rule() -> (rule::String, scale::Float64)
 
-Read `FAI_MU_RULE` and `FAI_MU_SCALE` from the environment, with the defaults that reproduce the paper (`"fixed"`, 1.0).
+Read `FAI_MU_RULE` and `FAI_MU_SCALE` from the environment, with the defaults that reproduce the paper (`"gershgorin"`,
+1.0).
 """
 function fai_mu_rule()
-    rule = lowercase(strip(get(ENV, "FAI_MU_RULE", "fixed")))
+    rule = lowercase(strip(get(ENV, "FAI_MU_RULE", "gershgorin")))
     rule in MU_RULES || throw(ArgumentError("FAI_MU_RULE=$rule: expected one of $(join(MU_RULES, ", "))"))
     scale = parse(Float64, get(ENV, "FAI_MU_SCALE", "1.0"))
     (isfinite(scale) && scale > 0) || throw(ArgumentError("FAI_MU_SCALE=$scale must be positive"))

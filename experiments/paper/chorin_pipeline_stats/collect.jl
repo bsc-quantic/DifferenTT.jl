@@ -1,5 +1,5 @@
 """
-    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): collector
+    Chorin pipeline benchmark, statistics variant (paper Table 3 and Figs. 11-12): collector
 
 The workers of this benchmark write one file per task and repeat, and the plotter needs them as one table. We read every
 `tasks/task_NNN_rep_RRR.jld2` of the results folder with `collect_dataset` (`common/stats_utils.jl`), which checks that the
@@ -11,15 +11,15 @@ the largest solution bond dimension and the largest ratio of the divergence afte
 
 # Inputs and outputs
 
-Input: the task files in the `tasks/` folder of `results/` (or `results_nocond/` with `nocond`), in this folder, or in
-`CHORIN_STATS_RESULTS_DIR` if set. With `FAI_MU_RULE=gershgorin` (and `FAI_MU_SCALE`), the folders of the rule-based
-runs, `results_mugersh/` and `results_nocond_mugersh/` (see `worker.jl`). The files of repeat 1 also hold the final fluid state, which we load (this needs
-DifferenTT and ITensors) and drop, since only the snapshot plots use it. Output: `collected_results.jld2` next to
-`tasks/` (keys `"df"`, `"df_stats"`, `"df_dropped"`). Two environment variables change the statistics:
-`BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat that each worker process ran (it can still carry residual JIT
-cost), and `BENCH_SAMEJOB_PAIRS_ONLY=1` computes the speedups only from pairs that ran in the same job, that is on the
-same node (a block that was refilled in a later job is dropped); by default all the pairs are used and `n_pairs_samejob`
-counts the ones of the same job.
+Input: the task files in the `tasks/` folder of `results_mugersh/` (or `results_nocond_mugersh/` with `nocond`), in this
+folder, or in `CHORIN_STATS_RESULTS_DIR` if set: the folders of the default μ rule, `gershgorin` (see `worker.jl`); with
+`FAI_MU_RULE=fixed`, the folders `results/` and `results_nocond/` of the fixed μ. The files of repeat 1 also hold the
+final fluid state, which we load (this needs DifferenTT and ITensors) and drop, since only the snapshot plots use it.
+Output: `collected_results.jld2` next to `tasks/` (keys `"df"`, `"df_stats"`, `"df_dropped"`). Two environment variables
+change the statistics: `BENCH_DISCARD_FIRST_REPEAT=1` drops the first repeat that each worker process ran (it can still
+carry residual JIT cost), and `BENCH_SAMEJOB_PAIRS_ONLY=1` computes the speedups only from pairs that ran in the same
+job, that is on the same node (a block that was refilled in a later job is dropped); by default all the pairs are used
+and `n_pairs_samejob` counts the ones of the same job.
 
 In smoke mode (`DIFFERENTT_SMOKE=1`) it reads the folder `DIFFERENTT_SMOKE_DIR` that the smoke worker wrote, never the
 committed results; `experiments/smoke.jl` sets it.
@@ -35,7 +35,7 @@ runs last sees every finished unit.
 
 # Paper
 
-Figs. 12-13 of Sec. 5.2 (through `plot_paper.jl`); the parameters of Table 2 are the constants of the worker.
+Figs. 11-12 of Sec. 5.2 (through `plot_paper.jl`); the parameters of Table 3 are the constants of the worker.
 """
 
 using JLD2

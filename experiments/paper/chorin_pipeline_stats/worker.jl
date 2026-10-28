@@ -1,5 +1,5 @@
 """
-    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 12-13): worker
+    Chorin pipeline benchmark, statistics variant (paper Table 3 and Figs. 11-12): worker
 
 We solve the pressure Poisson system of every time step of a Chorin projection of the flow past a cylinder, the setup of
 Sec. 5.2 of the paper: Re = 3000 in the box [0, 2] × [0, 1] (periodic in y), a cylinder of radius 0.1 at (0.5, 0.5)
@@ -11,8 +11,8 @@ spread of the times and the speedups paired by repeat. Every repeat rebuilds the
 
 # Problem and parameters
 
-Each task is one system size with either no preconditioner (the baseline) or the FAI with μ = 10⁷ and χ_G ∈ {2, …, 10}
-(10 tasks per size, 20 in total, `TASKS_PER_SIZE` of `submit.sh`):
+Each task is one system size with either no preconditioner (the baseline) or the FAI with μ = ‖A‖_∞ (Eq. (37) of the
+paper) and χ_G ∈ {2, …, 10} (10 tasks per size, 20 in total, `TASKS_PER_SIZE` of `submit.sh`):
 
 - 2⁸ × 2⁸ nodes, 500 steps of dt = 0.001, solution bond dimension at most 150;
 - 2¹⁰ × 2¹⁰ nodes, 1000 steps of dt = 0.0005, solution bond dimension at most 200.
@@ -20,40 +20,45 @@ Each task is one system size with either no preconditioner (the baseline) or the
 At each step we solve with `ResidualALS` (the "MALS" of the paper, local solves preconditioned at every site) to a relative
 residual of 1e-3, with `cutoff = 0` and at most 100 sweeps and 2000 local iterations, starting from the previous
 pressure. We build the FAI once per task, before the time loop, on the pressure operator with the two-site ALS solver (30 sweeps, `cutoff = 1e-12`, stopped at a
-relative residual of 0.1 of Eq. (22)); the element-wise map D uses `cutoff = 1e-11` and an oversampling of 20. The mask is
+relative residual of 0.1 of Eq. (21)); the element-wise map D uses `cutoff = 1e-11` and an oversampling of 20. The mask is
 that of `fai_benchmarks/chorin_pipeline/masks.jld2` (the worker deliberately shares it with that benchmark). The grid is
 `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the worker stops with an
 `ArgumentError` if the metadata of the mask do not match that grid (`common/mask_grid.jl`).
 
-The setups above are those of the paper repository. Three changes of the library since the data of the current figures
-(tag `paper-ttfai-data`) make new runs not comparable with them: the FAI now solves the correct (not the transposed)
-FSAI problem, the worker builds the grid with `periodic = periodic_axes(bcs)`, so that the period in y is the length of the
-box (`NEWS.md`), and the Frobenius floor of `ResidualALS` uses `cutoff` where it used `cutoff²` (no effect here, where `cutoff = 0`).
-A known limitation of the library bears on the numbers: the Dirichlet closure with `stencil_order = 8` is only first-order
-accurate (see "Known limitations" in `NEWS.md`).
+The setups above are those of the paper repository, with the μ of the paper (see "Penalty μ of the FAI build" below).
+The figures of the paper come from a run of this worker at the tag `paper-ttfai-v0.1-data` (`paper/README.md`). Three
+changes of the library since the data of the earlier drafts of the paper (tag `paper-ttfai-data`) make new runs not
+comparable with those: the FAI now solves the correct (not the transposed) FSAI problem, the worker builds the grid with
+`periodic = periodic_axes(bcs)`, so that the period in y is the length of the box (`NEWS.md`), and the Frobenius floor
+of `ResidualALS` uses `cutoff` where it used `cutoff²` (no effect here, where `cutoff = 0`). A known limitation of the
+library bears on the numbers: the Dirichlet closure with `stencil_order = 8` is only first-order accurate (see "Known
+limitations" in `NEWS.md`).
 
 # Inputs and outputs
 
-With the default layout (`BENCH_LAYOUT=block`), `ARGS[1]` is a block index and the job runs every task of one system size
-at one repeat index, in a seeded random order; with `BENCH_LAYOUT=unit` it is a (task, repeat) unit, as `submit.sh` does
-for the 2¹⁰ × 2¹⁰ grid (`CHORIN_STATS_SIZES` selects the sizes of an array); with `BENCH_LAYOUT=task` it is a task id
-and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it, we estimate the local condition
+With the default layout (`BENCH_LAYOUT=block`), `ARGS[1]` is a block index and the job runs every task of one system
+size at one repeat index, in a seeded random order; with `BENCH_LAYOUT=unit` it is a (task, repeat) unit, as `submit.sh`
+does for the 2¹⁰ × 2¹⁰ grid (`CHORIN_STATS_SIZES` selects the sizes of an array); with `BENCH_LAYOUT=task` it is a task
+id and the job runs all the repeats of that task. `nocond` is `ARGS[2]`: without it, we estimate the local condition
 numbers κ(A) and κ(P⁻¹A) of every site. The worker writes `tasks/task_NNN_rep_RRR.jld2` (key `"result"`) under
-`results/` or `results_nocond/` of this folder, or under `CHORIN_STATS_RESULTS_DIR` if set; repeat 1 also stores the final
-fluid state. The mask file is `CHORIN_MASK_FILE` if set, else the committed one. The other configuration variables
-(`BENCH_N_REPEATS`, `BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`, `CHORIN_STATS_N_STEPS_OVERRIDE`)
-are described in `common/stats_harness.jl` and `submit.sh`. FAI results also store the iterations of the local solves of
-the build (`precond_build_total_iters`, `precond_build_iters_per_site`, summed over sweeps, and `precond_build_nsweeps`).
+`results_mugersh/` or `results_nocond_mugersh/` of this folder (`results/` or `results_nocond/` with
+`FAI_MU_RULE=fixed`), or under `CHORIN_STATS_RESULTS_DIR` if set; repeat 1 also stores the final fluid state. The mask
+file is `CHORIN_MASK_FILE` if set, else the committed one. The other configuration variables (`BENCH_N_REPEATS`,
+`BENCH_REPEAT_OFFSET`, `BENCH_BASE_SEED`, `BENCH_TIME_BUDGET_S`, `CHORIN_STATS_N_STEPS_OVERRIDE`) are described in
+`common/stats_harness.jl` and `submit.sh`. FAI results also store the iterations of the local solves of the build
+(`precond_build_total_iters`, `precond_build_iters_per_site`, summed over sweeps, and `precond_build_nsweeps`).
 
 # Penalty μ of the FAI build
 
-`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `fixed` (the default) the FAI uses the μ = 10⁷ of `mu_values`, as in
-the paper. With `gershgorin`, μ = ‖A‖_∞ of the pressure operator, bounded at run time from the coefficients of the
-order-8 stencil (the Neumann, Dirichlet and periodic closures never raise a row sum): 6.5016 (h_x⁻² + h_y⁻²), about 5.3 × 10⁵ on
-2⁸ × 2⁸ and 8.5 × 10⁶ on 2¹⁰ × 2¹⁰, times `FAI_MU_SCALE` (default 1.0). The μ of `mu_values` is then only a placeholder.
-A rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with
-the keys `mu_gersh_gdim_χ` instead of `mu_1.0e7_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in `"mu_rule"`
-and `"mu_scale"`; `collect.jl` and `plot_paper.jl` read the same variables to find the folder.
+`FAI_MU_RULE` selects μ (`common/mu_rules.jl`). With `gershgorin`, the default and the rule of the paper, μ = ‖A‖_∞ of
+the pressure operator, bounded at run time from the coefficients of the order-8 stencil (the Neumann, Dirichlet and
+periodic closures never raise a row sum): 6.5016 (h_x⁻² + h_y⁻²) (Eq. (37) of the paper), about 5.3 × 10⁵ on 2⁸ × 2⁸
+and 8.5 × 10⁶ on 2¹⁰ × 2¹⁰, times `FAI_MU_SCALE` (default 1.0). The μ of `mu_values` is then only a placeholder. A
+rule-based run writes under `results_mugersh/` or `results_nocond_mugersh/` (`_mugersh_x<scale>` with a scale), with
+the keys `mu_gersh_gdim_χ`, and stores the numeric μ in `"mu"` and the rule in `"mu_rule"` and `"mu_scale"`;
+`collect.jl` and `plot_paper.jl` read the same variables to find the folder. With `fixed`, the FAI uses the μ = 10⁷ of
+`mu_values`, as in the earlier drafts of the paper, and writes under `results/` or `results_nocond/` with the keys
+`mu_1.0e7_gdim_χ`.
 
 Smoke mode (`DIFFERENTT_SMOKE=1`) shrinks the run to the 2⁸ × 2⁸ grid, 2 steps, the baseline and FAI at χ_G = 2, without
 local condition numbers, through the `SMOKE` branches next to the constants. It reads the mask that the smoke generator
@@ -68,7 +73,7 @@ From the root of the repository, after regenerating the masks (see `paper/README
     DIFFERENTT_SMOKE=1 julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
     julia --project=experiments experiments/paper/chorin_pipeline_stats/worker.jl 1 nocond
     bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
-    FAI_MU_RULE=gershgorin bash experiments/paper/chorin_pipeline_stats/submit.sh nocond
+    FAI_MU_RULE=fixed bash experiments/paper/chorin_pipeline_stats/submit.sh nocond   # μ = 10⁷, earlier drafts
 
 # Resources
 
@@ -80,8 +85,8 @@ each unit as measured in the run of October 2026.
 
 # Paper
 
-Sec. 5.2: Table 2 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
-and Figs. 12-13 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
+Sec. 5.2: Table 3 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
+and Figs. 11-12 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
 the output of `collect.jl`.
 """
 
@@ -164,7 +169,7 @@ function should_compute_cond(nodes::Tuple{Int,Int}, use_nocond::Bool)::Bool
 end
 
 # const mu_values = [5e6, 1e7, 5e7, 1e8]
-# With FAI_MU_RULE other than "fixed", these values are placeholders (one task per value).
+# These values are used only with FAI_MU_RULE=fixed; the default rule replaces them (one task per value).
 const mu_values = [1e7]
 
 const g_maxdims = SMOKE ? (2:2) : (2:10)

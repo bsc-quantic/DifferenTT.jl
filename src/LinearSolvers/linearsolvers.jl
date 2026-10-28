@@ -88,7 +88,8 @@ solver = ResidualALS(;
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-8),
 )
 x = linearsolve(solver, A, b, nothing)
-x = linearsolve(solver, A, b, fai_preconditioner(A; μ=1e7, solver=ResidualALS()), nothing; nsweeps=4)
+μ = …                                         # top of the spectrum of A, e.g. ‖A‖_∞ (see fai_preconditioner)
+x = linearsolve(solver, A, b, fai_preconditioner(A; μ, solver=ResidualALS()), nothing; nsweeps=4)
 ```
 
 See also [`ALS`](@ref), [`ResidualALS`](@ref), [`AMEn`](@ref), [`ExpandedALS`](@ref), [`GlobalCG`](@ref),

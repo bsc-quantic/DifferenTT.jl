@@ -10,7 +10,7 @@
 #
 # We use the anisotropic diffusion problem of Sec. 5.1, whose distance from a separable operator we can tune, and
 # proceed as follows. We first build the operator and compare, densely, the Sinc and the FAI preconditioners against the
-# floor of the separable preconditioners. We then record the local iterations of MALS site by site, as in Fig. 11 of the
+# floor of the separable preconditioners. We then record the local iterations of MALS site by site, as in Fig. 10 of the
 # paper ([`KrylovSweepStats`](@ref)), and the local condition numbers ([`KrylovCondStats`](@ref)). Next, we diagnose an
 # indefinite preconditioner with [`KrylovSpectrumStats`](@ref) and the `spd_tol` check. Finally, we restrict the
 # preconditioner to some of the local problems with `preconditioner_sites`.
@@ -52,7 +52,7 @@ ITensors.disable_warn_order()
 # format, with ``n = 4`` interior nodes per dimension, so that the ``4^5 = 1024`` unknowns allow dense checks,
 # homogeneous Dirichlet conditions, the second-order stencils and the spacing ``h = 1/(n + 1)`` of
 # [`interior_grid`](@ref), as in Appendix A. We compare the two extreme values of the paper, ``F = 1`` (the Laplacian)
-# and ``F = 100``, with ``\rho`` from Eq. (32).
+# and ``F = 100``, with ``\rho`` from Eq. (31).
 
 N, n = 5, 4
 arch = TTArchitecture(ntuple(_ -> n, N))
@@ -68,9 +68,12 @@ maxlinkdim.(getindex.(Ref(𝓛), Fs))
 
 # The one-dimensional operators ``\mathcal{A}_\ell`` of ``B_M`` are those of the non-exported
 # [`onedim_differential_operator`](@ref), scaled by ``-1/h^2``. With ``M = 3`` quadrature points on each side, ``B_3``
-# has bond dimension 7, the value that already reaches the floor in the experiments of Sec. 5.1. The FAI is built as in
-# Sec. 5.1: ``\mu = 10^7``, 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of ``10^{-1}`` of
-# Eq. (22), and ``\chi_{G_L} = 4``, the smallest bond dimension of the paper.
+# has bond dimension 7, the value that already reaches the floor in the experiments of Sec. 5.1. The FAI is built with
+# the settings of Table 2 of the paper: 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of
+# ``10^{-1}`` of Eq. (21), ``\chi_{G_L} = 4``, the smallest bond dimension of the paper, and the Gershgorin bound
+# ``\mu = \|\mathcal{L}(\rho)\|_\infty = N (4 + \rho (N - 1)) / h^2`` of Eq. (32), the largest row sum of
+# ``|\mathcal{L}(\rho)|``: the second differences contribute ``4/h^2`` per dimension and each of the
+# ``N(N-1)/2`` mixed terms ``2\rho/h^2``.
 
 𝒜 = -DifferenTT.onedim_differential_operator(2, arch, 1, dirichlet; stencil_order=2) ./ grid.dx[1]^2
 B3 = sincquadrature_preconditioner(arch, sites, fill(𝒜, N), 3)
@@ -80,8 +83,9 @@ fai_build = ResidualALS(;
     updater_kwargs=LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5, krylovdim=1, maxiter=2000),
     residual_tol=1e-9,
 )
+μs = Dict(F => N * (4 + ρs[F] * (N - 1)) / grid.dx[1]^2 for F in Fs)
 fai = Dict(
-    F => fai_preconditioner(𝓛[F]; μ=1e7, solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(1)) for
+    F => fai_preconditioner(𝓛[F]; μ=μs[F], solver=fai_build, totalmaxdim=4, residual_tol=0.1, rng=StableRNG(1)) for
     F in Fs
 )
 maxlinkdim(B3.operator), maxlinkdim(fai[100.0].operator)
@@ -112,7 +116,7 @@ end
 # For ``F = 1``, ``\mathcal{L} = \mathcal{L}_0`` is separable, and both preconditioners are close to the exact inverse.
 # For ``F = 100``, the discrete floor is about 4.6, far below the analytic bound of 100, since this coarse grid does not
 # resolve the extreme modes of ``K`` (as in Table 1 of the paper), and ``B_3`` sits on it: more quadrature terms bring
-# ``\kappa(B_M \mathcal{L}_0)`` closer to 1, but not ``\kappa(B_M \mathcal{L})`` below the floor (Eq. (31)). The FAI
+# ``\kappa(B_M \mathcal{L}_0)`` closer to 1, but not ``\kappa(B_M \mathcal{L})`` below the floor of Eq. (30). The FAI
 # goes below the floor with a bond dimension of only 4.
 
 # ## Local iterations site by site
@@ -170,7 +174,7 @@ end
 # both preconditioners bring the iterations of every position down to less than half of the baseline. For ``F = 100``,
 # the iterations peak at the central positions for every method, since the central local problems are projections onto
 # the largest subspaces and inherit more of the conditioning of the global operator (Sec. 5.1). There, ``B_3`` saves
-# about a third of the iterations and the FAI two thirds, the behavior of Fig. 11 of the paper in miniature.
+# about a third of the iterations and the FAI two thirds, the behavior of Fig. 10 of the paper in miniature.
 
 # ## Local condition numbers
 #
@@ -288,7 +292,7 @@ end
 # ## Summary
 #
 # The figure shows the local CG iterations per position of the MALS solves, for (a) ``F = 1`` and (b) ``F = 100``, a
-# miniature of Fig. 11 of the paper, and (c) the mean local condition numbers per position for ``F = 100``.
+# miniature of Fig. 10 of the paper, and (c) the mean local condition numbers per position for ``F = 100``.
 
 colors = Dict("none" => :gray, "Sinc B₃" => :darkorange, "FAI χ_G = 4" => :royalblue, "FAI at 2, 3" => :seagreen)
 positions = 1:(N-1)

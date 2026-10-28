@@ -77,21 +77,21 @@ P_L^{(1:N)} = \begin{bmatrix} \mathbb{I}^{(d_1)} & \mathbb{J}^{(d_1)} \end{bmatr
 ```
 
 where ``\bowtie`` is the strong Kronecker product. Vectorizing the mask and placing it on the diagonal of an operator
-on the vectorized space gives the projector ``\mathbb{P}_L``, which keeps the lower-triangular entries of a vectorized
-matrix and has the same bond dimension 2 (Eq. (20), Fig. 4). In DifferenTT, [`lower_triang_mpo`](@ref) builds the
+on the vectorized space gives the projector ``\mathcal{P}_L``, which keeps the lower-triangular entries of a vectorized
+matrix and has the same bond dimension 2 (Sec. 3.1, Fig. 4). In DifferenTT, [`lower_triang_mpo`](@ref) builds the
 mask and [`triang_projector_mpo`](@ref) the projector.
 
 We then vectorize Eq. (10), fusing at each site the row and column indices of the unknown into one index of dimension
-``d^2``, and project it (Eq. (22)):
+``d^2``, and project it (Eq. (21)):
 
 ```math
-\left[\mathbb{P}_L (\mathbf{I} \otimes A) \mathbb{P}_L + \mu (\mathbb{I} - \mathbb{P}_L)\right]
+\left[\mathcal{P}_L (\mathbf{I} \otimes A) \mathcal{P}_L + \mu (\mathcal{I} - \mathcal{P}_L)\right]
     \mathrm{vec}(\tilde{G}_L) = \mathrm{vec}(\mathbf{I}),
 ```
 
 where ``\mathbf{I} \otimes A`` applies ``X \mapsto XA`` to the vectorized unknown, and ``\mu > 0`` turns the entries
 above the diagonal into the decoupled equations ``\mu (\tilde{G}_L)_{ij} = 0``. The operator is SPD, so the system
-can be solved with CG-based DMRG solvers. Since ``\mathbb{P}_L`` acts on each row of the unknown separately, the
+can be solved with CG-based DMRG solvers. Since ``\mathcal{P}_L`` acts on each row of the unknown separately, the
 operator is block diagonal with one block per row, and on each row the system reduces to the classical FSAI condition
 of Eq. (10), whatever the value of ``\mu`` (Appendix B.1). The exact solution is therefore independent of ``\mu``;
 ``\mu`` only weights how strongly an approximate solver enforces the triangularity. Note that this enforcement is
@@ -101,7 +101,7 @@ excludes them by design.
 ## The rescaling ``D``
 
 The diagonal ``\mathrm{diag}(\tilde{G}_L)`` is extracted as an MPS by contracting delta tensors ([`diagmps`](@ref),
-Fig. 6), and ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` (Eq. (23)) is evaluated element-wise by the recursive
+Fig. 6), and ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` (Eq. (22)) is evaluated element-wise by the recursive
 sketched interpolation (RSI) of Meng, Khoo, Li & Stoudenmire (2026) ([`elementwise_function`](@ref), Sec. 3.2). RSI
 evaluates the function on sketches of the tensor train; we use uniform rather than Gaussian sketches, so that the
 sketched entries stay positive and ``x^{-1/2}`` is defined on all of them.
@@ -109,8 +109,8 @@ sketched entries stay positive and ``x^{-1/2}`` is defined on all of them.
 The rescaling is only well defined if every diagonal entry of ``\tilde{G}_L`` is positive, which an approximate solver
 does not guarantee. Lemma 1 of the paper settles when it holds. For the exact solution, the diagonal entries are
 ``g_i^\star = 1/(L_A)_{ii}^2``, with ``1/A_{ii} \le g_i^\star \le 1/\lambda_{\min}(A)``. For a computed
-``\tilde{G}_L``, the relative error of each diagonal entry is bounded by the relative energy-norm error ``\eta_i`` of
-its row, so a sign change requires ``\eta_i \ge 1``, i.e. losing the whole row; and by Corollary 1, the weighted
+``\tilde{G}_L``, the relative error of each diagonal entry is bounded by the relative energy-norm error ``\nu_i`` of
+its row, so a sign change requires ``\nu_i \ge 1``, i.e. losing the whole row; and by Corollary 1, the weighted
 fraction of rows with a non-positive diagonal is at most ``\varepsilon_E^2``, with ``\varepsilon_E`` the global
 relative energy error. On uniform grids with constant coefficients the exact diagonal is nearly constant and has a TT
 rank close to one, which is why sign changes are not observed in practice (Appendix B.5).
@@ -155,10 +155,10 @@ iterates of CG perturbs the conjugacy of its search directions (Sec. 2.1).
 | Step | Paper | DifferenTT |
 |:--- |:--- |:--- |
 | Lower-triangular mask ``P_L`` | Eq. (14) | [`lower_triang_mpo`](@ref) |
-| Projector ``\mathbb{P}_L`` | Eq. (20), Fig. 4 | [`triang_projector_mpo`](@ref) |
-| Projected system for ``\tilde{G}_L`` | Eq. (22) | `DifferenTT.fai_dg` (internal) |
+| Projector ``\mathcal{P}_L`` | Sec. 3.1, Fig. 4 | [`triang_projector_mpo`](@ref) |
+| Projected system for ``\tilde{G}_L`` | Eq. (21) | `DifferenTT.fai_dg` (internal) |
 | ``\mathrm{diag}(\tilde{G}_L)`` as an MPS | Fig. 6 | [`diagmps`](@ref) |
-| ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` by RSI | Eq. (23), Sec. 3.2 | [`elementwise_function`](@ref) |
+| ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` by RSI | Eq. (22), Sec. 3.2 | [`elementwise_function`](@ref) |
 | ``G_L = D \tilde{G}_L`` | Eq. (11) | [`fai_preconditioner`](@ref), [`FactorizedPreconditioner`](@ref) |
 | Two-layer local application | Sec. 4, Fig. 8 | [`FactorizedPreconditioner`](@ref) in [`linearsolve`](@ref) |
 
@@ -170,28 +170,32 @@ the local residual (Oseledets & Dolgov, 2012); the Sinc preconditioner ``B_M`` o
 
 ## Choosing the parameters
 
-The paper's experiments use ``\mu = 10^7``, and the exact solution of Eq. (22) does not depend on ``\mu``: the results
-do not change for ``\mu`` between ``10^5`` and ``10^8``. The value does set the conditioning of the build. The operator
-of Eq. (22) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the identity on the
-entries above the diagonal, so its condition number is ``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``.
-A ``\mu`` far above the top of the spectrum of ``A`` therefore makes the local Krylov solves of the build slower and, with a
-capped number of sweeps, can return a worse preconditioner. On a ``2^5 \times 2^5`` QTT pressure operator with
-``\lambda_{\max}(A) \approx 8 \cdot 10^3``, ``\chi_{G_L} = 4`` and 30 MALS sweeps, ``\mu = 10^3`` built in 4.6 s with
-``\kappa(G_L^\top G_L A) = 5.3``, whereas ``\mu = 10^7`` gave ``\kappa = 146`` and did not converge within the 30 sweeps.
-Since ``\lambda_{\max}(A)`` grows as ``h^{-2}``, the paper's ``\mu = 10^7`` is close to the top of the spectrum only on
-its finest grids, and on a coarse grid we recommend ``\mu \approx \lambda_{\max}(A)``, estimated from the stencil or from a
-few Lanczos iterations (see [`fai_preconditioner`](@ref) and the tutorial
-[Factorized approximate inverse preconditioners](@ref)). The FAI is
-built by MALS with a local tolerance between ``10^{-5}`` and ``10^{-8}``, stopping once the relative residual of Eq.
-(22) is below ``10^{-1}`` (`residual_tol = 0.1`), and with ``\chi_{G_L}`` between 4 and 10 (`totalmaxdim`). The bond
-dimension of ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and
-applying the preconditioner, at the expense of its quality.
+The exact solution of Eq. (21) does not depend on ``\mu`` (Appendix B.1), but the value sets the conditioning of the
+build. The operator of Eq. (21) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the
+identity on the entries above the diagonal, so its condition number is
+``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``. A ``\mu`` far above the top of the spectrum of ``A``
+therefore makes the local Krylov solves of the build slower and, with a capped number of sweeps, can return a worse
+preconditioner. On a ``2^5 \times 2^5`` QTT pressure operator with ``\lambda_{\max}(A) \approx 8 \cdot 10^3``,
+``\chi_{G_L} = 4`` and 30 MALS sweeps, ``\mu = 10^3`` built in 4.6 s with ``\kappa(G_L^\top G_L A) = 5.3``, whereas a
+``\mu`` about 1200 times ``\lambda_{\max}(A)`` gave ``\kappa = 146`` and did not converge within the 30 sweeps. We
+therefore recommend ``\mu \approx \lambda_{\max}(A)``. The paper takes the Gershgorin bound
+``\mu = \|A\|_\infty \ge \lambda_{\max}(A)`` (Eqs. (32) and (37)), which for a finite-difference operator on a regular
+grid follows from the stencil coefficients alone: the central stencil ``\sum_k c_k u_{i+k} / h^2`` of
+[`derivative_coefficients`](@ref) contributes at most ``\sum_k |c_k| / h^2`` per axis to a row sum of ``|A|``, and the
+boundary closures of the paper's operators do not exceed it. The example below computes it, and
+`experiments/common/mu_rules.jl` in the repository does so for the operators of the paper's benchmarks; for other
+operators, a few Lanczos iterations also give an estimate (see [`fai_preconditioner`](@ref) and the tutorial
+[Factorized approximate inverse preconditioners](@ref)). The FAI is built by MALS with a local tolerance between
+``10^{-5}`` and ``10^{-8}``, stopping once the relative residual of Eq. (21) is below ``10^{-1}``
+(`residual_tol = 0.1`), and with ``\chi_{G_L}`` between 4 and 10 (`totalmaxdim`). The bond dimension of ``G_L`` plays
+the role of the sparsity pattern of the classical FSAI: it sets the cost of storing and applying the preconditioner, at
+the expense of its quality.
 
 The FAI pays off when its build is amortized and its application is cheap. In the Chorin projection of Sec. 5.2, the
 same pressure operator is solved at every time step, so the preconditioner is built once per run and reused, and on QTT
-sites of dimension ``d = 2`` the unknown of Eq. (22) has sites of dimension only 4; the cumulative solve time then drops
-below that of the unpreconditioned solver after a few time steps (Fig. 13). In the high-dimensional anisotropic
-diffusion of Sec. 5.1, it reduces the iterations but not the solve time: the vectorized unknown of Eq. (22) has sites of
+sites of dimension ``d = 2`` the unknown of Eq. (21) has sites of dimension only 4; the cumulative solve time then drops
+below that of the unpreconditioned solver after a few time steps (Fig. 12). In the high-dimensional anisotropic
+diffusion of Sec. 5.1, it reduces the iterations but not the solve time: the vectorized unknown of Eq. (21) has sites of
 dimension ``d^2 = 225``, which makes the build expensive, and the operator has bond dimension only 3, so a
 preconditioned local iteration costs several plain ones (Sec. 4). The scripts of both experiments, `tt_anisotropy_stats`
 and `chorin_pipeline_stats`, are part of the paper bundle.
@@ -201,12 +205,15 @@ using DifferenTT, ITensorMPS, Random
 arch = QTTArchitecture((6, 6))                       # 2⁶ × 2⁶ grid, 12 sites
 sites = siteinds(arch)
 bc = BoundaryConditions(ntuple(_ -> BoundaryCond1d(DirichletBC(0.0), DirichletBC(0.0)), 2)...)
-A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), Grid(arch, (1.0, 1.0)))
+grid = Grid(arch, (1.0, 1.0))
+A = -1.0 * symmetrized_laplacian(ScalarField(sites, arch, bc), grid)   # stencil order 8
 b = random_mps(Xoshiro(1), sites; linkdims=2)
 
+σ = sum(abs, values(DifferenTT.derivative_coefficients(2; stencil_order=8)))   # Σ_k |c_k| ≈ 6.50
+μ = σ * sum(h -> 1 / h^2, grid.dx)                  # Gershgorin bound ‖A‖_∞ ≥ λ_max(A), ≈ 5.2 ⋅ 10⁴
 cg = LocalUpdaterArgs(; ishermitian=true, isposdef=true, rtol=1e-5)
 build = ResidualALS(; sweep_kwargs=SweepingArgs(; nsweeps=10, maxdim=8), updater_kwargs=cg)
-M⁻¹ = fai_preconditioner(A; μ=1e7, solver=build, totalmaxdim=8, residual_tol=0.1, rng=Xoshiro(1))
+M⁻¹ = fai_preconditioner(A; μ, solver=build, totalmaxdim=8, residual_tol=0.1, rng=Xoshiro(1))
 
 numiter = KrylovSweepStats()
 solver = ResidualALS(;
@@ -217,8 +224,9 @@ x = linearsolve(solver, A, b, M⁻¹, nothing)
 sum(DifferenTT.positions_sum(numiter))               # total local CG iterations
 ```
 
-In our run, the preconditioner reduced the local CG iterations of this solve from 1639 to 435, while its build took
-more than 30 times as long as one unpreconditioned solve, which illustrates why the FAI is meant to be reused.
+In our run, the preconditioner reduced the local CG iterations of this solve from 1639 to 433, while its build took 3
+to 4 times as long as one unpreconditioned solve, which illustrates why the FAI is meant to be reused. A ``\mu`` 200
+times above ``\|A\|_\infty`` gave the same iterations, but made the build 10 times slower.
 
 ## Checking definiteness
 

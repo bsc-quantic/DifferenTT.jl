@@ -28,11 +28,12 @@ Three sections, all of them run by default (select some with `LINSOLVE_SPD_SECTI
   As a control, the FAI (μ = 10⁷, χ_G = 4, SPD by construction) goes through the same checks.
 
 The grid is `Grid(arch, (2.0, 1.0); periodic=periodic_axes(bcs))`, so the period in y is 1, and the first step uses the
-mask of `fai_benchmarks/chorin_pipeline/masks.jld2` (or `CHORIN_MASK_FILE`); the worker stops with an `ArgumentError` if the
-metadata of the mask do not match that grid (`common/mask_grid.jl`). The setup is that of the paper repository. New runs are
-not comparable with the data of the current figures (tag `paper-ttfai-data`): the FAI now solves the correct FSAI problem,
-`linsolve_preconditioner` no longer returns the transpose of the inverse for a nonsymmetric operator, and the worker builds
-the grid with the period of the box (`periodic = periodic_axes(bcs)`, see `NEWS.md`).
+mask of `fai_benchmarks/chorin_pipeline/masks.jld2` (or `CHORIN_MASK_FILE`); the worker stops with an `ArgumentError` if
+the metadata of the mask do not match that grid (`common/mask_grid.jl`). The setup is that of the paper repository. Fig.
+3 of the paper comes from a run of this worker at the tag `paper-ttfai-v0.1-data` (`paper/README.md`). New runs are not
+comparable with the data of the earlier drafts of the paper (tag `paper-ttfai-data`): the FAI now solves the correct
+FSAI problem, `linsolve_preconditioner` no longer returns the transpose of the inverse for a nonsymmetric operator, and
+the worker builds the grid with the period of the box (`periodic = periodic_axes(bcs)`, see `NEWS.md`).
 
 # Inputs and outputs
 
