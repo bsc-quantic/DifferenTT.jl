@@ -1,6 +1,6 @@
 # DifferenTT.jl release notes
 
-## v0.1.0 (TODO(release): release date)
+## v0.1.0 (2026-11-04)
 
 The first public release. Version 0.0.1 is the state of the library that produced the data of the FAI paper
 (tag `paper-ttfai-data`, commit `6850540`); the changes below are relative to it.

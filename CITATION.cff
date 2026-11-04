@@ -1,5 +1,4 @@
-# TODO(release): add the release date (date-released) and, once the repository is public and linked to Zenodo, the DOI
-# of the release (doi).
+# TODO(release): add the DOI that Zenodo gives the v0.1.0 release (doi).
 cff-version: 1.2.0
 message: >-
   If you use DifferenTT in your work, please cite the paper that introduces the factorized approximate inverse
@@ -28,6 +27,7 @@ authors:
     affiliation: "Barcelona Supercomputing Center"
     orcid: "https://orcid.org/0000-0001-6549-5364"
 version: 0.1.0
+date-released: 2026-11-04
 license: MIT
 repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
 identifiers:
