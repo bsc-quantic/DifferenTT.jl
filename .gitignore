@@ -25,7 +25,7 @@ experiments/**/*.jld2
 # (experiments/README.md, "Data")
 !experiments/fai_benchmarks/**/collected_results.jld2
 !experiments/fai_benchmarks/**/masks.jld2
-# Data of Table 1 of the paper, see experiments/paper/README.md
+# Discrete floor quoted in Sec. 5.1 of the paper, see experiments/paper/README.md
 !experiments/paper/anisotropy_floor/discrete_floor.jld2
 # Notes the paper plotters write next to their figures (archived on Zenodo with the data)
 experiments/paper/**/plots_paper*/

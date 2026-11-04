@@ -204,7 +204,7 @@ println("iterations per step: ", Int.(baseline.iterations))
 #
 # The pressure operator of the experiment is the field `poisson_op` of its [`ChorinCache`](@ref): ``A = -W\Delta``, with
 # the Neumann rows weighted by ``W`` so that ``A`` is SPD. It does not depend on the velocity or on the mask, so we
-# build its FAI once, with the settings of Table 3 of the paper: at most 30 MALS sweeps at a local tolerance of
+# build its FAI once, with the settings of Table 2 of the paper: at most 30 MALS sweeps at a local tolerance of
 # ``10^{-8}``, stopped at a residual of ``10^{-1}`` of Eq. (21), ``\chi_{G_L} = 4``, and the Gershgorin bound
 # ``\mu = \|A\|_\infty = \sigma (h_x^{-2} + h_y^{-2})`` of Eq. (37), with ``\sigma = \sum_k |c_k| = 2048/315`` the sum
 # of the absolute coefficients of the eighth-order stencil ([`derivative_coefficients`](@ref)).

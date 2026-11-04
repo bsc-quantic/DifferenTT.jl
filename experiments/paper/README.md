@@ -11,9 +11,9 @@ paper repository and we did not change them. The benchmarks that the paper does 
 | Paper (label) | Folder | Worker | Collector | Plotter |
 |---|---|---|---|---|
 | Fig. 3: negative eigenvalues of the truncated approximate inverses (`fig:spd_nneg`) | `linsolve_spd/` | `worker.jl` | – (one results file) | `plot_paper.jl` (`plot_results.jl` is a quick look at the same data) |
-| Table 1: anisotropy floor and solution ranks (`tab:anisotropy_floor`) | `anisotropy_floor/` | `discrete_floor.jl` (computes the table) | – | – |
-| Table 2 and Figs. 9-10: anisotropic diffusion, MALS parameters, iterations and iterations per site (`tab:anisotropy_params`, `fig:mals_iters`, `fig:mals_site_iters`) | `tt_anisotropy_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
-| Table 3 and Figs. 11-12: Chorin pipeline, MALS parameters, iterations and cumulative speedup (`tab:chorin_mals_params`, `fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) | `chorin_pipeline_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
+| Sec. 5.1: discrete floor of the anisotropy benchmark, quoted in the text (`subsec:anisotropy_experiment`) | `anisotropy_floor/` | `discrete_floor.jl` (computes the floor, and the solution ranks that the paper does not report) | – | – |
+| Table 1 and Figs. 9-10: anisotropic diffusion, MALS parameters, iterations and iterations per site (`tab:anisotropy_params`, `fig:mals_iters`, `fig:mals_site_iters`) | `tt_anisotropy_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
+| Table 2 and Figs. 11-12: Chorin pipeline, MALS parameters, iterations and cumulative speedup (`tab:chorin_mals_params`, `fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) | `chorin_pipeline_stats/` | `worker.jl` | `collect.jl` | `plot_paper.jl` |
 
 The statistics benchmarks run every task `BENCH_N_REPEATS` times and write one file per task and repeat; the collector
 turns them into one table and the plotter draws the spread over the repeats. Their shared helpers are in
@@ -105,8 +105,8 @@ versions in one collect or plot.
 
 The old data stay in the paper repository. Of the data of the paper, this repository keeps only:
 
-- `anisotropy_floor/discrete_floor.jld2` and `.md`: the data of Table 1 (the discrete floor and the ranks of the exact
-  solution), regenerated in the rerun (the same files as in the Zenodo archive). We commit them because the plotters of
+- `anisotropy_floor/discrete_floor.jld2` and `.md`: the discrete floor quoted in Sec. 5.1 and the ranks of the exact
+  solution, regenerated in the rerun (the same files as in the Zenodo archive). We commit them because the plotters of
   `../fai_benchmarks/tt_anisotropy` read them.
 - `linsolve_spd/plots/summary.md`: the summary of the final run of the D1 era.
 

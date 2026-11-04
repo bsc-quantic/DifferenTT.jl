@@ -93,7 +93,7 @@ where ``\mathbf{I} \otimes A`` applies ``X \mapsto XA`` to the vectorized unknow
 above the diagonal into the decoupled equations ``\mu (\tilde{G}_L)_{ij} = 0``. The operator is SPD, so the system
 can be solved with CG-based DMRG solvers. Since ``\mathcal{P}_L`` acts on each row of the unknown separately, the
 operator is block diagonal with one block per row, and on each row the system reduces to the classical FSAI condition
-of Eq. (10), whatever the value of ``\mu`` (Appendix B.1). The exact solution is therefore independent of ``\mu``;
+of Eq. (10), whatever the value of ``\mu`` (Appendix A.1). The exact solution is therefore independent of ``\mu``;
 ``\mu`` only weights how strongly an approximate solver enforces the triangularity. Note that this enforcement is
 variational: an approximate solver can leave small entries above the diagonal, unlike the sparse construction, which
 excludes them by design.
@@ -113,12 +113,12 @@ does not guarantee. Lemma 1 of the paper settles when it holds. For the exact so
 its row, so a sign change requires ``\nu_i \ge 1``, i.e. losing the whole row; and by Corollary 1, the weighted
 fraction of rows with a non-positive diagonal is at most ``\varepsilon_E^2``, with ``\varepsilon_E`` the global
 relative energy error. On uniform grids with constant coefficients the exact diagonal is nearly constant and has a TT
-rank close to one, which is why sign changes are not observed in practice (Appendix B.5).
+rank close to one, which is why sign changes are not observed in practice (Appendix A.5).
 
 !!! warning "Known limitation"
     On strongly non-uniform grids, or with strongly varying coefficients, the rows with a large ``A_{ii}`` have a
     small ``g_i^\star`` and are the cheapest to flip, and the diagonal of ``\tilde{G}_L`` is no longer nearly
-    constant, so the shortcut ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` can lose accuracy (Appendix B.6). Since
+    constant, so the shortcut ``D = [\mathrm{diag}(\tilde{G}_L)]^{-1/2}`` can lose accuracy (Appendix A.6). Since
     ``g_i^\star A_{ii} \ge 1``, sampled values of ``(\tilde{G}_L)_{ii} A_{ii}`` noticeably below one would detect it.
     Neither this diagnostic nor the energy-based rescaling ``D_{ii} = (\tilde{\mathbf{g}}_i^\top A
     \tilde{\mathbf{g}}_i)^{-1/2}``, which RSI could evaluate on the uncontracted network (Sec. 3.2, Fig. 7), is
@@ -170,7 +170,7 @@ the local residual (Oseledets & Dolgov, 2012); the Sinc preconditioner ``B_M`` o
 
 ## Choosing the parameters
 
-The exact solution of Eq. (21) does not depend on ``\mu`` (Appendix B.1), but the value sets the conditioning of the
+The exact solution of Eq. (21) does not depend on ``\mu`` (Appendix A.1), but the value sets the conditioning of the
 build. The operator of Eq. (21) is block diagonal, with the leading principal submatrices of ``A`` and ``\mu`` times the
 identity on the entries above the diagonal, so its condition number is
 ``\max(\mu, \lambda_{\max}(A)) / \min(\mu, \lambda_{\min}(A))``. A ``\mu`` far above the top of the spectrum of ``A``

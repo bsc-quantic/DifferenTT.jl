@@ -1,10 +1,10 @@
 # Reproducing the paper
 
 The library was developed together with the paper P. Torrente et al., *Factorized approximate inverse preconditioners in
-the tensor train format* (in preparation), which introduces the factorized approximate inverse (FAI) preconditioner of
-[`fai_preconditioner`](@ref) and tests it on the anisotropic elliptic operators of its Sec. 5.1 and on the Chorin
-projection around a cylinder of its Sec. 5.2. The scripts that generate the figures and tables of the paper are in the
-repository, in
+the tensor train format*, [arXiv:2611.03859](https://arxiv.org/abs/2611.03859), which introduces the factorized
+approximate inverse (FAI) preconditioner of [`fai_preconditioner`](@ref) and tests it on the anisotropic elliptic
+operators of its Sec. 5.1 and on the Chorin projection around a cylinder of its Sec. 5.2. The scripts that generate the
+figures and tables of the paper are in the repository, in
 [`experiments/paper`](https://github.com/bsc-quantic/DifferenTT.jl/tree/master/experiments/paper), and its
 [`README.md`](https://github.com/bsc-quantic/DifferenTT.jl/blob/master/experiments/paper/README.md) lists, for each
 figure and table, the script that produces it, the environment, and the SLURM settings of the runs on the cluster.

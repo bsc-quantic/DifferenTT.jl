@@ -230,7 +230,7 @@ where ``\\mathcal{T}_A \\mathrm{vec}(X) = \\mathrm{vec}(XA)`` is the operator wr
 (19) for a symmetric ``A``, ``\\mathcal{P}_L`` = [`triang_projector_mpo`](@ref) keeps the lower-triangular entries of
 ``X`` (Eq. (14), Sec. 3.1 and Fig. 4), and ``\\mu > 0`` weights the equations ``\\mu X_{ij} = 0`` of the entries above
 the diagonal. Its exact solution satisfies Eq. (10), ``(\\tilde{G}_L A)_{ij} = \\delta_{ij}`` for ``i \\ge j``, and does
-not depend on ``\\mu`` (Appendix B.1). The initial guess is ``10^{-3}`` times the lower-triangular matrix of ones. We
+not depend on ``\\mu`` (Appendix A.1). The initial guess is ``10^{-3}`` times the lower-triangular matrix of ones. We
 then extract ``\\mathrm{diag}(\\tilde{G}_L)`` as an MPS with delta tensors ([`diagmps`](@ref)), and evaluate
 ``D = [\\mathrm{diag}(\\tilde{G}_L)]^{-1/2}`` (Eq. (22)) element-wise by RSI with uniform sketches
 ([`elementwise_function`](@ref), Sec. 3.2). The inverse square root is evaluated as ``1/\\sqrt{\\max(x, \\epsilon)}``,
@@ -384,9 +384,9 @@ the time steps of the Chorin projection, and when the local dimension is small (
 ``d^2`` the build becomes expensive (Sec. 5.1). Note two limitations. The shortcut of Eq. (22) for ``D`` holds only if
 ``\\tilde{G}_L`` solves Eq. (10) exactly; Lemma 1 bounds the error of each diagonal entry by the relative energy error
 of its row, but on strongly non-uniform grids or with strongly varying coefficients this shortcut can lose accuracy
-(Appendix B.6).
+(Appendix A.6).
 
-The value of ``\\mu`` sets the conditioning of the build, although not its exact solution (Appendix B.1). Since
+The value of ``\\mu`` sets the conditioning of the build, although not its exact solution (Appendix A.1). Since
 ``\\mathcal{P}_L`` acts on each row of ``\\tilde{G}_L`` separately, the operator of Eq. (21) is block diagonal, with the
 leading principal submatrices of ``A``, whose eigenvalues lie in ``[\\lambda_{\\min}(A), \\lambda_{\\max}(A)]``, and
 ``\\mu`` times the identity on the entries above the diagonal, so its condition number is

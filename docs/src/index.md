@@ -88,10 +88,11 @@ DifferenTT
 ## Citing
 
 If you use DifferenTT in your work, please cite the paper that introduces the FAI preconditioner, P. Torrente et al.,
-*Factorized approximate inverse preconditioners in the tensor train format* (in preparation), and the code itself.
-The file [`CITATION.cff`](https://github.com/bsc-quantic/DifferenTT.jl/blob/master/CITATION.cff) of the repository
-holds the metadata of both, and the README gives a BibTeX entry for the paper. The scripts that reproduce the paper's
-figures and tables are described in [Reproducing the paper](@ref).
+*Factorized approximate inverse preconditioners in the tensor train format*,
+[arXiv:2611.03859](https://arxiv.org/abs/2611.03859), and the code itself. The file
+[`CITATION.cff`](https://github.com/bsc-quantic/DifferenTT.jl/blob/master/CITATION.cff) of the repository holds the
+metadata of both, and the README gives a BibTeX entry for the paper. The scripts that reproduce the paper's figures and
+tables are described in [Reproducing the paper](@ref).
 
 ## License
 

@@ -1,5 +1,5 @@
 """
-    TT anisotropy benchmark, statistics variant (paper Table 2 and Figs. 9-10): worker
+    TT anisotropy benchmark, statistics variant (paper Table 1 and Figs. 9-10): worker
 
 We solve the anisotropic diffusion equation -∇⋅(K∇u) = 1 on (0, 1)ᴺ with homogeneous Dirichlet conditions, where K =
 (1-ρ) I + ρ 𝟏𝟏ᵀ is the equicorrelated diffusion tensor, in the non-quantized TT format with 15 nodes per dimension (Sec.
@@ -81,7 +81,7 @@ job script sets 7). The comments of `submit.sh` give the time of each block as m
 
 # Paper
 
-Sec. 5.1: Table 2 (`tab:anisotropy_params`) lists the parameters of the runs, which are the constants of this worker,
+Sec. 5.1: Table 1 (`tab:anisotropy_params`) lists the parameters of the runs, which are the constants of this worker,
 and Figs. 9-10 (`fig:mals_iters`, `fig:mals_site_iters`) are drawn by `plot_paper.jl` from the output of `collect.jl`.
 """
 

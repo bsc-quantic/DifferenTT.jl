@@ -1,5 +1,5 @@
 # TODO(release): add the release date (date-released) and, once the repository is public and linked to Zenodo, the DOI
-# of the release (doi) and the arXiv id of the preprint.
+# of the release (doi).
 cff-version: 1.2.0
 message: >-
   If you use DifferenTT in your work, please cite the paper that introduces the factorized approximate inverse
@@ -46,7 +46,13 @@ keywords:
 preferred-citation:
   type: article
   title: Factorized approximate inverse preconditioners in the tensor train format
-  status: in-preparation
+  status: preprint
+  year: 2026
+  url: "https://arxiv.org/abs/2611.03859"
+  identifiers:
+    - type: other
+      value: "arXiv:2611.03859"
+      description: The arXiv preprint
   authors:
     - given-names: Pau
       family-names: Torrente Badia

@@ -213,7 +213,7 @@ finite-state machine of [`ndim_operator_sum_mpo`](@ref) (`pair_ops`), so its bon
 
 ``K`` is SPD for ``-1/(N-1) < \\rho < 1``, and for ``\\rho \\ge 0`` the floor of Eq. (30),
 ``\\kappa(\\mathcal{L}_0^{-1}\\mathcal{L}) \\le F(\\rho, N) = (1 + (N-1)\\rho)/(1 - \\rho)``, holds, as derived in
-Appendix A of the paper. That derivation assumes `stencil_order = 2`, homogeneous Dirichlet sides and the spacing
+Appendix B of the paper. That derivation assumes `stencil_order = 2`, homogeneous Dirichlet sides and the spacing
 ``h = 1/(n+1)`` of [`interior_grid`](@ref); with [`Grid`](@ref), ``h = 1/(n-1)``, which only scales the operator. The
 default `stencil_order = 8` builds the same structure with wider stencils, for which the bound is not proven.
 

@@ -110,13 +110,14 @@ If you use DifferenTT in your work, please cite the paper that introduces the FA
 
 ```bibtex
 @misc{torrente_fai_tt,
-  title  = {Factorized approximate inverse preconditioners in the tensor train format},
-  author = {Torrente Badia, Pau and P{\'e}rez Garc{\'i}a, Daniel and Garcia-Saez, Artur and Carignano, Stefano },
-  note   = {In preparation},
+  title         = {Factorized approximate inverse preconditioners in the tensor train format},
+  author        = {Torrente Badia, Pau and P{\'e}rez Garc{\'i}a, Daniel and Garcia-Saez, Artur and Carignano, Stefano},
+  year          = {2026},
+  eprint        = {2611.03859},
+  archivePrefix = {arXiv},
+  url           = {https://arxiv.org/abs/2611.03859},
 }
 ```
-
-TODO(release): the arXiv identifier of the preprint (`eprint`, `archivePrefix = {arXiv}`) and its year.
 
 To cite the code itself, use the metadata of [`CITATION.cff`](CITATION.cff) (GitHub shows it as "Cite this repository").
 

@@ -143,7 +143,7 @@ println("truncated A⁻¹       ", join((lpad(k, 4) for k in truncated_negative)
 # ```
 #
 # where ``\mathcal{P}_L`` keeps the lower-triangular entries of the vectorized unknown and ``\mu > 0`` weights the
-# equations ``\mu (\tilde{G}_L)_{ij} = 0`` of the entries above the diagonal. We use the settings of Table 3 of the
+# equations ``\mu (\tilde{G}_L)_{ij} = 0`` of the entries above the diagonal. We use the settings of Table 2 of the
 # paper: MALS ([`ResidualALS`](@ref)) with a local CG tolerance of ``10^{-8}`` and at most 30 sweeps, stopped once the
 # relative residual of Eq. (21) is below ``10^{-1}``, and a maximum bond dimension ``\chi_{G_L}`` for both
 # ``\tilde{G}_L`` and ``G_L``. The rescaling ``D`` is computed by RSI with uniform random sketches (Sec. 3.2), which we
@@ -194,13 +194,13 @@ end
 # bond dimension of ``G_L`` plays the role of the sparsity pattern of the classical FSAI: it sets the cost of storing
 # and applying the preconditioner, at the expense of its quality.
 #
-# The value of ``\mu`` matters for the build, although not for its exact solution (Appendix B.1). Since
+# The value of ``\mu`` matters for the build, although not for its exact solution (Appendix A.1). Since
 # ``\mathcal{P}_L`` acts on each row of the unknown separately, the operator of Eq. (21) is block diagonal, with the
 # leading principal submatrices of ``A``, whose eigenvalues lie in ``[\lambda_{\min}(A), \lambda_{\max}(A)]``, and
 # ``\mu`` times the identity on the entries above the diagonal. Its condition number is therefore
 # ``\max(\mu, \lambda_{\max}) / \min(\mu, \lambda_{\min})``: any ``\mu`` inside the spectrum keeps it at ``\kappa(A)``,
 # while a ``\mu`` above ``\lambda_{\max}(A)`` multiplies it by ``\mu / \lambda_{\max}(A)``. A build with a capped number
-# of sweeps, such as the 30 of Table 3, then converges more slowly and can return a worse preconditioner. A value at the
+# of sweeps, such as the 30 of Table 2, then converges more slowly and can return a worse preconditioner. A value at the
 # top of the spectrum, ``\mu \approx \lambda_{\max}(A)``, keeps the condition number of the build at that of ``A`` and
 # still weights the entries above the diagonal at least as strongly as any eigenvalue of ``A``. The Gershgorin bound is
 # such a value: on this grid it exceeds ``\lambda_{\max}(A)`` by less than 0.1 %.

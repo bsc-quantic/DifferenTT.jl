@@ -51,7 +51,7 @@ ITensors.disable_warn_order()
 # while the FAI, built from ``\mathcal{L}(\rho)`` itself, is not. We take ``N = 5`` dimensions in the (non-quantized) TT
 # format, with ``n = 4`` interior nodes per dimension, so that the ``4^5 = 1024`` unknowns allow dense checks,
 # homogeneous Dirichlet conditions, the second-order stencils and the spacing ``h = 1/(n + 1)`` of
-# [`interior_grid`](@ref), as in Appendix A. We compare the two extreme values of the paper, ``F = 1`` (the Laplacian)
+# [`interior_grid`](@ref), as in Appendix B. We compare the two extreme values of the paper, ``F = 1`` (the Laplacian)
 # and ``F = 100``, with ``\rho`` from Eq. (31).
 
 N, n = 5, 4
@@ -69,7 +69,7 @@ maxlinkdim.(getindex.(Ref(𝓛), Fs))
 # The one-dimensional operators ``\mathcal{A}_\ell`` of ``B_M`` are those of the non-exported
 # [`onedim_differential_operator`](@ref), scaled by ``-1/h^2``. With ``M = 3`` quadrature points on each side, ``B_3``
 # has bond dimension 7, the value that already reaches the floor in the experiments of Sec. 5.1. The FAI is built with
-# the settings of Table 2 of the paper: 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of
+# the settings of Table 1 of the paper: 10 MALS sweeps at a local tolerance of ``10^{-5}``, stopped at a residual of
 # ``10^{-1}`` of Eq. (21), ``\chi_{G_L} = 4``, the smallest bond dimension of the paper, and the Gershgorin bound
 # ``\mu = \|\mathcal{L}(\rho)\|_\infty = N (4 + \rho (N - 1)) / h^2`` of Eq. (32), the largest row sum of
 # ``|\mathcal{L}(\rho)|``: the second differences contribute ``4/h^2`` per dimension and each of the
@@ -115,7 +115,7 @@ end
 
 # For ``F = 1``, ``\mathcal{L} = \mathcal{L}_0`` is separable, and both preconditioners are close to the exact inverse.
 # For ``F = 100``, the discrete floor is about 4.6, far below the analytic bound of 100, since this coarse grid does not
-# resolve the extreme modes of ``K`` (as in Table 1 of the paper), and ``B_3`` sits on it: more quadrature terms bring
+# resolve the extreme modes of ``K`` (as in Sec. 5.1 of the paper), and ``B_3`` sits on it: more quadrature terms bring
 # ``\kappa(B_M \mathcal{L}_0)`` closer to 1, but not ``\kappa(B_M \mathcal{L})`` below the floor of Eq. (30). The FAI
 # goes below the floor with a bond dimension of only 4.
 

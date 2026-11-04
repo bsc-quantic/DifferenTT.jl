@@ -442,7 +442,7 @@ try
     end
     @testset "equicorrelated_laplacian against the dense formula and the condition-number floor F(ρ, N)" begin
         # -L(ρ) = Σ_ℓ ∂_ℓ² + 2ρ Σ_{ℓ<m} ∂_ℓ ∂_m (Eq. (28)), written out densely from the three-point stencils on the
-        # interior grid h = 1/(n+1) of the paper's Appendix A, with homogeneous Dirichlet sides
+        # interior grid h = 1/(n+1) of the paper's Appendix B, with homogeneous Dirichlet sides
         d2(n, h) = (diagm(1 => ones(n - 1)) + diagm(-1 => ones(n - 1)) - 2I(n)) / h^2
         d1(n, h) = (diagm(1 => ones(n - 1)) - diagm(-1 => ones(n - 1))) / (2h)
         # Kronecker product with `factors[ℓ]` on axis ℓ and the identity elsewhere (site 1 is the most significant)

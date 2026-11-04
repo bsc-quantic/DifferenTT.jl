@@ -1,5 +1,5 @@
 """
-    Chorin pipeline benchmark, statistics variant (paper Table 3 and Figs. 11-12): worker
+    Chorin pipeline benchmark, statistics variant (paper Table 2 and Figs. 11-12): worker
 
 We solve the pressure Poisson system of every time step of a Chorin projection of the flow past a cylinder, the setup of
 Sec. 5.2 of the paper: Re = 3000 in the box [0, 2] × [0, 1] (periodic in y), a cylinder of radius 0.1 at (0.5, 0.5)
@@ -85,7 +85,7 @@ each unit as measured in the run of October 2026.
 
 # Paper
 
-Sec. 5.2: Table 3 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
+Sec. 5.2: Table 2 (`tab:chorin_mals_params`) lists the parameters of the runs, which are the constants of this worker,
 and Figs. 11-12 (`fig:chorin_mals_iterations`, `fig:chorin_mals_cumulative_speedup`) are drawn by `plot_paper.jl` from
 the output of `collect.jl`.
 """

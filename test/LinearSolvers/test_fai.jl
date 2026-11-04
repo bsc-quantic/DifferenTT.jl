@@ -12,7 +12,7 @@ using .TestUtils
 κ(M) = (λ=eigvals(M); maximum(abs, λ) / minimum(abs, λ))
 cg_args(; kwargs...) = LocalUpdaterArgs(; ishermitian=true, isposdef=true, kwargs...)
 
-# The identities of Sec. 3, Lemma 1 and Appendix B of Torrente et al. hold for the exact solution of Eq. (21). We get it
+# The identities of Sec. 3, Lemma 1 and Appendix A of Torrente et al. hold for the exact solution of Eq. (21). We get it
 # with exact (QR) local solves on a 2⁴-point QTT Laplacian: the vectorized unknown has 4 sites of dimension 4, so
 # 2-site ALS with bond dimension 16 represents it exactly.
 @testset "FAI identities for the exact solution of Eq. (21)" begin
@@ -38,12 +38,12 @@ cg_args(; kwargs...) = LocalUpdaterArgs(; ishermitian=true, isposdef=true, kwarg
     @test norm(Dd - Diagonal(diag(Dd))) == 0
     @test diag(Dd) ≈ g .^ (-1 / 2) rtol = 1e-8
 
-    # G_L = D G̃_L = L_A⁻¹ (Appendix B.3), so G_Lᵀ G_L = A⁻¹
+    # G_L = D G̃_L = L_A⁻¹ (Appendix A.3), so G_Lᵀ G_L = A⁻¹
     G = Dd * G̃d
     @test G ≈ inv(L) rtol = 1e-8
     @test κ(G' * G * Ad) < 1 + 1e-6
 
-    # The exact solution does not depend on μ (Appendix B.1)
+    # The exact solution does not depend on μ (Appendix A.1)
     G̃_μ, _ = DifferenTT.fai_dg(A, 1e7, exact, (; cutoff=1e-15); rng=rng(1))
     @test todense(G̃_μ) ≈ G̃d rtol = 1e-8
 end

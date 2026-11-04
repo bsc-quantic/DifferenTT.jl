@@ -3,9 +3,10 @@
 
 For preconditioners built on the separable Laplacian L₀, the condition number κ(L₀⁻¹ L) is a floor for any
 preconditioner that approximates L₀⁻¹, whatever the number of quadrature terms. Its analytic bound F = (1+(N-1)ρ)/(1-ρ)
-is not attained on the coarse grid of the benchmark, and Table 1 of the paper (`tab:anisotropy_floor`) therefore reports
-the discrete floor, together with the TT ranks of the exact solution of L u = 1, which set the bond dimension caps of
-the workers. We compute them here in full format, for N = 3, 4, 5 (the table reports N = 5) and F ∈ {1, 2, 4, 10, 30,
+is not attained on the coarse grid of the benchmark, and Sec. 5.1 of the paper (`subsec:anisotropy_experiment`)
+therefore quotes the discrete floor, from 1 for F = 1 to 20.4 for F = 100. We also compute the TT ranks of the exact
+solution of L u = 1, which set the bond dimension caps of the workers and which the paper does not report. We compute
+them here in full format, for N = 3, 4, 5 (the paper quotes N = 5) and F ∈ {1, 2, 4, 10, 30,
 100} on 15 nodes per dimension, with the one-dimensional operators of DifferenTT, so that the conventions (grid spacing,
 stencils) are those of the benchmarks. We apply L₀⁻¹ exactly through the eigendecomposition of the one-dimensional
 Laplacian, and we obtain the extreme eigenvalues of L₀⁻¹ L from the Lanczos tridiagonal matrix built with the
@@ -36,7 +37,7 @@ separately; we have not measured the run time or the memory.
 
 # Paper
 
-Table 1 (`tab:anisotropy_floor`).
+The discrete floor quoted in the text of Sec. 5.1 (`subsec:anisotropy_experiment`).
 """
 
 using LinearAlgebra
