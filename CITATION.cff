@@ -1,4 +1,3 @@
-# TODO(release): add the DOI that Zenodo gives the v0.1.0 release (doi).
 cff-version: 1.2.0
 message: >-
   If you use DifferenTT in your work, please cite the paper that introduces the factorized approximate inverse
@@ -28,9 +27,16 @@ authors:
     orcid: "https://orcid.org/0000-0001-6549-5364"
 version: 0.1.0
 date-released: 2026-11-04
+doi: 10.5281/zenodo.23939916
 license: MIT
 repository-code: "https://github.com/bsc-quantic/DifferenTT.jl"
 identifiers:
+  - type: doi
+    value: 10.5281/zenodo.23939916
+    description: The software, all versions (concept DOI)
+  - type: doi
+    value: 10.5281/zenodo.23939917
+    description: The software, version 0.1.0
   - type: doi
     value: 10.5281/zenodo.23663326
     description: The data of the paper, produced at the tag paper-ttfai-v0.1-data (experiments/paper/README.md)

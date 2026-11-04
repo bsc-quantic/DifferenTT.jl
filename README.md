@@ -120,6 +120,8 @@ If you use DifferenTT in your work, please cite the paper that introduces the FA
 ```
 
 To cite the code itself, use the metadata of [`CITATION.cff`](CITATION.cff) (GitHub shows it as "Cite this repository").
+The code is archived on Zenodo: [doi:10.5281/zenodo.23939916](https://doi.org/10.5281/zenodo.23939916) for all
+versions, [doi:10.5281/zenodo.23939917](https://doi.org/10.5281/zenodo.23939917) for v0.1.0.
 
 The scripts that produce the figures and tables of the paper are in [`experiments/paper/`](experiments/paper/), with the
 instructions to rerun them. The data of the paper were produced at the tag
